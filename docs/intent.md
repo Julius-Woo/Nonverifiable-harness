@@ -1,0 +1,3 @@
+My intention is to research and determine what harness evolution is optimizing where there is no natural / available verifiers.
+
+Recent auto-harness research has focused primarily on verifiable tasks such as coding, web interaction, and mathematics. Far less attention has been given to non-verifiable tasks that require process-level validation, such as medicine and law. When an evolution loop receives feedback only from an LLM judge or a process rubric, is it optimizing task performance or optimizing the judge?
