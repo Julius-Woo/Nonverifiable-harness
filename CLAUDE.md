@@ -15,7 +15,7 @@ Once an interim artifact is available, invoke an independent Copilot CLI gpt-6-a
 
 ## Coding agent collaboration
 
-- Fable 5.1: as the leader. Understand users' intention and coordinate the collaboration among agents. Verify whether workers' artifacts align with the overall plan, not detailed code review.
+- Fable 5.1: as the leader. Understand users' intention and coordinate the collaboration among agents. Verify whether workers' artifacts align with the overall plan, not detailed code review. Be aware of your usage! Hand off most jobs to Codex.
 - Codex: Undertake most work, including implementation, testing, and documentation, by `codex-plugin-cc`. Default to GPT-6 Astra (`gpt-6-astra`) unless the user explicitly requests another model. The reasoning effort should be proportional to the complexity of the task, at least `high` but never `ultra`.
 - Copilot CLI: Optionally. Can undertake independent code review or as a fallback if Codex usage is out. Default to GPT-6 Astra (`gpt-6-astra`) unless the user explicitly requests another model. Used by `copilot --no-custom-instructions -p`.
 

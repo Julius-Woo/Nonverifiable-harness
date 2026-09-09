@@ -1,0 +1,68 @@
+# Context (handoff record)
+
+Updated: 2026-09-09, end of Phase 0 (background and resource preparation). Plan: `docs/PLAN.md` (Sections 0-8 research plan; Section 9 execution plan, 9.7 proposed amendments awaiting approval). Environment: `docs/resources.md`. Reviews: `docs/reviews.md`.
+
+## Phase 0 interim results
+
+| Step | Result | Artifact |
+| --- | --- | --- |
+| P0.1 environment survey | No provider keys initially; three subscription CLIs work as backends; Docker via `sg docker`; Harbor 0.22 local Docker. User then supplied Azure subscriptions: 7 of 9 endpoints live (GPT-5 line through 5.6 luna/sol/terra, DeepSeek V3.2/V4 Flash/Pro, Kimi K2.5/K2.6), Bearer auth on `<base>/openai/v1`, per-deployment limits recorded. `.env` written (mode 600), key file deleted. | `docs/resources.md`, `scripts/azure_probe.py`, `.env` (ignored) |
+| P0.2 literature digest | Ten papers digested with section references; 21 plan deltas; 12 PREREG parameter blocks. Independent review R2: substantially source-faithful, 10 major + 7 minor corrections; all 17 applied by correction pass W1b (correction log appended to the digest). Most consequential: A3 as written is not RHO's recipe (coreset 10, 3 re-solves, 3 proposals, fixed first-rollout baseline, one round); SIGIL 5.2/5.7 do not exist (v2); A2 measures procedural compliance, a different construct; a compute-matched control is missing. | `docs/background.md`, `docs/reviews.md` R2 |
+| P0.3 infrastructure | Seed ReAct Harbor agent (shell + file tools, step cap, no retries/planning), CLI backends (Claude/Codex/Copilot) and `openai_api` backend, process-safe cost ledger with priced records, cost report, smoke launcher; 51 provider-free tests pass. Smoke on local Docker: 19 trials, all with verifier rewards reconciled to ledger records. Independent review R3: smoke valid and seed minimal; its one blocking claim (redacted auth header) was a reviewer artifact; 9 valid findings on isolation enforcement, accounting robustness, failure semantics, and resumability are Phase 1 tasks P1.6, P1.9, P1.11. | `harness/`, `scripts/`, `tests/`, `docs/infrastructure.md`, `docs/smoke_run.md`, `costs/summary.md` |
+| P0.4 GDPevo | 12 groups (finance 008-011, healthcare 013-016, legal 017-020) = 120 tasks; all 120 reference answers score 1.0 offline with standalone Python graders, deterministic on repeat; 12 business services start locally without Docker; train-only `POST /api/judge` route is an oracle leak that must be disabled outside the agent. Independent review R1: conditional GO confirmed as permission to build the adapter, with 5 findings (1 fixed, 4 to Phase 1). | `docs/gdpevo_assessment.md`, `scripts/gdpevo/`, `docs/reviews.md` R1 |
+
+Smoke-run numbers (six easy TB2 tasks, concurrency 4, single attempt):
+
+| Task model | Pass | Mean USD / rollout | Mean agent s / rollout | Batch wall s |
+| --- | ---: | ---: | ---: | ---: |
+| gpt-5-mini (low) | 3/6 | 0.012 | 47 | 171 |
+| gpt-5.1 | 4/6 | 0.072 | 37 | 147 |
+| gpt-5.6-luna | 4/6 | 0.004 | 13 | 64 |
+
+No 429s or Harbor timeouts at concurrency 4. Luna finished two tasks without any container action (claimed it had no tools), so its score is not trusted yet. Recommendation carried into Phase 1: gpt-5-mini low reasoning as the baseline, with a stratified 30-task pilot before freezing the task model (target seed pass rate 20-40%).
+
+Phase 0 exit criteria: (a) TB2 task end-to-end with oracle result and ledger entry: met. (b) GDPevo grader runs locally on healthcare and legal groups: met. (c) background digest reviewed with contradictions resolved: met (R2 findings applied by W1b).
+
+## Costs, Phase 0
+
+| Resource | Usage |
+| --- | --- |
+| Azure OpenAI API (smoke runs) | USD 0.54 (19 rollouts + parser validation), priced from `scripts/prices.json` (list prices, unverified against invoice) |
+| Claude Code (Haiku probes) | USD 0.017 API-equivalent |
+| Copilot CLI | premium requests: probes 3 + gemini 14 + reviews 2 (R1, R2) + R3 pending + W2's own review calls 2 |
+| Codex CLI (gpt-6-astra) | W2 2.68M in (2.56M cached) / 30k out; W3 4.41M in (4.27M cached) / 25k out; W2b 4.57M in (4.43M cached) / 38k out; W1/W1b via plugin (about 25 + 20 min), token usage not captured by the plugin log |
+| Wall-clock | Phase 0 leader session about 2.5 h; workers ran concurrently (W1 ~25 min, W2 ~45 min, W3 ~20 min, W2b ~35 min) |
+
+Ledger: `costs/ledger.jsonl` (ignored) rolled up in `costs/summary.md`. Known gap (R3 finding 3): about 100 tiny Azure inventory probe calls from `scripts/azure_probe.py` are outside the ledger; usage is in `logs/azure_probe.json` and will be backfilled in P1.11a.
+
+## Research questions of this phase and answers
+
+1. Does any paper contradict Sections 1-7? Yes on definitions, not on the core design: A3 recipe, oracle scale mixing, missing SIGIL sections, A2 construct, absent compute control, monotonicity undefined. Proposed amendments A1-A10 in `docs/PLAN.md` 9.7.
+2. Per-rollout cost, latency, safe concurrency: about 1-7 cents and 40-90 s per rollout depending on model; concurrency 4 clean; higher concurrency untested.
+3. Is GDPevo usable offline with a deterministic oracle? Yes for grading; formal T2 runs need our own filtered images, a route-allowlisted service gateway, an authenticated API descriptor, and a frozen binary-score contract.
+
+## Decisions needed from the user
+
+1. Approve, modify, or reject amendments A1-A10 (`docs/PLAN.md` 9.7).
+2. Confirm the task-model baseline (gpt-5-mini low) or ask for luna/gpt-5.1 in the stratified pilot.
+3. Confirm the pilot budget guard (150% of estimate: Phase 2 pilot estimated at about USD 60-150 API and 3-5 days wall-clock at concurrency 4-8).
+
+## Phase 1 plan (pilot infrastructure)
+
+Owner: Codex workers unless noted; leader checks alignment; Copilot reviews each artifact.
+
+| ID | Task | Acceptance |
+| --- | --- | --- |
+| P1.1 | Stratified TB2 split: 30 tasks by dataset difficulty metadata, fixed seed, 18 search / 6 anchor / 6 sealed; pinned dataset commit. | `data/tb2_split.json` committed with seed and strata counts. |
+| P1.2 | Seed-harness pilot on the 30 tasks with gpt-5-mini (and luna, gpt-5.1 as candidates), avg@2, concurrency 4 and 8. | Seed pass rate per model; choice recorded; concurrency limit measured. |
+| P1.3 | Evolver loop: API-driven ReAct evolver (DeepSeek-V4-Pro) editing the harness in a per-arm container workspace; one prompt template with only the score-source paragraph varying; candidate validity checks (import, smoke task, forbidden-reference scan). | Two candidates per iteration produced and evaluated end-to-end on the search set for A0. |
+| P1.4 | Judges: A1 outcome judge and A2 process judge (Section 4.1 rubric) with DeepSeek-V4-Flash; hard-coded input schema; rationale archived; A4 mixture; judge-variance control (5 repeats on fixed seed trajectories) to set tau. | Judge scores for seed trajectories with variance estimate. |
+| P1.5 | A3 self-preference per RHO's native recipe (A1 amendment), using the task model. | One RHO round reproduced on the search set. |
+| P1.6 | Isolation protocol: oracle/ never mounted; canary files; trace filters (TB2 and GDPevo patterns); per-arm workspaces; cache isolation via per-arm user ids; Section 5 acceptance matrix executed and logged. | All acceptance checks pass and are recorded. |
+| P1.7 | Sealed-anchor acceptance (Section 7) implementation with tau and epsilon parameters. | Unit-tested; anchor results never appear in evolver context. |
+| P1.8 | `PREREG.md`: H1-H5 with operational thresholds, oracle binary definition, failure policies, budgets, analysis plan; committed before any pilot iteration. | Reviewed by Copilot; committed. |
+| P1.9 | Orchestration and monitoring: stable experiment/trial ids, durable queue with resume at trial boundary (no undisclosed retries of experimental rollouts), shared per-endpoint RPM/TPM admission control, per-iteration timing/cost/pass-rate log, budget guard halting at 150% of the phase estimate. | Kill-and-resume test passes; dashboard file updated by the loop. |
+| P1.11 | Accounting and failure-semantics hardening (from R3): (a) backfill probe usage; (b) request-intent records and cancellation/SIGKILL-safe ledger with restart reconciliation; (c) shared accounting reducer with known/unresolved components; (d) pass = reward 1 and no agent timeout, raw reward kept separately, failure fixtures; (e) provider usage fixtures (DeepSeek, Kimi) through the full pipeline. | Tests for each; `costs/summary.md` reports known and unresolved separately. |
+| P1.10 | GDPevo adapter groundwork (from R1): filtered solver and service images, route allowlist, authenticated API descriptor, binary-score contract, valid-but-wrong grader controls, end-to-end seed rollout in one healthcare and one legal group. | One rollout per domain with oracle result and ledger entry. |
+
+Phase 2 (pilot on T1) starts only after P1.8 is committed and P1.6, P1.9, and P1.11 pass. Experimental roles use the API backends only (R3 finding 8).

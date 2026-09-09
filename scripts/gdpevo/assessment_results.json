@@ -1,0 +1,874 @@
+{
+  "timestamp_utc": "2026-09-09T17:19:45.037834+00:00",
+  "source_commit": "0999c0d1e6f59b1cb8464cac4e5ed856b5dcb9e4",
+  "source_dirty": false,
+  "python": "3.14.3 (main, Feb 12 2026, 00:42:54) [Clang 21.1.4 ]",
+  "network_guard": "Python socket audit events denied; self-check passed",
+  "task_count": 120,
+  "invocations": 840,
+  "reference_full_score": 120,
+  "reference_correct_true": 15,
+  "reference_errors": 0,
+  "repeat_score_matches": 120,
+  "median_grader_wall_s": 0.027893406921066344,
+  "total_wall_s": 24.17177895293571,
+  "model_calls": 0,
+  "model_cost_usd": 0,
+  "source_url": "https://github.com/Prism-Shadow/GDPevo/tree/0999c0d1e6f59b1cb8464cac4e5ed856b5dcb9e4",
+  "inventory_sha256": "b20c6ac9f3d69f47c4428af349876c48fc0e68304bac5ce0ee757feb901ad532",
+  "groups": [
+    {
+      "group": "008",
+      "train": 5,
+      "test": 5,
+      "reference_full_score": 10,
+      "controls": {
+        "empty": {
+          "runs": 10,
+          "errors": 0,
+          "nonzero_scores": []
+        },
+        "malformed": {
+          "runs": 10,
+          "errors": 0,
+          "nonzero_scores": []
+        },
+        "null": {
+          "runs": 10,
+          "errors": 0,
+          "nonzero_scores": []
+        },
+        "missing": {
+          "runs": 10,
+          "errors": 0,
+          "nonzero_scores": []
+        },
+        "template": {
+          "runs": 10,
+          "errors": 0,
+          "nonzero_scores": []
+        }
+      }
+    },
+    {
+      "group": "009",
+      "train": 5,
+      "test": 5,
+      "reference_full_score": 10,
+      "controls": {
+        "empty": {
+          "runs": 10,
+          "errors": 0,
+          "nonzero_scores": []
+        },
+        "malformed": {
+          "runs": 10,
+          "errors": 0,
+          "nonzero_scores": []
+        },
+        "null": {
+          "runs": 10,
+          "errors": 0,
+          "nonzero_scores": []
+        },
+        "missing": {
+          "runs": 10,
+          "errors": 0,
+          "nonzero_scores": []
+        },
+        "template": {
+          "runs": 10,
+          "errors": 0,
+          "nonzero_scores": []
+        }
+      }
+    },
+    {
+      "group": "010",
+      "train": 5,
+      "test": 5,
+      "reference_full_score": 10,
+      "controls": {
+        "empty": {
+          "runs": 10,
+          "errors": 0,
+          "nonzero_scores": []
+        },
+        "malformed": {
+          "runs": 10,
+          "errors": 10,
+          "nonzero_scores": []
+        },
+        "null": {
+          "runs": 10,
+          "errors": 8,
+          "nonzero_scores": []
+        },
+        "missing": {
+          "runs": 10,
+          "errors": 10,
+          "nonzero_scores": []
+        },
+        "template": {
+          "runs": 10,
+          "errors": 0,
+          "nonzero_scores": []
+        }
+      }
+    },
+    {
+      "group": "011",
+      "train": 5,
+      "test": 5,
+      "reference_full_score": 10,
+      "controls": {
+        "empty": {
+          "runs": 10,
+          "errors": 0,
+          "nonzero_scores": []
+        },
+        "malformed": {
+          "runs": 10,
+          "errors": 0,
+          "nonzero_scores": []
+        },
+        "null": {
+          "runs": 10,
+          "errors": 4,
+          "nonzero_scores": []
+        },
+        "missing": {
+          "runs": 10,
+          "errors": 0,
+          "nonzero_scores": []
+        },
+        "template": {
+          "runs": 10,
+          "errors": 0,
+          "nonzero_scores": []
+        }
+      }
+    },
+    {
+      "group": "013",
+      "train": 5,
+      "test": 5,
+      "reference_full_score": 10,
+      "controls": {
+        "empty": {
+          "runs": 10,
+          "errors": 0,
+          "nonzero_scores": [
+            {
+              "task": "013/train/002",
+              "score": 0.1666666667
+            }
+          ]
+        },
+        "malformed": {
+          "runs": 10,
+          "errors": 0,
+          "nonzero_scores": []
+        },
+        "null": {
+          "runs": 10,
+          "errors": 0,
+          "nonzero_scores": []
+        },
+        "missing": {
+          "runs": 10,
+          "errors": 0,
+          "nonzero_scores": []
+        },
+        "template": {
+          "runs": 10,
+          "errors": 0,
+          "nonzero_scores": [
+            {
+              "task": "013/train/002",
+              "score": 0.1666666667
+            }
+          ]
+        }
+      }
+    },
+    {
+      "group": "014",
+      "train": 5,
+      "test": 5,
+      "reference_full_score": 10,
+      "controls": {
+        "empty": {
+          "runs": 10,
+          "errors": 0,
+          "nonzero_scores": []
+        },
+        "malformed": {
+          "runs": 10,
+          "errors": 0,
+          "nonzero_scores": []
+        },
+        "null": {
+          "runs": 10,
+          "errors": 0,
+          "nonzero_scores": []
+        },
+        "missing": {
+          "runs": 10,
+          "errors": 0,
+          "nonzero_scores": []
+        },
+        "template": {
+          "runs": 10,
+          "errors": 0,
+          "nonzero_scores": []
+        }
+      }
+    },
+    {
+      "group": "015",
+      "train": 5,
+      "test": 5,
+      "reference_full_score": 10,
+      "controls": {
+        "empty": {
+          "runs": 10,
+          "errors": 0,
+          "nonzero_scores": []
+        },
+        "malformed": {
+          "runs": 10,
+          "errors": 2,
+          "nonzero_scores": []
+        },
+        "null": {
+          "runs": 10,
+          "errors": 2,
+          "nonzero_scores": []
+        },
+        "missing": {
+          "runs": 10,
+          "errors": 2,
+          "nonzero_scores": []
+        },
+        "template": {
+          "runs": 10,
+          "errors": 0,
+          "nonzero_scores": []
+        }
+      }
+    },
+    {
+      "group": "016",
+      "train": 5,
+      "test": 5,
+      "reference_full_score": 10,
+      "controls": {
+        "empty": {
+          "runs": 10,
+          "errors": 0,
+          "nonzero_scores": []
+        },
+        "malformed": {
+          "runs": 10,
+          "errors": 0,
+          "nonzero_scores": []
+        },
+        "null": {
+          "runs": 10,
+          "errors": 0,
+          "nonzero_scores": []
+        },
+        "missing": {
+          "runs": 10,
+          "errors": 0,
+          "nonzero_scores": []
+        },
+        "template": {
+          "runs": 10,
+          "errors": 0,
+          "nonzero_scores": []
+        }
+      }
+    },
+    {
+      "group": "017",
+      "train": 5,
+      "test": 5,
+      "reference_full_score": 10,
+      "controls": {
+        "empty": {
+          "runs": 10,
+          "errors": 0,
+          "nonzero_scores": []
+        },
+        "malformed": {
+          "runs": 10,
+          "errors": 0,
+          "nonzero_scores": []
+        },
+        "null": {
+          "runs": 10,
+          "errors": 0,
+          "nonzero_scores": []
+        },
+        "missing": {
+          "runs": 10,
+          "errors": 0,
+          "nonzero_scores": []
+        },
+        "template": {
+          "runs": 10,
+          "errors": 0,
+          "nonzero_scores": []
+        }
+      }
+    },
+    {
+      "group": "018",
+      "train": 5,
+      "test": 5,
+      "reference_full_score": 10,
+      "controls": {
+        "empty": {
+          "runs": 10,
+          "errors": 0,
+          "nonzero_scores": []
+        },
+        "malformed": {
+          "runs": 10,
+          "errors": 0,
+          "nonzero_scores": []
+        },
+        "null": {
+          "runs": 10,
+          "errors": 8,
+          "nonzero_scores": []
+        },
+        "missing": {
+          "runs": 10,
+          "errors": 0,
+          "nonzero_scores": []
+        },
+        "template": {
+          "runs": 10,
+          "errors": 0,
+          "nonzero_scores": []
+        }
+      }
+    },
+    {
+      "group": "019",
+      "train": 5,
+      "test": 5,
+      "reference_full_score": 10,
+      "controls": {
+        "empty": {
+          "runs": 10,
+          "errors": 0,
+          "nonzero_scores": []
+        },
+        "malformed": {
+          "runs": 10,
+          "errors": 0,
+          "nonzero_scores": []
+        },
+        "null": {
+          "runs": 10,
+          "errors": 0,
+          "nonzero_scores": []
+        },
+        "missing": {
+          "runs": 10,
+          "errors": 0,
+          "nonzero_scores": []
+        },
+        "template": {
+          "runs": 10,
+          "errors": 0,
+          "nonzero_scores": []
+        }
+      }
+    },
+    {
+      "group": "020",
+      "train": 5,
+      "test": 5,
+      "reference_full_score": 10,
+      "controls": {
+        "empty": {
+          "runs": 10,
+          "errors": 0,
+          "nonzero_scores": []
+        },
+        "malformed": {
+          "runs": 10,
+          "errors": 0,
+          "nonzero_scores": []
+        },
+        "null": {
+          "runs": 10,
+          "errors": 3,
+          "nonzero_scores": []
+        },
+        "missing": {
+          "runs": 10,
+          "errors": 0,
+          "nonzero_scores": []
+        },
+        "template": {
+          "runs": 10,
+          "errors": 0,
+          "nonzero_scores": []
+        }
+      }
+    }
+  ],
+  "services": {
+    "python": "3.14.3 (main, Feb 12 2026, 00:42:54) [Clang 21.1.4 ]",
+    "flask": "3.1.2",
+    "total_wall_s": 6.123995939036831,
+    "results": [
+      {
+        "group": 8,
+        "judge_enabled": false,
+        "command": [
+          "bash",
+          "setup.sh"
+        ],
+        "startup_s": 0.11010667099617422,
+        "data_path": "/api/clients",
+        "ok": true,
+        "wall_s": 0.11922820308245718,
+        "health_status": 200,
+        "data_status": 200,
+        "train_judge_status": 404,
+        "train_judge_score": null,
+        "test_judge_status": 404
+      },
+      {
+        "group": 8,
+        "judge_enabled": true,
+        "command": [
+          "bash",
+          "setup.sh"
+        ],
+        "startup_s": 0.10765081201680005,
+        "data_path": "/api/clients",
+        "ok": true,
+        "wall_s": 0.14374916604720056,
+        "health_status": 200,
+        "data_status": 200,
+        "train_judge_status": 200,
+        "train_judge_score": 1.0,
+        "test_judge_status": 400
+      },
+      {
+        "group": 9,
+        "judge_enabled": false,
+        "command": [
+          "bash",
+          "setup.sh"
+        ],
+        "startup_s": 0.10622423305176198,
+        "data_path": "/api/finance/branches",
+        "ok": true,
+        "wall_s": 0.1144935991615057,
+        "health_status": 200,
+        "data_status": 200,
+        "train_judge_status": 404,
+        "train_judge_score": null,
+        "test_judge_status": 404
+      },
+      {
+        "group": 9,
+        "judge_enabled": true,
+        "command": [
+          "bash",
+          "setup.sh"
+        ],
+        "startup_s": 0.10627709096297622,
+        "data_path": "/api/finance/branches",
+        "ok": true,
+        "wall_s": 0.1421272859442979,
+        "health_status": 200,
+        "data_status": 200,
+        "train_judge_status": 200,
+        "train_judge_score": 1.0,
+        "test_judge_status": 400
+      },
+      {
+        "group": 10,
+        "judge_enabled": false,
+        "command": [
+          "bash",
+          "setup.sh"
+        ],
+        "startup_s": 0.30844338005408645,
+        "data_path": "/api/portfolios",
+        "ok": true,
+        "wall_s": 0.3175480980426073,
+        "health_status": 200,
+        "data_status": 200,
+        "train_judge_status": 404,
+        "train_judge_score": null,
+        "test_judge_status": 404
+      },
+      {
+        "group": 10,
+        "judge_enabled": true,
+        "command": [
+          "bash",
+          "setup.sh"
+        ],
+        "startup_s": 0.40889505692757666,
+        "data_path": "/api/portfolios",
+        "ok": true,
+        "wall_s": 0.4446096399333328,
+        "health_status": 200,
+        "data_status": 200,
+        "train_judge_status": 200,
+        "train_judge_score": 1.0,
+        "test_judge_status": 400
+      },
+      {
+        "group": 11,
+        "judge_enabled": false,
+        "command": [
+          "bash",
+          "setup.sh"
+        ],
+        "startup_s": 0.10801247484050691,
+        "data_path": "/api/branches",
+        "ok": true,
+        "wall_s": 0.11593868187628686,
+        "health_status": 200,
+        "data_status": 200,
+        "train_judge_status": 404,
+        "train_judge_score": null,
+        "test_judge_status": 404
+      },
+      {
+        "group": 11,
+        "judge_enabled": true,
+        "command": [
+          "bash",
+          "setup.sh"
+        ],
+        "startup_s": 0.10808044602163136,
+        "data_path": "/api/branches",
+        "ok": true,
+        "wall_s": 0.14226993918418884,
+        "health_status": 200,
+        "data_status": 200,
+        "train_judge_status": 200,
+        "train_judge_score": 1.0,
+        "test_judge_status": 400
+      },
+      {
+        "group": 13,
+        "judge_enabled": false,
+        "command": [
+          "bash",
+          "setup.sh"
+        ],
+        "startup_s": 0.10504395887255669,
+        "data_path": "/patients",
+        "ok": true,
+        "wall_s": 0.11261059087701142,
+        "health_status": 200,
+        "data_status": 200,
+        "train_judge_status": 404,
+        "train_judge_score": null,
+        "test_judge_status": 404
+      },
+      {
+        "group": 13,
+        "judge_enabled": true,
+        "command": [
+          "bash",
+          "setup.sh"
+        ],
+        "startup_s": 0.10481523000635207,
+        "data_path": "/patients",
+        "ok": true,
+        "wall_s": 0.14086967799812555,
+        "health_status": 200,
+        "data_status": 200,
+        "train_judge_status": 200,
+        "train_judge_score": 1.0,
+        "test_judge_status": 403
+      },
+      {
+        "group": 14,
+        "judge_enabled": false,
+        "command": [
+          "bash",
+          "setup.sh"
+        ],
+        "startup_s": 0.10450310097075999,
+        "data_path": "/api/cases",
+        "ok": true,
+        "wall_s": 0.11253730789758265,
+        "health_status": 200,
+        "data_status": 200,
+        "train_judge_status": 404,
+        "train_judge_score": null,
+        "test_judge_status": 404
+      },
+      {
+        "group": 14,
+        "judge_enabled": true,
+        "command": [
+          "bash",
+          "setup.sh"
+        ],
+        "startup_s": 0.10418453300371766,
+        "data_path": "/api/cases",
+        "ok": true,
+        "wall_s": 0.11272085621021688,
+        "health_status": 200,
+        "data_status": 200,
+        "train_judge_status": 200,
+        "train_judge_score": 1.0,
+        "test_judge_status": 400
+      },
+      {
+        "group": 15,
+        "judge_enabled": false,
+        "command": [
+          "bash",
+          "setup.sh"
+        ],
+        "startup_s": 0.10434950795024633,
+        "data_path": "/api/patients",
+        "ok": true,
+        "wall_s": 0.1113714911043644,
+        "health_status": 200,
+        "data_status": 200,
+        "train_judge_status": 404,
+        "train_judge_score": null,
+        "test_judge_status": 404
+      },
+      {
+        "group": 15,
+        "judge_enabled": true,
+        "command": [
+          "bash",
+          "setup.sh"
+        ],
+        "startup_s": 0.10416376101784408,
+        "data_path": "/api/patients",
+        "ok": true,
+        "wall_s": 0.1117015010677278,
+        "health_status": 200,
+        "data_status": 200,
+        "train_judge_status": 200,
+        "train_judge_score": 1.0,
+        "test_judge_status": 403
+      },
+      {
+        "group": 16,
+        "judge_enabled": false,
+        "command": [
+          "/home/argustest/Nonverifiable-harness/.venv/bin/python3",
+          "app.py"
+        ],
+        "startup_s": 0.10483608092181385,
+        "data_path": "/api/protocols",
+        "ok": true,
+        "wall_s": 0.11215512501075864,
+        "health_status": 200,
+        "data_status": 200,
+        "train_judge_status": 404,
+        "train_judge_score": null,
+        "test_judge_status": 404
+      },
+      {
+        "group": 16,
+        "judge_enabled": true,
+        "command": [
+          "/home/argustest/Nonverifiable-harness/.venv/bin/python3",
+          "app.py"
+        ],
+        "startup_s": 0.10473007801920176,
+        "data_path": "/api/protocols",
+        "ok": true,
+        "wall_s": 0.1359592319931835,
+        "health_status": 200,
+        "data_status": 200,
+        "train_judge_status": 200,
+        "train_judge_score": 1.0,
+        "test_judge_status": 403
+      },
+      {
+        "group": 17,
+        "judge_enabled": false,
+        "command": [
+          "/home/argustest/Nonverifiable-harness/.venv/bin/python3",
+          "app.py"
+        ],
+        "startup_s": 0.30731767881661654,
+        "data_path": "/api/matters",
+        "ok": true,
+        "wall_s": 0.3154905119445175,
+        "health_status": 200,
+        "data_status": 200,
+        "train_judge_status": 404,
+        "train_judge_score": null,
+        "test_judge_status": 404
+      },
+      {
+        "group": 17,
+        "judge_enabled": true,
+        "command": [
+          "/home/argustest/Nonverifiable-harness/.venv/bin/python3",
+          "app.py"
+        ],
+        "startup_s": 0.3067727058660239,
+        "data_path": "/api/matters",
+        "ok": true,
+        "wall_s": 0.31541580194607377,
+        "health_status": 200,
+        "data_status": 200,
+        "train_judge_status": 200,
+        "train_judge_score": 1.0,
+        "test_judge_status": 403
+      },
+      {
+        "group": 18,
+        "judge_enabled": false,
+        "command": [
+          "bash",
+          "setup.sh"
+        ],
+        "startup_s": 0.30691054300405085,
+        "data_path": "/api/cases",
+        "ok": true,
+        "wall_s": 0.3161945410538465,
+        "health_status": 200,
+        "data_status": 200,
+        "train_judge_status": 404,
+        "train_judge_score": null,
+        "test_judge_status": 404
+      },
+      {
+        "group": 18,
+        "judge_enabled": true,
+        "staged_train_graders": true,
+        "command": [
+          "bash",
+          "setup.sh"
+        ],
+        "startup_s": 0.3109432670753449,
+        "data_path": "/api/cases",
+        "ok": true,
+        "wall_s": 0.3563006150070578,
+        "health_status": 200,
+        "data_status": 200,
+        "train_judge_status": 200,
+        "train_judge_score": 1.0,
+        "test_judge_status": 403
+      },
+      {
+        "group": 19,
+        "judge_enabled": false,
+        "command": [
+          "bash",
+          "setup.sh"
+        ],
+        "startup_s": 0.9141360609792173,
+        "data_path": "/api/policies",
+        "ok": true,
+        "wall_s": 0.9270183457992971,
+        "health_status": 200,
+        "data_status": 200,
+        "train_judge_status": 404,
+        "train_judge_score": null,
+        "test_judge_status": 404
+      },
+      {
+        "group": 19,
+        "judge_enabled": true,
+        "command": [
+          "bash",
+          "setup.sh"
+        ],
+        "startup_s": 0.7108872728422284,
+        "data_path": "/api/policies",
+        "ok": true,
+        "wall_s": 0.7200033008120954,
+        "health_status": 200,
+        "data_status": 200,
+        "train_judge_status": 200,
+        "train_judge_score": 1.0,
+        "test_judge_status": 403
+      },
+      {
+        "group": 20,
+        "judge_enabled": false,
+        "command": [
+          "bash",
+          "setup.sh"
+        ],
+        "startup_s": 0.3076063070911914,
+        "data_path": "/api/deals",
+        "ok": true,
+        "wall_s": 0.3248481210321188,
+        "health_status": 200,
+        "data_status": 200,
+        "train_judge_status": 404,
+        "train_judge_score": null,
+        "test_judge_status": 404
+      },
+      {
+        "group": 20,
+        "judge_enabled": true,
+        "staged_train_graders": true,
+        "command": [
+          "bash",
+          "setup.sh"
+        ],
+        "startup_s": 0.31126480898819864,
+        "data_path": "/api/deals",
+        "ok": true,
+        "wall_s": 0.3546759900636971,
+        "health_status": 200,
+        "data_status": 200,
+        "train_judge_status": 200,
+        "train_judge_score": 1.0,
+        "test_judge_status": 403
+      }
+    ]
+  },
+  "raw_logs": "logs/gdpevo/assessment-20260909",
+  "evaluator_run": "logs/gdpevo/assessment-20260909/evaluators-reviewed",
+  "helper_tests_passed": 8,
+  "project_and_helper_tests_passed": 35,
+  "review": {
+    "ts": "2026-09-09T17:17:13.399Z",
+    "phase": "P0.4",
+    "run_id": "gdpevo-assessment-review",
+    "arm": "assessment",
+    "iteration": 0,
+    "task": "gdpevo-assessment",
+    "role": "review",
+    "backend": "copilot",
+    "model": "gpt-6-astra",
+    "input_tokens": 24554,
+    "cached_input_tokens": 0,
+    "cache_write_tokens": 24551,
+    "output_tokens": 2103,
+    "reasoning_tokens": 1808,
+    "cost_usd": 0.4120675,
+    "cost_source": "priced",
+    "premium_requests": 1,
+    "wall_s": 60.30108828190714,
+    "api_ms": 57253,
+    "ok": false,
+    "raw_dir": "logs/gdpevo/assessment-20260909/review",
+    "note": "Complete review text and usage received; CLI exit 1 because ~/.copilot/session-state is read-only. All three material findings resolved; no second model review requested."
+  },
+  "total_audit_grader_invocations": 2520,
+  "total_audit_grader_wall_s": 73.20678651286289
+}

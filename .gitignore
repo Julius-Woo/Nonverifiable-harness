@@ -1,0 +1,18 @@
+# papers and external checkouts
+docs/papers/
+external/
+# run artifacts
+logs/
+jobs/
+oracle/
+feedback/
+costs/ledger*.jsonl
+# python
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+# misc
+.env
+*.log
+azure-keys.md
