@@ -305,6 +305,8 @@ Exit criteria: one TB2 task completed end-to-end by the seed harness with an ora
 
 - 2026-09-10 (evening): W5c calibration complete on the stratified 30 (avg@2): mini/json 8.3% (0% no-action, USD 0.006/rollout); luna/json 23.3% (11.7% no-action, USD 0.011); terra/json 28.3% (1.7% no-action, USD 0.124); native tool calling rejected (HTTP 400) on both 5.6 deployments. Only terra/json passes all gates, but at 11x luna's cost the pilot estimate rises to about USD 450-550. Follow-up W5d launched: mini/json and luna/json at medium reasoning. User decision AD1 pending with this information. R6 (judges) and R7 (calibration) reviews launched. Checkpoint commit of Phase 1 artifacts (excluding the in-progress evolution loop).
 
+- 2026-09-10 (night): R7 (calibration review): under PREREG's definitions terra's no-action rate is 15% (token exhaustion) and a strict reading of A9 puts every low-effort configuration below 15%; native rejection cause identified (function tools + reasoning_effort unsupported on chat/completions). Task model cannot be frozen yet. Addendum AD10-AD12 added (tool-failure meaning, JSON protocol ratification, completion allowance). W5d interim: mini/json medium 13.3% at 2.1x cost; luna/json medium running. Re-analysis W5e queued after W5d.
+
 ### 9.7 Proposed Amendments to Sections 1-8 (pending user approval)
 
 Sources: the literature digest `docs/background.md` (Part B deltas; independent review R2 pending) and the GDPevo assessment `docs/gdpevo_assessment.md` with its independent review R1 (`docs/reviews.md`). Sections 1-8 are unchanged until the user approves. Review R2 of the digest is complete; its dispositions are in `docs/reviews.md`.
