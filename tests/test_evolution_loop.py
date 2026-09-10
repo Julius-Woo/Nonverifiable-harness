@@ -90,9 +90,9 @@ def test_prompt_only_score_source_varies():
 
 
 def test_acceptance_wiring_and_original_rule():
-    assert acceptance_decision("A1", 0.3, 0.4, 0.5, 0.5)
-    assert not acceptance_decision("A1", 0.3, 0.31, 0.5, 1)
-    assert not acceptance_decision("A1", 0.3, 0.8, 0.5, 0.49)
+    assert acceptance_decision("A1", 0.3, 0.4, 0.5, 0.5, tau=0.02)
+    assert not acceptance_decision("A1", 0.3, 0.31, 0.5, 1, tau=0.02)
+    assert not acceptance_decision("A1", 0.3, 0.8, 0.5, 0.49, tau=0.02)
     assert not acceptance_decision("A1", 0.3, None, 0.5, 0.5)
     assert acceptance_decision("A1", 0.3, 0.301, rule="improve")
     assert not acceptance_decision("A1", 0.3, 0.3, rule="improve")
@@ -263,7 +263,9 @@ async def test_mock_end_to_end_iteration_and_resume(tmp_path, monkeypatch):
         ignore=shutil.ignore_patterns("__pycache__"),
     )
     (tmp_path / ".env").write_text("")
-    loop = EvolutionLoop(tmp_path, "mock", "A1", evaluator_class=FakeEvaluator)
+    loop = EvolutionLoop(
+        tmp_path, "mock", "A1", evaluator_class=FakeEvaluator, tau=0.02
+    )
 
     async def propose(parent, slot):
         work = working_copy(parent, loop.directory / f"mock-c{slot}")
@@ -276,13 +278,17 @@ async def test_mock_end_to_end_iteration_and_resume(tmp_path, monkeypatch):
     assert result["accepted"]
     assert len(result["candidates"]) == 2
     assert result["J_t"] == 0.8
-    assert result["O_t_sealed"] == 1
+    assert "O_t_sealed" not in result
+    private = json.loads(
+        (loop.evaluator.private / "checkpoint-t1.json").read_text()
+    )
+    assert private["O_t_sealed"] == 1
     assert result["search_measurement_attempts"] == 1
     assert any(
         part == "search" and stage == "measurement" and attempts == 1
         for _, part, stage, attempts in loop.evaluator.calls
     )
-    assert sum(part == "sealed" for _, part, _, _ in loop.evaluator.calls) == 1
+    assert sum(part == "sealed" for _, part, _, _ in loop.evaluator.calls) == 2
     before = len(loop.evaluator.calls)
     assert await loop.run() == result
     assert len(loop.evaluator.calls) == before
@@ -306,7 +312,7 @@ async def test_control_matches_incremental_partition_budget(tmp_path):
         ignore=shutil.ignore_patterns("__pycache__"),
     )
     (tmp_path / ".env").write_text("")
-    comparator = tmp_path / "compared"
+    comparator = tmp_path / "A0"
     frozen_seed = copy_seed(
         tmp_path / "harness", comparator / "candidates/seed"
     )
@@ -334,7 +340,10 @@ async def test_control_matches_incremental_partition_budget(tmp_path):
     assert first["wall_s"] >= 0
     assert first["J_t"] == first["allocations"]["search"]["metrics"]["J"]
     assert loop.state.stage("finished-1") == first
-    assert first["allocations"]["sealed"]["metrics"]["scheduled"] == 2
+    private = json.loads(
+        (loop.evaluator.private / "control-t1.json").read_text()
+    )
+    assert private["sealed"]["metrics"]["scheduled"] == 2
     calls = len(loop.evaluator.calls)
     again = await loop.control(comparator)
     assert again["rollouts"] == 9
@@ -362,7 +371,10 @@ async def test_control_matches_incremental_partition_budget(tmp_path):
     )
     second = await loop.control(comparator)
     assert second["rollouts"] == 11
-    assert loop.evaluator.calls == [("seed", "sealed", "control-task", 2)]
+    assert loop.evaluator.calls == [
+        ("seed", "sealed", "control-task-4", 1),
+        ("seed", "sealed", "control-task-5", 1),
+    ]
     loop.close()
 
 

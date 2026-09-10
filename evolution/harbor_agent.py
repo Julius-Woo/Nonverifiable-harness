@@ -9,7 +9,7 @@ from dotenv import dotenv_values
 from harbor.agents.base import BaseAgent
 from harbor.agents.installed.base import NonZeroAgentExitCodeError
 
-from evolution.accounting import AccountedBackend
+from evolution.accounting import AccountedBackend, BudgetHalt, PhaseGuard
 from evolution.candidates import Manifest, atomic_json, source_hash
 from evolution.outcomes import termination
 from evolution.workspace import Workspace
@@ -31,6 +31,9 @@ class CandidateAgent(BaseAgent):
         iteration,
         trial_id,
         accounting_dir,
+        task_settings=None,
+        rollout_budget=1,
+        resolved_provider=None,
         **kwargs,
     ):
         super().__init__(logs_dir=logs_dir, model_name=model_name, **kwargs)
@@ -54,24 +57,48 @@ class CandidateAgent(BaseAgent):
         tags = CallTags(
             "P1.3", experiment, arm, int(iteration), trial_id, "task"
         )
+        task_settings = task_settings or {}
+        prefix = task_settings.get("endpoint_prefix", "TASK_ALT2")
+        base = config[f"{prefix}_API_BASE"].rstrip("/")
+        if not base.endswith("/v1"):
+            base += "/openai/v1"
+        if resolved_provider and (
+            base != resolved_provider["base_url"]
+            or (model_name or "gpt56terra") != resolved_provider["deployment"]
+        ):
+            guard = PhaseGuard(self.accounting / "budget.sqlite")
+            guard.persist_halt("Task provider condition drift")
+            guard.close()
+            raise BudgetHalt("Task provider condition drift", phase=True)
+        resolved_provider = resolved_provider or {}
         self.backend = AccountedBackend(
-            base_url=config["TASK_ALT2_API_BASE"],
-            api_key=config["TASK_ALT2_API_KEY"],
-            model=model_name or "gpt56luna",
+            base_url=base,
+            api_key=config[f"{prefix}_API_KEY"],
+            model=model_name or "gpt56terra",
             ledger=self.accounting / "ledger.jsonl",
             logs_dir=self.evidence_dir / "calls",
-            effort="low",
-            max_completion_tokens=4096,
+            effort=task_settings.get("reasoning_effort", "low"),
+            max_completion_tokens=task_settings.get(
+                "completion_allowance", 8192
+            ),
             max_retries=0,
-            budget_usd=1,
+            budget_usd=rollout_budget,
+            max_calls=task_settings.get("max_calls", 24),
+            timeout_s=task_settings.get("api_timeout_s", 180),
             prices_path=ROOT / "costs/judges_prices.json",
             guard_path=self.accounting / "budget.sqlite",
             limiter_path=ROOT / "logs/evolution-endpoints.sqlite",
             audit_path=self.accounting / "requests.jsonl",
             tags=tags,
             scope=trial_id,
-            rpm=float(config.get("TASK_ALT2_RPM", 250)),
-            tpm=float(config.get("TASK_ALT2_TPM", 250000)),
+            rpm=float(
+                resolved_provider.get("rpm", config.get(f"{prefix}_RPM", 250))
+            ),
+            tpm=float(
+                resolved_provider.get(
+                    "tpm", config.get(f"{prefix}_TPM", 250000)
+                )
+            ),
         )
         self.tags = tags
         self.step = -1

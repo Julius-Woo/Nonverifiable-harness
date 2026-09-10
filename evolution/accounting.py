@@ -15,7 +15,7 @@ import httpx
 from evolution.candidates import atomic_json
 from evolution.judge_queue import TokenBucketLimiter
 from evolution.sanitize import canonical, digest
-from harness.ledger import append_jsonl, utc_now
+from harness.ledger import append_jsonl, price_usage, utc_now
 from harness.openai_api import OpenAIAPIBackend, pricing_model
 
 
@@ -97,10 +97,16 @@ class PhaseGuard:
         if not transaction:
             self.db.commit()
 
-    def reserve(self, request_id, scope, amount, scope_limit):
+    def reserve(self, request_id, scope, amount, scope_limit, max_calls=None):
         self.db.execute("BEGIN IMMEDIATE")
         try:
             self.check(amount)
+            if max_calls is not None:
+                consumed = self.db.execute(
+                    "SELECT count(*) FROM requests WHERE scope=?", (scope,)
+                ).fetchone()[0]
+                if consumed >= max_calls:
+                    raise BudgetHalt("Durable session model-call cap reached")
             used = self.db.execute(
                 "SELECT coalesce(sum(coalesce(charged,reserved)),0) "
                 "FROM requests WHERE scope=?",
@@ -168,7 +174,11 @@ class AuditTransport(httpx.AsyncBaseTransport):
         waited = await self.limiter.acquire(tokens)
         request_id = uuid.uuid4().hex
         self.guard.reserve(
-            request_id, self.scope, reservation, self.scope_limit
+            request_id,
+            self.scope,
+            reservation,
+            self.scope_limit,
+            max_calls=self.backend.max_calls,
         )
         archive = self.audit.parent / "requests" / request_id
         archive.mkdir(parents=True)
@@ -191,6 +201,11 @@ class AuditTransport(httpx.AsyncBaseTransport):
             "payload_sha256": hashlib.sha256(request.content).hexdigest(),
             "prompt_sha256": digest(canonical(payload["messages"])),
             "cache_user": payload["user"],
+            "prices": self.backend.prices,
+            "requested_model": self.backend.model,
+            "endpoint": str(request.url).replace(
+                self.backend.api_key, "[REDACTED]"
+            ),
         }
         append_jsonl(self.audit, row)
         started = time.monotonic()
@@ -234,7 +249,78 @@ class AuditTransport(httpx.AsyncBaseTransport):
                 from harness.openai_api import retry_delay
 
                 self.limiter.defer(retry_delay(response.headers, 0))
-            self.guard.settle(request_id, upper, "response")
+            # Persist a complete accounting receipt before either ledger or
+            # budget settlement. Reconciliation never depends on
+            # assistant traces.
+            receipt_record = {
+                **{
+                    k: row[k]
+                    for k in (
+                        "ts",
+                        "run_id",
+                        "arm",
+                        "iteration",
+                        "task",
+                        "role",
+                    )
+                },
+                "call_id": backend_raw.name,
+                "raw_dir": str(backend_raw),
+                "request_id": request_id,
+                "backend": "openai_api",
+                "requested_model": self.backend.model,
+                "model": data.get("model") or self.backend.model,
+                "input_tokens": usage.get("prompt_tokens"),
+                "output_tokens": usage.get("completion_tokens"),
+                "cached_input_tokens": (
+                    usage.get("prompt_tokens_details") or {}
+                ).get("cached_tokens"),
+                "reasoning_tokens": (
+                    usage.get("completion_tokens_details") or {}
+                ).get("reasoning_tokens"),
+                "cost_usd": None,
+                "known_response_cost_usd": upper,
+                "cost_source": "receipt_conservative_upper",
+                "ok": 200 <= response.status_code < 300,
+                "api_ms": (time.monotonic() - started) * 1000,
+                "note": "Recovered from durable transport receipt",
+            }
+            details = usage.get("prompt_tokens_details") or {}
+            receipt_record["cached_input_tokens"] = details.get(
+                "cached_tokens", usage.get("prompt_cache_hit_tokens")
+            )
+            receipt_record["cache_write_tokens"] = details.get(
+                "cache_write_tokens", details.get("cache_creation_tokens", 0)
+            )
+            receipt_record["known_response_cost_usd"] = price_usage(
+                pricing_model(receipt_record["model"], self.backend.prices),
+                receipt_record,
+                self.backend.prices,
+            )
+            receipt_record["cost_source"] = "durable_receipt"
+            if response.status_code >= 400 and response.status_code != 429:
+                upper = None
+            atomic_json(
+                archive / "receipt.json",
+                {
+                    **row,
+                    "event": "receipt",
+                    "status_code": response.status_code,
+                    "usage": usage,
+                    "uncached_upper_usd": upper,
+                    "wall_s": time.monotonic() - started,
+                    "ledger_record": receipt_record,
+                },
+            )
+            known = receipt_record.get("known_response_cost_usd")
+            charge = (
+                known if known is not None and receipt_record["ok"] else upper
+            )
+            if response.status_code >= 400 and response.status_code != 429:
+                # Error usage is known partial usage, not proof of a fully
+                # settled charge. Preserve the original request reservation.
+                upper = charge = None
+            self.guard.settle(request_id, charge, "response")
             append_jsonl(
                 self.audit,
                 {
@@ -305,7 +391,10 @@ class AccountedBackend(OpenAIAPIBackend):
                 "Evolution only admits the calibrated JSON protocol"
             )
         self.guard.check()
-        if self.calls >= self.max_calls:
+        consumed = self.guard.db.execute(
+            "SELECT count(*) FROM requests WHERE scope=?", (self.scope,)
+        ).fetchone()[0]
+        if consumed >= self.max_calls or self.calls >= self.max_calls:
             raise BudgetHalt("Host-enforced model-call cap reached")
         self.calls += 1
         # Non-prompt cache isolation. Providers must honor this field for a
@@ -337,40 +426,158 @@ class AccountedBackend(OpenAIAPIBackend):
             raise BudgetHalt(
                 "Phase wall-clock limit reached", phase=True
             ) from exc
-        if "budget exceeded" in result.record.get("note", "").lower():
+        note = result.record.get("note", "").lower()
+        if any(
+            reason in note
+            for reason in (
+                "budget exceeded",
+                "model-call cap",
+                "phase wall-clock",
+                "phase api budget",
+            )
+        ):
             raise BudgetHalt(result.record["note"])
+        # Only reconcile this completed request here. Full reconciliation is
+        # performed after workers drain, avoiding placeholder rows
+        # for live calls.
+        if result.record.get("served_model"):
+            self._check_served_model(result.record["served_model"])
         return result
+
+    def _check_served_model(self, served):
+        path = self.audit_path.parent / "served_models.sqlite"
+        with sqlite3.connect(path, timeout=30) as db:
+            db.execute(
+                "CREATE TABLE IF NOT EXISTS models "
+                "(endpoint TEXT PRIMARY KEY, served TEXT)"
+            )
+            key = self.base_url + "/" + self.model
+            db.execute(
+                "INSERT OR IGNORE INTO models VALUES (?,?)", (key, served)
+            )
+            frozen = db.execute(
+                "SELECT served FROM models WHERE endpoint=?", (key,)
+            ).fetchone()[0]
+            if frozen != served:
+                self.guard.persist_halt("Served model version drift")
+                raise BudgetHalt("Served model version drift", phase=True)
 
     def close(self):
         self.guard.close()
         self.limiter.close()
 
 
-def cost_summary(ledger, audit, *, arm=None, iteration=None):
-    records = []
-    if Path(ledger).exists():
-        records = [
-            json.loads(s) for s in Path(ledger).read_text().splitlines()
-        ]
-    events = []
-    if Path(audit).exists():
-        events = [json.loads(s) for s in Path(audit).read_text().splitlines()]
+def cost_summary(ledger, audit, *, arm=None, iteration=None, run_id=None):
+    def read_cost_rows(path):
+        rows, damaged = [], 0
+        lines = (
+            Path(path).read_text().splitlines() if Path(path).exists() else []
+        )
+        for line in lines:
+            try:
+                value = json.loads(line)
+                if not isinstance(value, dict):
+                    raise ValueError("Expected a ledger object")
+                rows.append(value)
+            except ValueError:
+                damaged += 1
+        return rows, damaged
+
+    records, damaged_ledger = read_cost_rows(ledger)
+    events, damaged_audit = read_cost_rows(audit)
+    all_intent_ids = {
+        e["id"] for e in events if e.get("event") == "request_intent"
+    }
+
+    for path in (Path(audit).parent / "requests").glob("*/receipt.json"):
+        receipt = json.loads(path.read_text())
+        if not any(
+            e.get("id") == receipt["id"] and e["event"] == "request_response"
+            for e in events
+        ):
+            events.append({**receipt, "event": "request_response"})
+
+    receipts_by_raw = {}
+    for path in (Path(audit).parent / "requests").glob("*/receipt.json"):
+        receipt = json.loads(path.read_text())
+        receipts_by_raw.setdefault(receipt["backend_raw_dir"], []).append(
+            receipt["ledger_record"]
+        )
+    recorded_raw = {r.get("raw_dir") for r in records}
+    records.extend(
+        receipts[0]
+        for raw, receipts in receipts_by_raw.items()
+        if raw not in recorded_raw
+    )
+    for row in records:
+        receipts = receipts_by_raw.get(row.get("raw_dir"), [])
+        if not receipts:
+            continue
+        known = sum(
+            r.get("known_response_cost_usd") or r.get("cost_usd") or 0
+            for r in receipts
+        )
+        existing = (
+            row.get("cost_usd") or row.get("known_response_cost_usd") or 0
+        )
+        if known > existing:
+            row["known_response_cost_usd"] = known
+        for key in (
+            "input_tokens",
+            "output_tokens",
+            "cached_input_tokens",
+            "cache_write_tokens",
+            "reasoning_tokens",
+        ):
+            values = [r[key] for r in receipts if r.get(key) is not None]
+            if values:
+                row[key] = sum(values)
 
     def included(row):
-        return (arm is None or row.get("arm") == arm) and (
-            iteration is None or row.get("iteration") == iteration
+        return (
+            (arm is None or row.get("arm") == arm)
+            and (iteration is None or row.get("iteration") == iteration)
+            and (run_id is None or row.get("run_id") == run_id)
         )
 
-    records = [r for r in records if included(r)]
+    records = list(
+        {
+            r.get("raw_dir") or r.get("call_id") or str(i): r
+            for i, r in enumerate(records)
+            if included(r)
+        }.values()
+    )
     events = [r for r in events if included(r)]
     intents = {e["id"]: e for e in events if e["event"] == "request_intent"}
     responses = {
         e["id"]: e for e in events if e["event"] == "request_response"
     }
+    guard_path = Path(audit).parent / "budget.sqlite"
+    charges = {}
+    if guard_path.exists():
+        with sqlite3.connect(guard_path) as db:
+            charges = {
+                r[0]: r[1]
+                for r in db.execute(
+                    "SELECT id,coalesce(charged,reserved) FROM requests"
+                )
+            }
+    unassigned = set(charges) - all_intent_ids
     return {
+        "damaged_ledger_rows": damaged_ledger,
+        "damaged_audit_rows": damaged_audit,
+        "budget_accounted_usd": (
+            sum(charges.values())
+            if arm is None and iteration is None and run_id is None
+            else sum(
+                charges.get(i, e["reserved_usd"]) for i, e in intents.items()
+            )
+        ),
+        "unassigned_budget_requests": len(unassigned),
+        "unassigned_budget_usd": sum(charges[i] for i in unassigned),
         "calls": len(intents),
         "known_usd": sum(
-            r.get("cost_usd") or r.get("known_response_cost_usd") or 0
+            max(r.get("cost_usd") or 0, r.get("known_response_cost_usd") or 0)
             for r in records
         ),
         "unknown_ledger_calls": sum(

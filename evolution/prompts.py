@@ -40,5 +40,7 @@ briefly describing the revision after writing it to disk.
 """
 
 
-def render(arm):
-    return TEMPLATE.format(score_source=SOURCES[arm])
+def render(arm, completion_allowance=4096):
+    return TEMPLATE.format(score_source=SOURCES[arm]).replace(
+        "4096 completion tokens", f"{completion_allowance} completion tokens"
+    )

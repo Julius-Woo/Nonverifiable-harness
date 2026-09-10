@@ -11,9 +11,9 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 from harbor.models.trial.config import TrialConfig
-from harbor.trial.trial import Trial
 
 from evolution.admission import HarborAdmission
+from evolution.grading import IsolatedTrial as Trial
 
 
 @asynccontextmanager

@@ -9,7 +9,8 @@ from harness.ledger import append_jsonl, utc_now
 
 
 class State:
-    def __init__(self, path):
+    def __init__(self, path, private=None):
+        self.private = Path(private) if private else None
         self.path = Path(path)
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self.db = sqlite3.connect(self.path, timeout=30)
@@ -27,17 +28,42 @@ class State:
         )
         self.db.commit()
 
+    def encode(self, identity, value):
+        def contains_private(item):
+            if isinstance(item, dict):
+                return item.get("partition") in {"anchor", "sealed"} or any(
+                    contains_private(v) for v in item.values()
+                )
+            return isinstance(item, list) and any(
+                contains_private(v) for v in item
+            )
+
+        if self.private and contains_private(value):
+            from evolution.candidates import atomic_json
+
+            path = self.private / (digest(identity) + ".json")
+            atomic_json(path, value)
+            return canonical({"private_ref": str(path)})
+        return canonical(value)
+
+    @staticmethod
+    def decode(value):
+        value = json.loads(value)
+        if isinstance(value, dict) and set(value) == {"private_ref"}:
+            return json.loads(Path(value["private_ref"]).read_text())
+        return value
+
     def stage(self, key, value=None):
         if value is not None:
             self.db.execute(
                 "INSERT OR REPLACE INTO stages VALUES(?,?)",
-                (key, canonical(value)),
+                (key, self.encode(key, value)),
             )
             self.db.commit()
         row = self.db.execute(
             "SELECT value FROM stages WHERE id=?", (key,)
         ).fetchone()
-        return json.loads(row[0]) if row else None
+        return self.decode(row[0]) if row else None
 
     def schedule(self, spec):
         identity = "nvhe-" + digest(canonical(spec))[:24]
@@ -52,7 +78,10 @@ class State:
         row = self.db.execute(
             "SELECT * FROM trials WHERE id=?", (identity,)
         ).fetchone()
-        return dict(row)
+        result = dict(row)
+        if result.get("result"):
+            result["result"] = canonical(self.decode(result["result"]))
+        return result
 
     def start(self, identity):
         row = self.row(identity)
@@ -66,7 +95,7 @@ class State:
     def finish(self, identity, result):
         self.db.execute(
             "UPDATE trials SET status='done',result=? WHERE id=?",
-            (canonical(result), identity),
+            (self.encode(identity, result), identity),
         )
         self.db.commit()
 

@@ -2,6 +2,8 @@
 
 import json
 
+import pytest
+
 from evolution.recovery import (
     ReplayBackend,
     ReplayEnvironment,
@@ -101,7 +103,7 @@ def test_boundary_resume_requeues_only_undispatched_trials(tmp_path):
     jobs.mkdir()
     accounting = tmp_path / "costs"
     accounting.mkdir()
-    spec = {"stage": "promotion", "task": "one"}
+    spec = {"stage": "promotion", "task": "one", "iteration": 1}
     pending = state.schedule(spec)
     completed = state.schedule({**spec, "task": "two"})
     dispatched = state.schedule({**spec, "task": "three"})
@@ -122,6 +124,7 @@ def test_boundary_resume_requeues_only_undispatched_trials(tmp_path):
     )
     loop = SimpleNamespace(
         directory=tmp_path,
+        iteration=1,
         logs=logs,
         accounting=accounting,
         state=state,
@@ -231,20 +234,13 @@ def test_label_correction_preserves_originals_and_never_reruns(tmp_path):
             export_feedback=exported.extend,
         ),
     )
-    reconcile_labels(loop)
-    assert json.loads(state.row(identity)["result"])["oracle"] == 1
-    assert state.stage("batch-one")[0]["score"] == 1
-    assert exported[0]["score"] == 1
-    correction = json.loads((logs / "label_correction.jsonl").read_text())
-    assert correction["original"]["oracle"] == 0
-    assert correction["solver_rerun"] is False
-    reconcile_labels(loop)
-    assert len(exported) == 1
-    state.db.execute("DELETE FROM stages WHERE id LIKE 'label-rule-%'")
-    state.db.commit()
-    state.stage("finished-1", {"status": "complete"})
-    reconcile_labels(loop)
-    assert len(exported) == 1
+    with pytest.raises(ValueError, match="Post-hoc relabelling is disabled"):
+        reconcile_labels(loop)
+    assert json.loads(state.row(identity)["result"]) == old
+    assert json.loads((feedback / f"{identity}.json").read_text()) == {
+        "score": 0
+    }
+    assert not exported
     state.close()
 
 
@@ -456,6 +452,7 @@ async def test_resume_waits_for_surviving_worker_evidence_without_dispatch(
 
     evaluator = Evaluator.__new__(Evaluator)
     evaluator.root = tmp_path
+    evaluator.private = tmp_path / "oracle"
     evaluator.state = state
     evaluator.guard = SimpleNamespace(check=lambda: None)
     evaluator.collect = collect

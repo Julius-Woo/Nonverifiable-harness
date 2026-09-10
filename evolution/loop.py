@@ -41,7 +41,8 @@ from evolution.workspace import Workspace
 from harness.ledger import CallTags, append_jsonl, utc_now
 from harness.seed import SeedError, run_seed
 
-TAU = {"A0": 0.0, "A1": 0.02184135419534282, "A2": 0.022566773346210982}
+TAU = {"A0": 0.0}
+# v1 calibration is historical; v2 thresholds must be supplied explicitly.
 
 
 def acceptance_decision(
@@ -53,6 +54,7 @@ def acceptance_decision(
     *,
     rule="anchor",
     tau=None,
+    epsilon=0,
 ):
     if baseline is None or proposed is None:
         return False
@@ -63,7 +65,7 @@ def acceptance_decision(
     threshold = TAU.get(arm) if tau is None else tau
     if threshold is None:
         raise ValueError(
-            "A4 anchor acceptance requires a calibrated mixture tau"
+            "Anchor acceptance requires an explicit calibrated v2 tau"
         )
     return accept(
         CandidateEvaluation(
@@ -71,7 +73,7 @@ def acceptance_decision(
             AnchorEvaluation(baseline_anchor, proposed_anchor),
         ),
         tau=threshold,
-        epsilon=0,
+        epsilon=epsilon,
     )
 
 
@@ -107,12 +109,21 @@ class EvolutionLoop:
         iteration=1,
         tau=None,
         evaluator_class=Evaluator,
+        manifest=None,
     ):
         self.root, self.experiment, self.arm = (
             Path(root).resolve(),
             safe_id(experiment),
             safe_id(arm),
         )
+        self.manifest = manifest or {}
+        self.completion_allowance = self.manifest.get("task_model", {}).get(
+            "completion_allowance", 8192
+        )
+        self.candidate_count = self.manifest.get("candidates_per_arm", {}).get(
+            arm, 2
+        )
+        self.epsilon = self.manifest.get("epsilon", 0)
         self.iteration, self.rule, self.tau = iteration, rule, tau
         self.directory = self.root / "runs" / experiment / arm
         if self.directory.exists() and not resume:
@@ -120,15 +131,22 @@ class EvolutionLoop:
         self.directory.mkdir(parents=True, exist_ok=True)
         self.lock = (self.directory / "runner.lock").open("a")
         fcntl.flock(self.lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
-        self.state = State(self.directory / "state.sqlite")
-        self.accounting = self.root / "costs" / experiment
+        self.state = State(
+            self.directory / "state.sqlite",
+            private=self.root / "oracle" / experiment / arm / "state",
+        )
+        self.accounting = (
+            self.root
+            / "costs"
+            / self.manifest.get("budget_experiment", experiment)
+        )
         self.guard = PhaseGuard(
             self.accounting / "budget.sqlite",
             estimate=estimate,
             ceiling=ceiling,
             hours=hours,
         )
-        self.config = dotenv_values(self.root / ".env")
+        self.config = {**dotenv_values(self.root / ".env"), **self.manifest}
         self.evaluator = evaluator_class(
             self.root,
             experiment,
@@ -139,17 +157,21 @@ class EvolutionLoop:
             self.config,
             concurrency=concurrency,
         )
+        self.evaluator.accounting = self.accounting
         self.logs = self.root / "logs/evolution" / experiment / arm
         self.logs.mkdir(parents=True, exist_ok=True)
         configuration = {
             "experiment": experiment,
             "arm": arm,
             "rule": rule,
-            "model": "gpt56luna",
+            "model": self.config.get("task_model", {}).get(
+                "deployment", "gpt56terra"
+            ),
+            "manifest_sha256": self.manifest.get("resolved_sha256"),
             "protocol": "json",
             "tau": tau,
             "iteration": iteration,
-            "candidate_count": 2,
+            "candidate_count": self.candidate_count,
         }
         key = f"configuration-{iteration}"
         previous = self.state.stage(key)
@@ -196,7 +218,7 @@ class EvolutionLoop:
             self.root
             / "runs"
             / self.experiment
-            / "isolation-peer"
+            / ("A1" if self.arm == "A0" else "A0")
             / "canary.txt"
         )
         other.parent.mkdir(parents=True, exist_ok=True)
@@ -221,7 +243,7 @@ class EvolutionLoop:
         work = working_copy(parent, self.directory / "working" / identity)
         session = self.logs / "sessions" / identity
         session.mkdir(parents=True)
-        prompt = render(self.arm)
+        prompt = render(self.arm, self.completion_allowance)
         (session / "prompt.txt").write_text(prompt)
         tags = CallTags(
             "P1.3",
@@ -245,7 +267,9 @@ class EvolutionLoop:
                 "response_format": {"type": "json_object"},
             },
             max_retries=0,
-            budget_usd=5,
+            budget_usd=self.manifest.get("budget", {}).get(
+                "evolver_session_usd", 5
+            ),
             timeout_s=180,
             prices_path=self.root / "costs/judges_prices.json",
             guard_path=self.accounting / "budget.sqlite",
@@ -391,8 +415,30 @@ class EvolutionLoop:
             checkpoint = incumbent_state
             self.state.stage(f"checkpoint-{self.iteration}", checkpoint)
         parent = Path(checkpoint["candidate"])
+        if self.state.stage("seed-sealed-checkpoint") is None:
+            sealed_seed = await self.batch(
+                seed, "sealed", "seed-checkpoint", 2
+            )
+            if any(
+                r.get("status") in {"interrupted", "infrastructure_failed"}
+                for r in sealed_seed
+            ):
+                raise RuntimeError("Incomplete t=0 seed checkpoint")
+            atomic_json(
+                self.evaluator.private / "checkpoint-t0.json",
+                {
+                    "candidate": str(seed),
+                    "source_sha256": source_hash(seed),
+                    "metrics": aggregate(sealed_seed),
+                    "rows": sealed_seed,
+                },
+            )
+            self.state.stage("seed-sealed-checkpoint", {"complete": True})
         baseline = await self.batch(parent, "search", "baseline")
-        proposals = [await self.propose(parent, i) for i in (1, 2)]
+        proposals = [
+            await self.propose(parent, i)
+            for i in range(1, self.candidate_count + 1)
+        ]
         candidates = []
 
         async def evaluate_proposal(proposal):
@@ -470,6 +516,7 @@ class EvolutionLoop:
                     right_anchor,
                     rule=self.rule,
                     tau=self.tau,
+                    epsilon=self.epsilon,
                 )
             atomic_json(
                 self.evaluator.private / f"acceptance-i{self.iteration}.json",
@@ -502,6 +549,7 @@ class EvolutionLoop:
             self.accounting / "requests.jsonl",
             arm=self.arm,
             iteration=self.iteration,
+            run_id=self.experiment,
         )
         summary = {
             "experiment": self.experiment,
@@ -515,27 +563,35 @@ class EvolutionLoop:
             "decision": "accepted" if accepted else "rejected",
             "rule": self.rule,
             "tau": TAU.get(self.arm) if self.tau is None else self.tau,
-            "epsilon": 0,
+            "epsilon": self.epsilon,
             "baseline": aggregate(baseline),
             "candidates": proposals,
             "promotion": promotion,
             "J_t": metrics["J"],
             "O_t_search": metrics["O"],
-            "O_t_sealed": sealed_metrics["O"],
             "search_measurement": metrics,
-            "sealed_measurement": sealed_metrics,
             "wall_s": time.time() - started["time"],
             "costs_iteration": costs,
             "costs_cumulative": cost_summary(
                 self.accounting / "ledger.jsonl",
                 self.accounting / "requests.jsonl",
                 arm=self.arm,
+                run_id=self.experiment,
             ),
             "cost_upper_usd": costs["uncached_upper_usd"]
             + costs["reserved_unresolved_usd"],
             "search_measurement_attempts": 1,
             "diff_class": None,
         }
+        atomic_json(
+            self.evaluator.private / f"checkpoint-t{self.iteration}.json",
+            {
+                "iteration": self.iteration,
+                "incumbent": incumbent.name,
+                "O_t_sealed": sealed_metrics["O"],
+                "sealed_measurement": sealed_metrics,
+            },
+        )
         self.state.stage(finished_key, summary)
         # A unique durable stage prevents duplicates; resume repairs this
         # append if interrupted between the DB checkpoint and append.
@@ -576,6 +632,10 @@ class EvolutionLoop:
             started = {"time": time.time()}
             self.state.stage(started_key, started)
         signal = self.arm.removeprefix("C-TTS-")
+        if comparator.name != signal:
+            raise ValueError(
+                "C-TTS comparator must match its selection signal"
+            )
         comparator_seed = comparator / "candidates/seed"
         seed = self.seed(comparator_seed / "harness")
         if source_hash(seed) != Manifest.read(comparator_seed).source_sha256:
@@ -596,26 +656,85 @@ class EvolutionLoop:
         db.close()
         rows = []
         for (partition, task), count in sorted(allocations.items()):
-            existing = []
+            existing = {}
             for stored in self.state.db.execute(
                 "SELECT spec,result FROM trials"
             ):
                 spec = json.loads(stored["spec"])
                 if (spec["partition"], spec["task"]) == (partition, task):
+                    if spec.get("infrastructure_attempt"):
+                        continue
+                    index = spec["replicate"]
+                    if index in existing:
+                        raise ValueError("Duplicate control replicate index")
                     if stored["result"]:
-                        existing.append(json.loads(stored["result"]))
-            if len(existing) > count:
+                        existing[index] = self.state.decode(stored["result"])
+            if any(index >= count for index in existing):
                 raise ValueError("Control has exceeded comparator allocation")
-            produced = list(existing)
-            if len(existing) < count:
-                produced += await self.batch(
-                    seed,
-                    partition,
-                    f"control-{task}",
-                    count - len(existing),
-                    tasks=[task],
-                    judge=partition == "search",
-                    replicate_start=len(existing),
+            plan_key = f"control-plan-{partition}-{task}-{self.iteration}"
+            expected = list(range(count))
+            fixed_plan = self.state.stage(plan_key)
+            if fixed_plan is not None and fixed_plan != expected:
+                raise ValueError("Control allocation changed on resume")
+            self.state.stage(plan_key, expected)
+            produced = []
+            for index in expected:
+                if index not in existing:
+                    scheduled_specs = [
+                        item
+                        for stored in self.state.db.execute(
+                            "SELECT spec FROM trials"
+                        )
+                        if (item := json.loads(stored["spec"]))
+                        and (item["partition"], item["task"])
+                        == (partition, task)
+                    ]
+                    physical = len(scheduled_specs)
+                    already_scheduled = any(
+                        item["replicate"] == index
+                        and not item.get("infrastructure_attempt")
+                        for item in scheduled_specs
+                    )
+                    if physical >= count and not already_scheduled:
+                        raise ValueError(
+                            "C-TTS allocation exhausted by "
+                            "infrastructure retries"
+                        )
+                    new = await self.evaluator.batch(
+                        seed,
+                        partition,
+                        f"control-{task}-{index}",
+                        1,
+                        tasks=[task],
+                        judge=partition == "search",
+                        replicate_start=index,
+                    )
+                    if len(new) != 1 or new[0]["replicate"] != index:
+                        raise ValueError("Control rollout identity mismatch")
+                    existing[index] = new[0]
+                produced.append(existing[index])
+            physical = sum(
+                (spec["partition"], spec["task"]) == (partition, task)
+                for stored in self.state.db.execute("SELECT spec FROM trials")
+                if (spec := json.loads(stored["spec"]))
+            )
+            if physical != count:
+                atomic_json(
+                    self.evaluator.private / "control-allocation-failure.json",
+                    {
+                        "partition": partition,
+                        "task": task,
+                        "expected": count,
+                        "actual": physical,
+                        "reason": (
+                            "Infrastructure replacement changed "
+                            "matched allocation"
+                        ),
+                    },
+                )
+                raise ValueError(
+                    "C-TTS physical allocation mismatch; "
+                    "no matched result emitted"
                 )
             if partition != "search" and signal != "A0":
                 # Build scorer evidence privately; it never reaches feedback.
@@ -628,11 +747,17 @@ class EvolutionLoop:
                     if trace.exists():
                         evidence = export_trace(
                             trace,
-                            self.logs / "exports" / row["id"],
-                            observation_chars=12000,
+                            self.evaluator.private / "exports" / row["id"],
+                            execution=row.get("execution", {}),
+                            result={
+                                "exception_info": row.get("exception_info")
+                            },
                         )
                         path = (
-                            self.logs / "exports" / row["id"] / "evidence.json"
+                            self.evaluator.private
+                            / "exports"
+                            / row["id"]
+                            / "evidence.json"
                         )
                         atomic_json(path, evidence.to_dict())
                         row["evidence"] = str(path)
@@ -652,8 +777,40 @@ class EvolutionLoop:
                 ]
             else:
                 chosen = select_control(pool, signal)
+            expected_tasks = sorted(
+                task for (part, task) in allocations if part == partition
+            )
+            slots = [
+                (1, task, index)
+                for task in expected_tasks
+                for index in range(2 if partition == "sealed" else 1)
+            ]
+            selected_rows = [
+                {
+                    **r,
+                    "seed": 1,
+                    "replicate": r["replicate"] % 2
+                    if partition == "sealed"
+                    else 0,
+                }
+                for r in chosen
+            ]
             selected[partition] = {
-                "metrics": aggregate(chosen),
+                "metrics": aggregate(selected_rows, expected=slots),
+                "pool_sizes": {
+                    task: [
+                        sum(
+                            r["task"] == task
+                            and (
+                                partition != "sealed"
+                                or r["replicate"] % 2 == parity
+                            )
+                            for r in pool
+                        )
+                        for parity in range(2 if partition == "sealed" else 1)
+                    ]
+                    for task in expected_tasks
+                },
                 "selected": [r["id"] for r in chosen],
                 "allocated": len(pool),
                 "missing_selection_slots": (
@@ -667,6 +824,7 @@ class EvolutionLoop:
             self.accounting / "requests.jsonl",
             arm=self.arm,
             iteration=self.iteration,
+            run_id=self.experiment,
         )
         summary = {
             "experiment": self.experiment,
@@ -677,17 +835,20 @@ class EvolutionLoop:
             "accepted": None,
             "J_t": selected["search"]["metrics"]["J"],
             "O_t_search": selected["search"]["metrics"]["O"],
-            "O_t_sealed": selected["sealed"]["metrics"]["O"],
             "wall_s": time.time() - started["time"],
             "costs_iteration": costs,
             "cost_upper_usd": costs["uncached_upper_usd"]
             + costs["reserved_unresolved_usd"],
             "comparator": str(comparator),
-            "allocations": selected,
+            "allocations": {"search": selected["search"]},
             "candidate": "seed",
             "edited": False,
             "rollouts": len(rows),
         }
+        atomic_json(
+            self.evaluator.private / f"control-t{self.iteration}.json",
+            selected,
+        )
         self.state.stage(finished_key, summary)
         self.write_summary(summary)
         return summary

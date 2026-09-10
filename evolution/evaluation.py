@@ -28,46 +28,123 @@ def available_gib():
     )
 
 
-def oracle_label(result, execution, records):
+def oracle_label(result, execution, records, tool_failure_reading="executor"):
+    """Derive once from trusted execution evidence and the frozen policy."""
+    from evolution.outcomes import termination
+
+    if tool_failure_reading not in {"executor", "strict"}:
+        raise ValueError("Unknown tool failure reading")
     reward = ((result.get("verifier_result") or {}).get("rewards") or {}).get(
         "reward"
     )
-    exception = (result.get("exception_info") or {}).get("exception_type", "")
-    failed = execution.get("tool_failed", False) or any(
-        e.get("kind") == "observation"
-        and (
-            e.get("error")
-            or e.get("protocol_error")
-            or e.get("return_code") not in (None, 0)
-        )
-        for e in records
-    )
-    if (
-        "AgentTimeout" in exception
-        or execution.get("status") == "timeout_or_cancelled"
-    ):
+    flags = termination(records, result=result, execution=execution)
+    if flags["agent_timeout"]:
         return 0, reward, "agent_timeout"
+    if flags["executor_failure"] or flags["protocol_failure"]:
+        return 0, reward, "executor_failure"
+    if tool_failure_reading == "strict" and (
+        flags["nonzero_exit"] or execution.get("tool_failed")
+    ):
+        return 0, reward, "strict_tool_failure"
     if type(reward) not in (int, float) or reward not in (0, 1):
         return None, reward, "missing_or_invalid_verifier"
-    # The task's explicit rule supersedes PREREG's stricter tool-failure rule.
-    # Tool/protocol failures remain recorded diagnostics, not extra vetoes.
-    reason = "valid_verifier"
-    if failed or exception == "NonZeroAgentExitCodeError":
-        reason = "valid_verifier_with_solver_or_tool_failure"
-    return int(reward == 1), reward, reason
+    return int(reward == 1), reward, "valid_verifier"
 
 
-def aggregate(rows):
+def aggregate(rows, expected=None):
+    """Equal task/seed blocks; missing judge scores remain missing.
+
+    O uses the fixed allocation. Registered A9 exclusion and observed-only
+    quantities are separate diagnostics; incomplete blocks cannot be paired.
+    Expected slots let controls retain missing selections in the denominator.
+    """
+    rows = list(rows)
+    if len({r["id"] for r in rows}) != len(rows):
+        raise ValueError("Duplicate rollout identity in aggregation")
+    if expected is not None:
+        by_slot = {
+            (r.get("seed", 1), r["task"], r.get("replicate", 0)): r
+            for r in rows
+        }
+        if len(by_slot) != len(rows):
+            raise ValueError("Duplicate fixed-allocation slot")
+        if len({tuple(slot) for slot in expected}) != len(expected):
+            raise ValueError("Duplicate expected allocation slot")
+        rows = [
+            by_slot.get(
+                tuple(slot),
+                {
+                    "id": f"missing-{slot}",
+                    "seed": slot[0],
+                    "task": slot[1],
+                    "replicate": slot[2],
+                    "score": None,
+                    "oracle": None,
+                },
+            )
+            for slot in expected
+        ]
+    blocks = {}
+    for row in rows:
+        blocks.setdefault(
+            (row.get("seed", 1), row.get("task", "task")), []
+        ).append(row)
+
+    def mean(values):
+        return sum(values) / len(values) if values else None
+
+    def equal_seeds(values):
+        seeds = {}
+        for (seed, task), value in values.items():
+            if value is not None:
+                seeds.setdefault(seed, []).append(value)
+        return mean([mean(v) for v in seeds.values()])
+
     scores = [r["score"] for r in rows if r.get("score") is not None]
     labels = [r["oracle"] for r in rows if r.get("oracle") is not None]
-    # All tasks have the same replicate count at a complete checkpoint.
+    block_j = {
+        k: mean([r["score"] for r in v if r.get("score") is not None])
+        for k, v in blocks.items()
+    }
+    block_o = {
+        k: sum(r.get("oracle") or 0 for r in v) / len(v)
+        for k, v in blocks.items()
+    }
+    complete = {
+        k: v
+        for k, v in blocks.items()
+        if all(
+            r.get("oracle") is not None and r.get("score") is not None
+            for r in v
+        )
+    }
+    common_j = equal_seeds(
+        {k: mean([r["score"] for r in v]) for k, v in complete.items()}
+    )
+    common_o = equal_seeds(
+        {k: mean([r["oracle"] for r in v]) for k, v in complete.items()}
+    )
     return {
-        "J": sum(scores) / len(scores) if scores else None,
-        "O": sum(labels) / len(labels) if labels else None,
-        "O_fixed_denominator": sum(labels) / len(rows) if rows else None,
+        "J": equal_seeds(block_j),
+        "O": equal_seeds(block_o),
+        "O_fixed_denominator": equal_seeds(block_o),
+        "J_observed_attempts": mean(scores),
+        "O_observed_attempts": mean(labels),
+        "J_fixed_denominator_sensitivity": equal_seeds(
+            {
+                k: sum(r.get("score") or 0 for r in v) / len(v)
+                for k, v in blocks.items()
+            }
+        ),
+        "common_complete_task_blocks": len(complete),
+        "common_J": common_j,
+        "common_O": common_o,
+        "common_gap": common_j - common_o if common_j is not None else None,
+        "task_blocks": len(blocks),
         "scheduled": len(rows),
         "judge_missing": len(rows) - len(scores),
         "oracle_excluded": len(rows) - len(labels),
+        "incomplete_task_blocks": len(blocks) - len(complete),
         "trials": [r["id"] for r in rows],
     }
 
@@ -90,7 +167,7 @@ class Evaluator:
         self.score_lock = asyncio.Lock()
         self.accounting = self.root / "costs" / experiment
         self.logs = self.root / "logs" / "evolution" / experiment / arm
-        self.jobs = self.root / "logs/harbor" / experiment / arm
+        self.jobs = self.root / "oracle" / experiment / arm / "harbor"
         self.private = self.root / "oracle" / experiment / arm
         self.feedback = self.root / "feedback" / arm / experiment
         for path in (self.logs, self.jobs, self.private, self.feedback):
@@ -98,6 +175,11 @@ class Evaluator:
         self.split = json.loads(
             (self.root / "data/tb2_split.json").read_text()
         )
+        if config.get("tasks"):
+            self.split["splits"] = {
+                k: [t for t in v if t["name"] in config["tasks"][k]]
+                for k, v in self.split["splits"].items()
+            }
 
     def spec(self, candidate, partition, stage, task, replicate):
         return {
@@ -129,7 +211,24 @@ class Evaluator:
             if execution_path.exists()
             else {}
         )
-        label, raw, reason = oracle_label(result, execution, records)
+        label, raw, reason = oracle_label(
+            result,
+            execution,
+            records,
+            self.config.get("tool_failure_reading", "executor"),
+        )
+        if (
+            execution.get("api_timeout")
+            and execution.get("calls") == 1
+            and not execution.get("action_executed")
+        ):
+            if (
+                self.config.get("api_timeout_policy", "infrastructure")
+                == "failure"
+            ):
+                label, reason = 0, "api_timeout_failure"
+            else:
+                label, reason = None, "api_timeout_infrastructure"
         row = {
             "id": identity,
             **spec,
@@ -162,6 +261,89 @@ class Evaluator:
         return row
 
     async def one(self, candidate, spec):
+        row = await self._one_once(candidate, spec)
+        if row.get("replacement_id") or spec.get("infrastructure_attempt", 0):
+            return row
+        boundary = self.private / "grading" / row["id"] / "boundary.json"
+        if boundary.exists() and (
+            row.get("status") in {"infrastructure_failed", "interrupted"}
+            or row.get("reason") == "missing_or_invalid_verifier"
+        ):
+            record = json.loads(boundary.read_text())
+            if record.get("snapshot_ready"):
+                from evolution.grading import resume_frozen_grading
+
+                await resume_frozen_grading(
+                    self.root, self.logs / "configs" / f"{row['id']}.json"
+                )
+                row = self.collect(row["id"], spec) or row
+                row.update(grader_recovered=True, solver_retried=False)
+                self.state.finish(row["id"], row)
+            else:
+                row.update(
+                    excluded=True,
+                    exclusion_reason="interrupted_frozen_snapshot",
+                    solver_retried=False,
+                )
+                self.state.finish(row["id"], row)
+            return row
+        execution = row.get("execution", {})
+        api_only = (
+            execution.get("api_timeout")
+            and execution.get("calls") == 1
+            and not execution.get("action_executed")
+        )
+        infra = row.get("status") in {"infrastructure_failed", "interrupted"}
+        infra = infra or (
+            api_only
+            and self.config.get("api_timeout_policy", "infrastructure")
+            == "infrastructure"
+        )
+        if not infra:
+            return row
+        # The new attempt is linked before dispatch and is never a new task.
+        replacement_spec = {
+            **spec,
+            "infrastructure_attempt": 1,
+            "replaces": row["id"],
+        }
+        replacement_id = self.state.schedule(replacement_spec)
+        atomic_json(
+            self.private / "infrastructure-retries" / f"{row['id']}.json",
+            {
+                "original": row,
+                "replacement_id": replacement_id,
+                "policy": "one_clean_state_replacement",
+                "attempt": 1,
+            },
+        )
+        replacement = await self._one_once(candidate, replacement_spec)
+        excluded = replacement.get("status") in {
+            "infrastructure_failed",
+            "interrupted",
+        } or (
+            replacement.get("execution", {}).get("api_timeout")
+            and replacement.get("execution", {}).get("calls") == 1
+            and not replacement.get("execution", {}).get("action_executed")
+        )
+        result = {
+            **replacement,
+            "id": row["id"],
+            **spec,
+            "replacement_id": replacement_id,
+            "retried": True,
+            "excluded": excluded,
+            "exclusion_reason": "infrastructure_retry_exhausted"
+            if excluded
+            else None,
+        }
+        if excluded:
+            result.update(oracle=None, score=None)
+        self.state.finish(row["id"], result)
+        atomic_json(self.private / f"{row['id']}.json", result)
+        return result
+
+    async def _one_once(self, candidate, spec):
         identity = self.state.schedule(spec)
         row = self.state.row(identity)
         if row["status"] == "done":
@@ -201,7 +383,9 @@ class Evaluator:
             "environment": {"type": "docker"},
             "agent": {
                 "import_path": "evolution.harbor_agent:CandidateAgent",
-                "model_name": "gpt56luna",
+                "model_name": self.config.get("task_model", {}).get(
+                    "deployment", "gpt56terra"
+                ),
                 "kwargs": {
                     "candidate_path": str(candidate),
                     "experiment": self.experiment,
@@ -209,6 +393,13 @@ class Evaluator:
                     "iteration": self.iteration,
                     "trial_id": identity,
                     "accounting_dir": str(self.accounting),
+                    "task_settings": self.config.get("task_model", {}),
+                    "resolved_provider": self.config.get("providers", {}).get(
+                        "task"
+                    ),
+                    "rollout_budget": self.config.get("budget", {}).get(
+                        "rollout_usd", 1
+                    ),
                 },
             },
         }
@@ -365,7 +556,7 @@ class Evaluator:
         metrics = aggregate(rows)
         metrics["wall_s"] = time.monotonic() - started
         atomic_json(
-            self.logs
+            (self.logs if partition == "search" else self.private)
             / "batches"
             / f"{stage}-{candidate.name}-{partition}.json",
             {"metrics": metrics, "rows": rows},
@@ -429,7 +620,7 @@ class Evaluator:
                     item_id,
                     "judge",
                 ),
-                scope=f"judge-{item_id}",
+                scope=f"judge-{item_id}-{attempt}",
                 rpm=endpoint.rpm,
                 tpm=endpoint.tpm,
                 max_calls=1,

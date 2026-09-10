@@ -98,6 +98,7 @@ class Workspace:
                     "mounts": mounts,
                     "network": info["HostConfig"]["NetworkMode"],
                     "user": info["Config"]["User"],
+                    "environment": info["Config"]["Env"],
                     "cap_drop": info["HostConfig"]["CapDrop"],
                     "read_only_root": info["HostConfig"]["ReadonlyRootfs"],
                 },

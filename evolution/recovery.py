@@ -82,6 +82,12 @@ class ReplayBackend:
         if self.index < len(self.completed):
             record = self.completed[self.index]
             self.index += 1
+            if record.get("wire_prompt") is not None:
+                projected, _ = compact_context(prompt)
+                if projected != record["wire_prompt"]:
+                    raise ValueError(
+                        "Recovered response prompt differs from replay"
+                    )
             return Completion(
                 record["text"],
                 {
@@ -117,22 +123,37 @@ class ReplayEnvironment:
 
 async def recover_sessions(loop):
     """Explicit continuation after a boundary pause, with archived failures."""
-    parent = loop.seed()
+    checkpoint = loop.state.stage(f"checkpoint-{loop.iteration}")
+    if checkpoint is None:
+        raise ValueError("Recovery requires the active iteration checkpoint")
+    from pathlib import Path
+
+    parent = Path(checkpoint["candidate"])
     events = loop.logs / "session_recovery.jsonl"
     # Discard only plans proven never to have reached Harbor or the API.
     audit = loop.accounting / "requests.jsonl"
-    calls = [json.loads(s) for s in audit.read_text().splitlines()]
+    calls = (
+        [json.loads(s) for s in audit.read_text().splitlines()]
+        if audit.exists()
+        else []
+    )
     dispatched = {r["task"] for r in calls if r["role"] == "task"}
     if loop.state.stage(f"finished-{loop.iteration}") is not None:
         raise ValueError("Cannot reopen a completed iteration")
     for stored in loop.state.db.execute("SELECT id,spec FROM trials"):
         spec = json.loads(stored["spec"])
-        if spec["partition"] == "sealed" and stored["id"] in dispatched:
+        if (
+            spec["iteration"] == loop.iteration
+            and spec["partition"] == "sealed"
+            and spec["stage"] != "seed-checkpoint"
+            and stored["id"] in dispatched
+        ):
             raise ValueError("Cannot reopen selection after sealed dispatch")
     for row in loop.state.db.execute("SELECT id,spec FROM trials").fetchall():
         spec = json.loads(row["spec"])
         if (
-            spec["stage"] == "measurement"
+            spec["iteration"] == loop.iteration
+            and spec["stage"] == "measurement"
             and row["id"] not in dispatched
             and not (loop.evaluator.jobs / row["id"]).exists()
         ):
@@ -158,6 +179,7 @@ async def recover_sessions(loop):
         initial = dict(result)
         reason = result.get("reason", "")
         if reason not in {
+            "interrupted_evolver_no_retry",
             "Backend failed: Prompt exceeds conservative short-context limit",
             "Backend failed: TimeoutError",
         }:
@@ -209,12 +231,71 @@ async def recover_sessions(loop):
         loop.state.stage(key, result)
         rows = [json.loads(s) for s in prior_trace.read_text().splitlines()]
         completed = [r for r in rows if r["kind"] == "assistant" and r["ok"]]
+        traced = {r.get("call_id") for r in rows if r["kind"] == "assistant"}
+        from pathlib import Path
+
+        for call in calls:
+            if (
+                call.get("event") != "request_intent"
+                or call.get("scope") != result["session_id"]
+            ):
+                continue
+            response_path = Path(call["archive"]) / "response.json"
+            if (
+                Path(call["backend_raw_dir"]).name in traced
+                or not response_path.exists()
+            ):
+                continue
+            response = json.loads(response_path.read_text())
+            choices = response.get("choices") or []
+            if choices and choices[0].get("message", {}).get("content"):
+                request = json.loads(
+                    (Path(call["archive"]) / "request.json").read_text()
+                )
+                completed.append(
+                    {
+                        "kind": "assistant",
+                        "ok": True,
+                        "call_id": Path(call["backend_raw_dir"]).name,
+                        "text": choices[0]["message"]["content"],
+                        "wire_prompt": request["messages"][0]["content"],
+                    }
+                )
         observations = [
             r for r in rows if r["kind"] == "observation" and "command" in r
         ]
+        if (
+            "TimeoutError" in reason
+            or reason == "interrupted_evolver_no_retry"
+        ):
+            observed_steps = {r.get("step") for r in observations}
+            for reply in completed:
+                # A response missing from the assistant trace preceded any
+                # action dispatch and can safely be replayed once.
+                if reply.get("wire_prompt") is not None:
+                    continue
+                try:
+                    action = json.loads(reply["text"])
+                except (ValueError, TypeError):
+                    continue
+                if (
+                    isinstance(action, dict)
+                    and action.get("action")
+                    in {"terminal", "read_file", "write_file"}
+                    and reply.get("step") not in observed_steps
+                ):
+                    raise ValueError(
+                        "Uncertain action completion; "
+                        "refusing side-effect replay"
+                    )
         attempted = prior_failures + sum(
             r["kind"] == "assistant" for r in rows
         )
+        durable_attempts = loop.guard.db.execute(
+            "SELECT count(*) FROM requests WHERE scope=?",
+            (result["session_id"],),
+        ).fetchone()[0]
+        attempted = max(attempted, durable_attempts)
         if attempted >= 24:
             raise ValueError("Original evolver call cap exhausted")
         paths, values = loop.canaries()
@@ -230,7 +311,10 @@ async def recover_sessions(loop):
                 paths, values, recovery / "canaries.jsonl"
             ):
                 raise RuntimeError("Recovery workspace isolation failed")
-            if "TimeoutError" in reason:
+            if (
+                "TimeoutError" in reason
+                or reason == "interrupted_evolver_no_retry"
+            ):
                 tags = CallTags(
                     "P1.3",
                     loop.experiment,
@@ -263,11 +347,11 @@ async def recover_sessions(loop):
                     scope=result["session_id"],
                     rpm=float(loop.config.get("EVOLVER_RPM", 250)),
                     tpm=float(loop.config.get("EVOLVER_TPM", 250000)),
-                    max_calls=24 - attempted,
+                    max_calls=24,
                 )
                 try:
                     answer = await run_seed(
-                        render(loop.arm),
+                        render(loop.arm, loop.completion_allowance),
                         ReplayEnvironment(observations, workspace),
                         ReplayBackend(completed, backend),
                         tags,
@@ -393,7 +477,8 @@ def reconcile_paused(loop):
     for row in loop.state.db.execute("SELECT id,spec FROM trials").fetchall():
         spec = json.loads(row["spec"])
         if (
-            (row["id"] in paused or spec["stage"] in stages)
+            spec["iteration"] == loop.iteration
+            and (row["id"] in paused or spec["stage"] in stages)
             and row["id"] not in dispatched
             and not (loop.evaluator.jobs / row["id"]).exists()
         ):
@@ -439,75 +524,7 @@ def reconcile_paused(loop):
 
 
 def reconcile_labels(loop):
-    """Correct cached labels from raw rewards without repeating rollouts."""
-    from evolution.evaluation import aggregate, oracle_label
-
-    key = "label-rule-reward1-no-agent-timeout-v1"
-    if loop.state.stage(key):
-        return
-    changed = {}
-    events = loop.logs / "label_correction.jsonl"
-    for stored in loop.state.db.execute(
-        "SELECT id,result FROM trials WHERE status='done'"
-    ).fetchall():
-        row = json.loads(stored["result"])
-        result_path = loop.evaluator.jobs / row["id"] / "result.json"
-        if not result_path.exists():
-            continue
-        raw = json.loads(result_path.read_text())
-        label, reward, reason = oracle_label(raw, row.get("execution", {}), [])
-        if row.get("oracle") == label:
-            continue
-        if loop.state.stage(f"finished-{loop.iteration}"):
-            raise ValueError(
-                "A completed iteration needs a separate analysis revision"
-            )
-        original = dict(row)
-        row.update(oracle=label, raw_reward=reward, reason=reason)
-        if loop.arm in {"A0", "C-TTS-A0"}:
-            row["score"] = label
-        append_jsonl(
-            events,
-            {
-                "ts": utc_now(),
-                "event": "derived_label_corrected",
-                "rule": key,
-                "original": original,
-                "corrected": row,
-                "solver_rerun": False,
-            },
-        )
-        feedback = loop.evaluator.feedback / f"{row['id']}.json"
-        if feedback.exists():
-            atomic_json(
-                loop.logs / "feedback-before-label-correction" / feedback.name,
-                json.loads(feedback.read_text()),
-            )
-        loop.state.finish(row["id"], row)
-        atomic_json(loop.evaluator.private / f"{row['id']}.json", row)
-        changed[row["id"]] = row
-    for stored in loop.state.db.execute(
-        "SELECT id,value FROM stages"
-    ).fetchall():
-        if not stored["id"].startswith("batch-"):
-            continue
-        rows = json.loads(stored["value"])
-        loop.state.stage(stored["id"], [changed.get(r["id"], r) for r in rows])
-    for path in (loop.logs / "batches").glob("*.json"):
-        data = json.loads(path.read_text())
-        if not any(r["id"] in changed for r in data["rows"]):
-            continue
-        atomic_json(
-            loop.logs / "batches-before-label-correction" / path.name, data
-        )
-        data["rows"] = [changed.get(r["id"], r) for r in data["rows"]]
-        data["metrics"].update(aggregate(data["rows"]))
-        atomic_json(path, data)
-    loop.evaluator.export_feedback(
-        [
-            r
-            for r in changed.values()
-            if r["partition"] == "search" and r["stage"] != "smoke"
-        ]
+    """Historical labels cannot alter evolver feedback."""
+    raise ValueError(
+        "Post-hoc relabelling is disabled; use a separate historical analysis"
     )
-    loop.state.stage(key, {"ts": utc_now(), "changed_trials": len(changed)})
