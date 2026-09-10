@@ -43,6 +43,8 @@ Ledger: `costs/ledger.jsonl` (ignored) rolled up in `costs/summary.md`. Known ga
 
 ## Decisions needed from the user
 
+(2026-09-10 update: items 1-3 below were answered in `docs/decisions-260910.md`; the new open items are AD1-AD9 in `docs/decisions-260910-addendum.md`, drafted after reviews R4/R5.)
+
 1. Approve, modify, or reject amendments A1-A10 (`docs/PLAN.md` 9.7).
 2. Confirm the task-model baseline (gpt-5-mini low) or ask for luna/gpt-5.1 in the stratified pilot.
 3. Confirm the pilot budget guard (150% of estimate: Phase 2 pilot estimated at about USD 60-150 API and 3-5 days wall-clock at concurrency 4-8).
@@ -66,3 +68,14 @@ Owner: Codex workers unless noted; leader checks alignment; Copilot reviews each
 | P1.10 | GDPevo adapter groundwork (from R1): filtered solver and service images, route allowlist, authenticated API descriptor, binary-score contract, valid-but-wrong grader controls, end-to-end seed rollout in one healthcare and one legal group. | One rollout per domain with oracle result and ledger entry. |
 
 Phase 2 (pilot on T1) starts only after P1.8 is committed and P1.6, P1.9, and P1.11 pass. Experimental roles use the API backends only (R3 finding 8).
+
+## Phase 1 progress log (2026-09-10)
+
+- User decisions in `docs/decisions-260910.md`; task-model choice overridden in chat in favour of gpt-5.6-luna pending the P1.2 experiment (no gpt-5.5-mini deployment exists on Azure).
+- W4 done: amendments A1-A10 applied to PLAN Sections 1-8; `PREREG.md` drafted (D-draft marks on statistical details). Open conflict for the user: A3-loop uses 3 proposals per iteration (RHO native) while Section 2 fixes 2 candidates for other arms; default is to keep both and report budgets per arm.
+- W7 done (P1.10): GDPevo adapter with filtered staging, judge-free service images behind a route-allowlist gateway, isolated solver container, grader-v1 (TG015/TG018 patched, tree hash), binary oracle rule; 7/7 acceptance checks, 174/174 boundary probes; one healthcare and one legal seed rollout end-to-end (both scored 0); USD 0.017; 250 tests. Review R5 pending.
+- W5c done (P1.1 + P1.2): `data/tb2_split.json` (18/6/6, seed recorded, dataset pinned); `docs/calibration.md`: mini/json 8.3% pass (0% no-action, USD 0.006/rollout); mini/native 8.3% (3.3%); luna/json 23.3% (11.7% no-action, USD 0.011); terra/json 28.3% (1.7% no-action, USD 0.124, 68 agent-s); luna/native and terra/native rejected with HTTP 400 on all attempts. Only terra/json passes every gate; terra's 5 pp edge over luna has a paired-bootstrap 95% interval of -5.0 to +16.7 pp. Follow-up W5d: mini/json and luna/json at medium reasoning. Decision AD1 awaits these numbers; pilot budget must be re-derived (terra implies about USD 450-550).
+- W8c done (P1.4 + P1.7): judges, sanitizer, async queue, acceptance rule; `docs/judges.md`: tau = 0.02184 (A1) / 0.02257 (A2) from 5 repeats on the fixed seed set; seed TPR/FPR at 0.5: A1 93.3%/26.3%, A2 66.7%/32.1%; Kimi A1 66.7%/20.0%, A2 100%/80.0% with 7 failures; DeepSeek about USD 0.0006 (A1) / 0.0032 (A2) per call; 309 tests. Open: two task prompts over-redacted by the sanitizer, 7 missing verifier labels, observation truncation. Review R6 launched.
+- Tool protocol: native function calling is rejected (HTTP 400) by the gpt-5.6 luna/terra deployments; JSON-in-text protocol fixed for all models and arms.
+- W9 launched (P1.3 evolution loop, C-TTS, P1.6 integrated acceptance matrix).
+- Incident: the Claude session's low-memory watchdog killed all background tasks twice (MemFree 2-3 GB from page cache while MemAvailable stayed above 20 GB; no kernel OOM). Orphaned Harbor containers were removed. Long workers now run detached as systemd user units (`nvh-*`) with Harbor at concurrency 4 and a MemAvailable-based admission guard; see memory note.

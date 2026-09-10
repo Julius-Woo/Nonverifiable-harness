@@ -26,6 +26,7 @@ TOKEN_FIELDS = (
 class Completion:
     text: str
     record: dict
+    message: dict | None = None
 
 
 def parse_claude(stdout: str, model: str) -> tuple[str, dict]:

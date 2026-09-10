@@ -50,3 +50,53 @@ Reviewer verdict: the smoke run is a valid Phase 0 result and the default API se
 | 8 | major | Codex CLI backend is not tool-free and inherits the host environment after `.env` is loaded. | Policy recorded in PLAN 9.1 and docs/infrastructure.md: experimental roles use the API path only; CLI backends are for probes and the optional Copilot/Claude cross-judges with a minimal environment. |
 | 9 | minor | Test coverage weak at pilot contracts; DeepSeek/Kimi usage objects lack cache/reasoning fields and will stay partly unknown. | Phase 1 task P1.11e: provider fixtures replayed through accounting and reporting; keep unknown counters explicit. |
 | 10 | minor | gpt-5-mini recommendation is a provisional weak baseline, not a calibrated selection; luna's no-action terminations are real model behaviour, not Docker failures. | Agreed; P1.2 stratified calibration before freezing the task model; track no-action termination as a metric; no model-specific rescue prompts. |
+
+## R4 - PLAN Sections 1-8 amendments and PREREG.md draft (2026-09-10)
+
+Reviewer verdict: A1, A2, A4-A7, A9, A10 are represented correctly (A3-native/A3-loop distinction, raw same-search gap, oracle regret, failure policies, isolation, guards); Section 9 untouched apart from the phase log. PREREG cannot be frozen merely by filling the three open rows: decision authority for the task-model override, the non-inferiority procedure, and the rollout budget must be reconciled first. Commit it as an exploratory pilot preregistration with H4 deferred.
+
+| # | Severity | Finding | Disposition |
+| --- | --- | --- | --- |
+| 1 | blocking | A8 as written (select among mini/luna/terra with fallback rules) does not match the binding decisions file (mini frozen); the chat override is not an auditable authorization, and terra plus the cost-selection policy were never approved. | `docs/decisions-260910-addendum.md` drafted for the user to ratify; PREREG task-model row marked "pending ratification". |
+| 2 | blocking | The 5 pp non-inferiority test on 6 sealed tasks x avg@2 x 2 seeds can manufacture certainty. | Addendum item: pilot is exploratory for the sufficiency claim; confirmatory non-inferiority moves to Phase 3 (40 sealed tasks). |
+| 3 | blocking | Evaluation schedule (C-TTS, A3-native, promotion confirmation, variance control) not reconciled with the USD 200 estimate. | PREREG Section 7 to carry an explicit rollout-schedule table; estimate re-derived from measured P1.2/P1.4 unit costs and the first two W9 iterations. |
+| 4 | major | Four edits beyond A1-A10: rubric item 5 reverse-keyed; multi-label edit classes; H5 comparator as SD; epsilon fixed at 0 (one-task allowance removed). | Addendum items for ratification; PREREG marks them [D-pending]. |
+| 5 | major | Measurement schedule and missing-score estimand not fixed. | PREREG fix: J_t over rollouts with valid judge scores, missing count reported; sealed evaluation of the incumbent after each iteration. |
+| 6 | major | H1 sensitivity unspecified; H2 cannot be confirmatory with two seeds. | PREREG: H2 exploratory in the pilot; minimum detectable slope stated from the variance control. |
+| 7 | major | Open-item formulas mechanical only once inputs are fixed. | Accepted; inputs come from docs/calibration.md and docs/judges.md. |
+| 8 | major | Remaining post-hoc choices. | Enumerate and fix in the reconciliation pass before the pilot. |
+| 9 | major | Amendment clause permits redesign after observing the primary endpoint. | PREREG: amendments after pilot start are logged deviations, never silent changes. |
+| 10 | major | A3's T2 pass predicate stricter than the approved tolerance. | Align PLAN and PREREG to abs(s-1) <= 1e-6 with 0 <= s <= 1. |
+| 11 | major | Cross-judge interpretation conflicts between PLAN and PREREG. | Align in the reconciliation pass. |
+| 12 | minor | Oracle-access wording needs narrow exceptions (A0 evidence; C-TTS(A0) selector). | Fix wording in the reconciliation pass. |
+
+## R5 - GDPevo adapter (P1.10) (2026-09-10)
+
+Reviewer verdict: credible adapter groundwork; file and container isolation substantially implemented; grader hardening and the two priced rollouts supported; the "7/7" headline overstates integrated Section 5 coverage; formal T2 runs remain blocked by experiment wiring, acceptance evidence, failure/denominator handling, and accounting lifecycle.
+
+| # | Severity | Finding | Disposition |
+| --- | --- | --- | --- |
+| 1 | blocking (for T2 runs) | Several acceptance rows use fixtures or helper assertions instead of the integrated boundary (synthetic traces, argument-level judge isolation, template-only prompt uniformity, flag-level anchor isolation, no cross-arm write attempts). | Phase 3 prep task T2-ACCEPT: integrated checks through real rollouts, serialized judge payloads, dispatched prompts, and real workspaces; the P1.6 matrix built by W9 for T1 is reused. |
+| 2 | blocking (for T2 runs) | Runner hard-codes train/A0/iteration 0 and a USD 10 budget; judge queue discovers only Harbor's layout, not GDPevo's trajectory.jsonl. | Phase 3 prep task T2-WIRE: experiment-driven runner; judge queue accepts a manifest of trajectories independent of layout. |
+| 3 | major | Fixed-denominator accounting lost on failure paths (oversized answers, grader launch failures); A9 policies unimplemented in the runner. | T2-WIRE; shared failure-policy module with P1.11d. |
+| 4 | major | Accounting not crash-complete. | P1.11b (already scheduled). |
+| 5 | major | TG019 exposes hidden annotation columns (train/test identifiers) through SQL. | T2-ISO: column filtering at staging for TG019 and an audit of every group's database for hidden annotation columns; required before any T2 run. |
+| 6 | minor | Transport retries (max_retries = 1) not a zero-retry guarantee. | Document: transport retries follow A9; the seed loop itself has none. |
+| 7 | minor | Scores slightly above 1 pass. | Enforce 0 <= s <= 1 before the tolerance; boundary tests. |
+| 8 | minor | Wrong-control gate omits native grader-error validation. | Require a valid native run plus score 1. |
+
+## R6 - Judge layer (P1.4 / P1.7) (2026-09-10)
+
+Reviewer verdict: judge schemas, rubric arithmetic, aggregate-score tau, and the A1/A2 sealed-anchor predicate are sound foundations; not ready for pilot sign-off until label handling, sanitization, and the evidence/dispatch/recovery contracts are reconciled. Preserve the calibration as historical evidence; correct labels without re-judging.
+
+| # | Severity | Finding | Disposition |
+| --- | --- | --- | --- |
+| 1 | blocking | Seven "missing verifier labels" are in-rollout tool failures (30 s command timeouts) and must stay in the denominator as failures per A9. | W8d: relabel without re-judging; recompute TPR/FPR; docs/judges.md updated. |
+| 2 | blocking | Whole-field sanitization erases legitimate task instructions when they mention a filtered filename (for example "You can run /app/test_outputs.py to verify"). | W8d: redact only file contents and test outputs, never the instruction text; keep a redaction log; regression test on the affected traces. |
+| 3 | major | Exported evidence truncates observations to 12,000 characters, contrary to PREREG's complete-trace contract; termination status incomplete. | W8d: versioned evidence contract with complete sanitized observations (or a preregistered, documented cap) and explicit termination fields; PREREG aligned. |
+| 4 | major | The P1.3 composition reserves endpoint quota twice (queue and transport) and does not stream judgments. | W9 follow-up: single limiter ownership; streaming ingestion. |
+| 5 | major | P1.3's transport prepends a random "Context identifier" system message, changing the frozen judge prompt after its hash and archive. | W9 follow-up: cache-isolation identifier moves to the API `user` field or a hashed, archived field; prompt hash covers the wire prompt. |
+| 6 | major | Crash accounting: backend ledger row written after dispatch; a hard kill can lose an attempted request. | P1.11b (request-intent record before dispatch). |
+| 7 | major | Restart idempotency keyed on prompt hash, not frozen rollout identity. | W8d: primary key on rollout id + judge + repeat + evidence version; conflicts reported, not re-enqueued. |
+| 8 | minor | Observed-pair cross-judge rates are not unbiased (availability differs). | Report with counts and a sensitivity bound. |
+| 9 | minor | F-agree substitutes primary tau when cross tau is missing; SearchEvaluation restricts scores to [0,1] while A3 uses signed preference. | W8d: require explicit cross tau; widen the score type per A4's commensurability rule. |

@@ -1,0 +1,191 @@
+{
+  "dataset_id": "terminal-bench@2.0",
+  "git_url": "https://github.com/laude-institute/terminal-bench-2.git",
+  "git_commit": "69671fbaac6d67a7ef0dfec016cc38a64ef7a77c",
+  "seed": 260910,
+  "stratification_field": "task.toml:metadata.difficulty",
+  "algorithm": "Sorted tasks; Python Random(seed) shuffle per lexical stratum; Hamilton largest remainders for 30, then search, anchor, sealed. Lexical stratum breaks remainder ties.",
+  "population_counts": {
+    "easy": 4,
+    "hard": 30,
+    "medium": 55
+  },
+  "sample_counts": {
+    "easy": 1,
+    "hard": 10,
+    "medium": 19
+  },
+  "split_counts": {
+    "search": {
+      "easy": 1,
+      "hard": 6,
+      "medium": 11
+    },
+    "anchor": {
+      "hard": 2,
+      "medium": 4
+    },
+    "sealed": {
+      "hard": 2,
+      "medium": 4
+    }
+  },
+  "splits": {
+    "search": [
+      {
+        "name": "bn-fit-modify",
+        "difficulty": "hard",
+        "task_toml_sha256": "3a464e6dbdf1fb5f20ca2ecfd0736cb06eb2a9164665cba51af70935352eb53d"
+      },
+      {
+        "name": "break-filter-js-from-html",
+        "difficulty": "medium",
+        "task_toml_sha256": "5c10a564179f73c001441dc9a56cb629efac72f5828be8655697c9d2fd2dbb96"
+      },
+      {
+        "name": "build-pmars",
+        "difficulty": "medium",
+        "task_toml_sha256": "02de864f98eaba9d3b9fe2b65e36ec32a824a1cd85b9b5246caf70de222d48ac"
+      },
+      {
+        "name": "caffe-cifar-10",
+        "difficulty": "medium",
+        "task_toml_sha256": "bd3b974958ae52e3d3b399fa8b6c2fbc4e9e0e039f20c96851f1d1a0049084bc"
+      },
+      {
+        "name": "cancel-async-tasks",
+        "difficulty": "hard",
+        "task_toml_sha256": "4eb6fe419024e101c630f3ee7702df67049851ae13ebed00ea4138b62dec47b2"
+      },
+      {
+        "name": "cobol-modernization",
+        "difficulty": "easy",
+        "task_toml_sha256": "a08e001d2547fe84f64452bb075d27603aed7abfc01799f80924f81e6f2af410"
+      },
+      {
+        "name": "count-dataset-tokens",
+        "difficulty": "medium",
+        "task_toml_sha256": "4b0ac21243a9a578810bc826dd8f0db9202b5ca98a39d718864375fd2c76b498"
+      },
+      {
+        "name": "dna-assembly",
+        "difficulty": "hard",
+        "task_toml_sha256": "316bb430c1c09cd74bbe0c226f53377371317c4279e394dacf3edc7f5f096bc4"
+      },
+      {
+        "name": "hf-model-inference",
+        "difficulty": "medium",
+        "task_toml_sha256": "689b6d326e3cc884f5b406a25072e8dbb011d6bda566d222734ce2fa843244fa"
+      },
+      {
+        "name": "make-doom-for-mips",
+        "difficulty": "hard",
+        "task_toml_sha256": "c9f3a979796e64c64f38606ac1168b2e31993e835c232c24840ad9b88bb24e16"
+      },
+      {
+        "name": "mteb-leaderboard",
+        "difficulty": "medium",
+        "task_toml_sha256": "030019d070f7bf1d3747685fa44cf6bfb4576e2ec52f8470221c3b152165ab44"
+      },
+      {
+        "name": "mteb-retrieve",
+        "difficulty": "medium",
+        "task_toml_sha256": "3030503ebf238612af70b6748d306d134ebe3089d0cf1defd5d8034d64789193"
+      },
+      {
+        "name": "path-tracing",
+        "difficulty": "hard",
+        "task_toml_sha256": "016873f8804418c8bd20bbba314c0ebdc304ad0beb621df07bb0ad6e5d721fdf"
+      },
+      {
+        "name": "pytorch-model-cli",
+        "difficulty": "medium",
+        "task_toml_sha256": "e4b97209362932ff621a40ec33fc82e9bbb1b4bb40b635fe1e476a6cb83354bd"
+      },
+      {
+        "name": "qemu-alpine-ssh",
+        "difficulty": "medium",
+        "task_toml_sha256": "b11c5f50abfd204436edc0d9721c4a181a34e1f644550eaa22fd06ac8b9957f3"
+      },
+      {
+        "name": "query-optimize",
+        "difficulty": "medium",
+        "task_toml_sha256": "f596916d1fc10769e1cc82e2df0957952ff82736f935c742b15f4daee7258f19"
+      },
+      {
+        "name": "sqlite-db-truncate",
+        "difficulty": "medium",
+        "task_toml_sha256": "8b4c4d2abfe7dc8b7a3bac4567f60c08f7a9219b2cc65df0de7c5ee3d37721d6"
+      },
+      {
+        "name": "write-compressor",
+        "difficulty": "hard",
+        "task_toml_sha256": "2882cad36270e4291b672620469a7619a9c80a624f8f85703b9a43eeca9fccb2"
+      }
+    ],
+    "anchor": [
+      {
+        "name": "chess-best-move",
+        "difficulty": "medium",
+        "task_toml_sha256": "d02acae26d6238e2c05d34424258a2053f076eb88d31703348d3ac3403f963ef"
+      },
+      {
+        "name": "compile-compcert",
+        "difficulty": "medium",
+        "task_toml_sha256": "581a6b17e4aa16406379cfa7e005c7df4ddabbd80c9a65eeb95ea143754a0e7b"
+      },
+      {
+        "name": "configure-git-webserver",
+        "difficulty": "hard",
+        "task_toml_sha256": "ae983718634fb47c8280aa6aacd9b645e35f8e88a6d1deb8b8e676aec4ee87f3"
+      },
+      {
+        "name": "filter-js-from-html",
+        "difficulty": "medium",
+        "task_toml_sha256": "44e7a7f84eb1c603b54abd948f5e72205aa51bbb3dbbecdaabefebb59803515b"
+      },
+      {
+        "name": "polyglot-rust-c",
+        "difficulty": "hard",
+        "task_toml_sha256": "5f48e6114d1296eee5303a8ab5286b49a48df9e322147a9d939b8e60dd7b1343"
+      },
+      {
+        "name": "pypi-server",
+        "difficulty": "medium",
+        "task_toml_sha256": "e82d539a1e56fa080f9a12bc723eef047220af4425c7f18d88e1ee9a3466c473"
+      }
+    ],
+    "sealed": [
+      {
+        "name": "adaptive-rejection-sampler",
+        "difficulty": "medium",
+        "task_toml_sha256": "4b743f614201e2df2138f70c2b6ede2478b5646801c726393cad02892d039683"
+      },
+      {
+        "name": "gcode-to-text",
+        "difficulty": "medium",
+        "task_toml_sha256": "e816483601f36d4fa37324203d2e4716f524dd50d516e4e787ea993a7d9b68f2"
+      },
+      {
+        "name": "headless-terminal",
+        "difficulty": "medium",
+        "task_toml_sha256": "4d1448e9d3d0ef2043b6b888361a55e609a9ab8b07f4aca44c0ee870b2049c7e"
+      },
+      {
+        "name": "protein-assembly",
+        "difficulty": "hard",
+        "task_toml_sha256": "6004ee49220b9b13c974edb062b7796adc7555e28e80f39937664b0d3e6de429"
+      },
+      {
+        "name": "raman-fitting",
+        "difficulty": "medium",
+        "task_toml_sha256": "6af8b47940032e643b9529c1d1d467e55efa1315981505cc1b0a1c1323e67e0a"
+      },
+      {
+        "name": "torch-pipeline-parallelism",
+        "difficulty": "hard",
+        "task_toml_sha256": "e88d3f1422a594c5fedac69ffde0be35019bf90f2c6aa1ee7cedec2403688b59"
+      }
+    ]
+  }
+}

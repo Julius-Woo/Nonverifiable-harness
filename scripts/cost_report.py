@@ -106,6 +106,24 @@ def render_report(records: list[dict]) -> str:
         "Rollout timings: `logs/<run_id>/timing.jsonl`.",
         "",
     ]
+    local_stops = sum(
+        r.get("backend") == "openai_api"
+        and r.get("cost_usd") is None
+        and r.get("attempts") == []
+        and r.get("note") in {
+            "Projected rollout budget exceeded",
+            "Projected experiment budget exceeded",
+        }
+        for r in records
+    )
+    if local_stops:
+        lines += [
+            f"The unknown-USD record count includes {local_stops} local "
+            "budget rejection(s) with no HTTP attempt. These incurred "
+            "zero incremental API usage; original null-cost ledger "
+            "records are retained.",
+            "",
+        ]
     return "\n".join(lines)
 
 

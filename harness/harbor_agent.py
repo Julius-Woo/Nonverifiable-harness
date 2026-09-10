@@ -35,10 +35,21 @@ class SeedAgent(BaseAgent):
         reasoning_effort: str = "low",
         max_completion_tokens: int = 4096,
         rollout_budget_usd: float = 1.0,
+        tool_protocol: str | None = None,
+        api_max_retries: int = 3,
+        shared_budget_path: str | None = None,
+        shared_budget_usd: float = 40.0,
         **kwargs,
     ):
         load_dotenv(Path(__file__).resolve().parents[1] / ".env")
         backend = backend or os.getenv("HARNESS_BACKEND", "openai_api")
+        self.tool_protocol = tool_protocol or os.getenv(
+            "HARNESS_TOOL_PROTOCOL", "json"
+        )
+        if self.tool_protocol not in ("json", "native"):
+            raise ValueError("tool_protocol must be json or native")
+        if self.tool_protocol == "native" and backend != "openai_api":
+            raise ValueError("native protocol requires openai_api")
         model_name = (
             model_name
             or os.getenv("HARNESS_MODEL")
@@ -64,6 +75,9 @@ class SeedAgent(BaseAgent):
                 api_key=os.getenv(f"{endpoint_prefix}_API_KEY", ""),
                 max_completion_tokens=int(max_completion_tokens),
                 budget_usd=float(rollout_budget_usd),
+                max_retries=int(api_max_retries),
+                shared_budget_path=shared_budget_path,
+                shared_budget_usd=shared_budget_usd,
                 **common,
             )
         else:
@@ -117,6 +131,7 @@ class SeedAgent(BaseAgent):
                 max_steps=self.max_steps,
                 command_timeout_s=self.command_timeout_s,
                 on_completion=update,
+                tool_protocol=self.tool_protocol,
             )
             (self.logs_dir / "final.txt").write_text(answer)
             status = "finished"

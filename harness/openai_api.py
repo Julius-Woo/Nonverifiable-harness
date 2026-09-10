@@ -15,6 +15,7 @@ from pathlib import Path
 import httpx
 
 from harness.backends import TOKEN_FIELDS, Completion
+from harness.budget import adjust_budget
 from harness.ledger import CallTags, append_jsonl, price_usage, utc_now
 
 
@@ -56,6 +57,8 @@ class OpenAIAPIBackend:
     Instances are owned by one rollout and used sequentially.
     """
 
+    is_api = True
+
     def __init__(
         self,
         base_url: str,
@@ -71,6 +74,8 @@ class OpenAIAPIBackend:
         max_retries: int = 3,
         budget_usd: float = 1.0,
         transport=None,
+        shared_budget_path=None,
+        shared_budget_usd=40.0,
     ):
         if not math.isfinite(timeout_s) or timeout_s <= 0:
             raise ValueError("timeout_s must be finite and positive")
@@ -84,6 +89,8 @@ class OpenAIAPIBackend:
         self.timeout_s, self.max_retries = timeout_s, max_retries
         self.budget_usd, self.budget_used = budget_usd, 0.0
         self.transport = transport
+        self.shared_budget_path = shared_budget_path
+        self.shared_budget_usd = float(shared_budget_usd)
         prices_path = prices_path or (
             Path(__file__).resolve().parents[1] / "scripts/prices.json"
         )
@@ -120,7 +127,9 @@ class OpenAIAPIBackend:
             + self.params["max_completion_tokens"] * rates["output"]
         ) / 1_000_000
 
-    async def complete(self, prompt: str, tags: CallTags) -> Completion:
+    async def complete(
+        self, prompt: str, tags: CallTags, *, messages=None, tools=None
+    ) -> Completion:
         call_id = uuid.uuid4().hex
         raw_dir = self.logs_dir.resolve() / call_id
         raw_dir.mkdir(parents=True)
@@ -145,12 +154,14 @@ class OpenAIAPIBackend:
             "attempts": [],
             "request_params": self.params,
         }
-        started, answer = time.monotonic(), ""
+        started, answer, message = time.monotonic(), "", None
         payload = {
             "model": self.model,
-            "messages": [{"role": "user", "content": prompt}],
+            "messages": messages or [{"role": "user", "content": prompt}],
             **self.params,
         }
+        if tools is not None:
+            payload.update(tools=tools, parallel_tool_calls=False)
         try:
             if not self.api_key or not self.base_url.startswith("http"):
                 raise ValueError("API credentials and base URL are required")
@@ -163,7 +174,9 @@ class OpenAIAPIBackend:
                 )
 
             save("request.json", payload)
-            reserve = self.projected_cost(prompt)
+            reserve = self.projected_cost(
+                json.dumps(payload) if tools is not None else prompt
+            )
             async with asyncio.timeout(self.timeout_s):
                 async with httpx.AsyncClient(
                     timeout=self.timeout_s, transport=self.transport
@@ -174,6 +187,12 @@ class OpenAIAPIBackend:
                                 "Projected rollout budget exceeded"
                             )
                         # Retain reserve on ambiguous HTTP/transport errors.
+                        if self.shared_budget_path:
+                            adjust_budget(
+                                self.shared_budget_path,
+                                reserve,
+                                self.shared_budget_usd,
+                            )
                         self.budget_used += reserve
                         detail = {"attempt": attempt + 1, "ts": utc_now()}
                         record["attempts"].append(detail)
@@ -205,6 +224,12 @@ class OpenAIAPIBackend:
                         }
                         if response.status_code == 429:
                             self.budget_used -= reserve
+                            if self.shared_budget_path:
+                                adjust_budget(
+                                    self.shared_budget_path,
+                                    -reserve,
+                                    self.shared_budget_usd,
+                                )
                         if (
                             response.status_code == 429
                             or 500 <= response.status_code < 600
@@ -256,12 +281,25 @@ class OpenAIAPIBackend:
                         if record["cost_usd"] is not None:
                             record["cost_source"] = "priced"
                             self.budget_used += record["cost_usd"] - reserve
+                            if self.shared_budget_path:
+                                adjust_budget(
+                                    self.shared_budget_path,
+                                    record["cost_usd"] - reserve,
+                                    self.shared_budget_usd,
+                                )
                         choice = data["choices"][0]
-                        answer = choice["message"].get("content") or ""
+                        message = json.loads(
+                            json.dumps(choice["message"]).replace(
+                                self.api_key, "[REDACTED]"
+                            )
+                        )
+                        answer = message.get("content") or ""
                         answer = answer.replace(self.api_key, "[REDACTED]")
                         record["finish_reason"] = choice.get("finish_reason")
-                        record["ok"] = bool(answer)
-                        if not answer:
+                        record["ok"] = bool(
+                            answer or (tools and message.get("tool_calls"))
+                        )
+                        if not record["ok"]:
                             record["note"] = "API returned no answer"
                         break
         except asyncio.CancelledError:
@@ -294,4 +332,4 @@ class OpenAIAPIBackend:
                 record["cost_usd"] = None
                 record["cost_source"] = "unknown"
             append_jsonl(self.ledger, record)
-        return Completion(answer, record)
+        return Completion(answer, record, message)

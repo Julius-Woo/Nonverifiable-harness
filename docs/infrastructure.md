@@ -143,3 +143,29 @@ stopped; repeated runs are no-ops. Raw Harbor results are never rewritten.
 `scripts/smoke_report.py` reconciles original Harbor USD against the audit and
 corrected ledger USD against raw usage. See `docs/smoke_run.md` for the exact
 $0.00307390 adjustment and the live validation of the fixed parser.
+
+## Tool protocol option (P1.2)
+
+`HARNESS_TOOL_PROTOCOL=json|native` selects the seed protocol; the explicit
+`tool_protocol` agent kwarg takes precedence. The default remains `json`.
+Native is available with the API backend and exposes exactly `terminal`,
+`read_file`, and `write_file`, finishing with a plain final message. It sends
+Chat Completions function tools with parallel calls disabled and returns
+observations using the corresponding tool-call IDs. All models receive the
+same protocol prompt. Actions normalize into the existing trajectory JSONL
+schema; original native messages remain in the raw API response files.
+The API JSON prompt removes the sentence about avoiding model CLI tools.
+
+Calibration uses `api_max_retries=0`, `rollout_budget_usd=1`, and a shared
+`shared_budget_path` with `shared_budget_usd=40`. These are experiment controls;
+the normal API retry default stays unchanged. Run the pinned 30-task avg@2
+batches using `scripts/calibrate.py`; measured results and protocol/model
+recommendation are in [calibration.md](calibration.md).
+
+The completed P1.2 calibration recommends `gpt56terra` on `TASK_ALT2` with
+`tool_protocol=json`, low reasoning, and concurrency 4: 28.3% avg@2 pass rate
+and 1.7% no-action finishes on the fixed 30-task sample. The current native
+Chat Completions configuration with low reasoning received HTTP 400 for both
+`gpt56luna` and `gpt56terra`; native tools through Responses were not measured.
+See [calibration.md](calibration.md) for the decision gates, costs, failures,
+and the interrupted-run reconciliation.

@@ -1,0 +1,25 @@
+{
+  "version": "grader-v1",
+  "tree_sha256": "12997be4c3781c5f3366d9d102329edac3771077a8e52b1329cda1ba0e763f6e",
+  "hash_contract": "sorted relative POSIX path + NUL + bytes + NUL",
+  "source_commit": "0999c0d1e6f59b1cb8464cac4e5ed856b5dcb9e4",
+  "patched_files": [
+    "task_group_015/train_tasks/001/eval/eval.py",
+    "task_group_018/train_tasks/001/eval/eval.py"
+  ],
+  "groups": [
+    8,
+    9,
+    10,
+    11,
+    13,
+    14,
+    15,
+    16,
+    17,
+    18,
+    19,
+    20
+  ],
+  "tasks": 120
+}

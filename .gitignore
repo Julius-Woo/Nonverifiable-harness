@@ -16,3 +16,4 @@ __pycache__/
 .env
 *.log
 azure-keys.md
+runs/
