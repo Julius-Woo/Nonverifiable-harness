@@ -1,0 +1,63 @@
+{
+  "schema_version": 1,
+  "cohorts": {
+    "w5f-8k": {
+      "phase": "P1.2",
+      "budget_guard": "costs/calibration_8k_budget.json",
+      "budget_usd": 15,
+      "expected_finalized_attempts": 180,
+      "max_completion_tokens": 8192,
+      "rollout_budget_usd": 1,
+      "status": "AD12 evidence only; decision pending",
+      "docker_limit": 7,
+      "minimum_memavailable_gib": 6
+    }
+  },
+  "runs": [
+    {
+      "job_name": "calibration-terra-json-8k-260910",
+      "configuration": "terra-json-8k",
+      "cohort": "w5f-8k",
+      "phase": "P1.2",
+      "budget_guard": "costs/calibration_8k_budget.json",
+      "budget_usd": 15,
+      "kind": "benchmark",
+      "reasoning_effort": "low",
+      "nominal_concurrency": 3,
+      "max_completion_tokens": 8192,
+      "rollout_budget_usd": 1,
+      "job_config_sha256": "3f6041cd8b21c670aad443d0e3342837d96f0e92db0332e40a679d17cc7cf4d4",
+      "baseline_configuration": "terra-json"
+    },
+    {
+      "job_name": "calibration-mini-json-medium-8k-260910",
+      "configuration": "mini-json-medium-8k",
+      "cohort": "w5f-8k",
+      "phase": "P1.2",
+      "budget_guard": "costs/calibration_8k_budget.json",
+      "budget_usd": 15,
+      "kind": "benchmark",
+      "reasoning_effort": "medium",
+      "nominal_concurrency": 3,
+      "max_completion_tokens": 8192,
+      "rollout_budget_usd": 1,
+      "job_config_sha256": "56e30625207951f3a25e0abda416cd4d939c875f6919bdfa61cb6d8d62657ca6",
+      "baseline_configuration": "mini-json-medium"
+    },
+    {
+      "job_name": "calibration-luna-json-medium-8k-260910",
+      "configuration": "luna-json-medium-8k",
+      "cohort": "w5f-8k",
+      "phase": "P1.2",
+      "budget_guard": "costs/calibration_8k_budget.json",
+      "budget_usd": 15,
+      "kind": "benchmark",
+      "reasoning_effort": "medium",
+      "nominal_concurrency": 3,
+      "max_completion_tokens": 8192,
+      "rollout_budget_usd": 1,
+      "job_config_sha256": "4b6ed0a5551b596cc556ddbb6ed922d726fe5b5cd406781878693c132cbd3a00",
+      "baseline_configuration": "luna-json-medium"
+    }
+  ]
+}

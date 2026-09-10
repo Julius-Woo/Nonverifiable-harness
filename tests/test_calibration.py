@@ -145,3 +145,68 @@ def test_recovery_merges_results_and_ignores_unfinalized_verifier(
     assert sum(t["resumed"] for t in result["trials"]) == 1
     assert result["summary"]["wall_s"] == 180
     assert result["summary"]["wall_is_lower_bound"]
+
+
+def test_allowance_jobs_preserve_solver_and_split_settings():
+    from scripts.calibrate import ALLOWANCE_CONFIGS
+
+    for label in ALLOWANCE_CONFIGS:
+        baseline_label = label.removesuffix("-8k")
+        baseline = job_config(
+            baseline_label, 3 if baseline_label in MEDIUM_CONFIGS else 4
+        )
+        config = job_config(label, 3)
+        assert "8k" in config.job_name
+        assert config.n_concurrent_trials == 3
+        assert config.n_attempts == baseline.n_attempts == 2
+        assert config.tasks == baseline.tasks
+        assert config.retry == baseline.retry
+        assert config.environment == baseline.environment
+        assert config.agents[0].model_name == baseline.agents[0].model_name
+        old = baseline.agents[0].kwargs.copy()
+        new = config.agents[0].kwargs.copy()
+        assert old.pop("max_completion_tokens") == 4096
+        assert new.pop("max_completion_tokens") == 8192
+        assert new.pop("shared_budget_usd") == 15
+        old.pop("shared_budget_usd")
+        assert new["shared_budget_path"].endswith("calibration_8k_budget.json")
+        for key in ("shared_budget_path", "run_id", "arm", "timing_path"):
+            old.pop(key)
+            new.pop(key)
+        assert new == old
+        with pytest.raises(ValueError, match="concurrency 3"):
+            job_config(label, 4)
+
+
+def test_allowance_report_eligibility_is_computed_not_historical():
+    import copy
+
+    from scripts.calibrate import ALLOWANCE_CONFIGS
+
+    results = json.loads(Path("costs/calibration_results.json").read_text())
+    results = [r for r in results if not r["configuration"].endswith("-8k")]
+    by_name = {r["configuration"]: r for r in results}
+    for name in ALLOWANCE_CONFIGS:
+        row = copy.deepcopy(by_name[name.removesuffix("-8k")])
+        row["configuration"] = name
+        row["cohort"] = "w5f-8k"
+        row["no_action_count"] = 0
+        row["no_action_rate"] = 0
+        row["labels"]["pass_l1"]["successes"] = 12
+        row["labels"]["pass_l1"]["pass_rate"] = 0.2
+        row["labels"]["pass_l2"]["successes"] = 6
+        row["labels"]["pass_l2"]["pass_rate"] = 0.1
+        results.append(row)
+    split = json.loads(Path("data/tb2_split.json").read_text())
+    report = calibration_report.render(results, split, comparisons=[])
+    assert (
+        "**Eligible under L1: terra-json-8k, mini-json-medium-8k, " in report
+    )
+    assert "luna-json-medium-8k; under L2: none.**" in report
+    assert "No configuration is eligible under either A9 reading" not in report
+    assert "## Completion allowance experiment: AD12 evidence" in report
+    assert (
+        "| terra-json-8k | 12/60 (20.0%)" not in report
+    )  # Separate raw column.
+    for label in ALLOWANCE_CONFIGS:
+        assert report.count("| " + label + " |") >= 10

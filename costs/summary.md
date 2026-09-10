@@ -51,6 +51,30 @@ Recorded calls: 731. Known USD subtotal: $1.701763. Unknown USD calls: 0.
 Source rates and verification date: `scripts/prices.json`.
 Raw evidence: each ledger record's `raw_dir`. Rollout timings: `logs/<run_id>/timing.jsonl`.
 
+## w5f-8k
+
+Guard: costs/calibration_8k_budget.json; used/reserved $9.86624815 / $15. Retained reservations: $0.75645300.
+
+
+API-equivalent USD estimates are separate from subscription charges.
+Known USD is a subtotal; unknown costs are not treated as free.
+Wall time sums model calls and is not elapsed rollout time.
+Previously unpriced calls resolved with the same-date price table: 0. Original ledger records are retained.
+
+| Phase | Arm | Role | Model | Calls | Failed | Input | Cached | Output | Reasoning | Known USD | Unknown USD calls | Premium | Wall s |
+| --- | --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| P1.2 | luna-json-medium-8k | task | gpt-5.6-luna-2026-07-09 | 465 | 0 | 2804544 | 0 | 268517 | 166898 | 1.020534 | 0 | 0 | 3748.808 |
+| P1.2 | mini-json-medium-8k | task | gpt-5-mini-2025-08-07 | 400 | 5 | 3591598 | 2532864 | 510554 | 337728 | 1.349113 | 0 | 0 | 5151.593 |
+| P1.2 | terra-json-8k | task | gpt-5.6-terra-2026-07-09 | 366 | 1 | 1849559 | 0 | 178672 | 98434 | 6.740149 | 0 | 0 | 2654.901 |
+| P1.2 | terra-json-8k | task | gpt56terra | 8 | 8 | 0 (+8 unknown) | 0 (+8 unknown) | 0 (+8 unknown) | 0 (+8 unknown) | 0.000000 | 8 | 0 | 1087.791 |
+
+Recorded calls: 1239. Known USD subtotal: $9.109795. Unknown USD calls: 8.
+
+Source rates and verification date: `scripts/prices.json`.
+Raw evidence: each ledger record's `raw_dir`. Rollout timings: `logs/<run_id>/timing.jsonl`.
+
+The unknown-USD record count includes 1 local budget rejection(s) with no HTTP attempt. These incurred zero incremental API usage; original null-cost ledger records are retained.
+
 ## Other project cohorts (outside calibration guards)
 
 

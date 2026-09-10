@@ -9,7 +9,7 @@ from harbor.models.job.config import JobConfig
 
 from harness.ledger import price_usage
 from harness.seed import API_SYSTEM, NATIVE_SYSTEM, NATIVE_TOOLS
-from scripts.calibrate import CONFIGS, MEDIUM_CONFIGS, ROOT
+from scripts.calibrate import ALL_CONFIGS, ROOT
 from scripts.calibration_cohorts import account, load_manifest, scoped_calls
 from scripts.calibration_report import collect
 from scripts.calibration_split_check import compare
@@ -39,16 +39,22 @@ def audit(root=ROOT):
                 (root / name).read_bytes()
             ).hexdigest(),
         }
+    allowance_sources = json.loads(
+        (
+            root / "logs/calibration-8k-followup-260910/source_manifest.json"
+        ).read_text()
+    )
+    for name, digest in allowance_sources["files"].items():
+        assert hashlib.sha256((root / name).read_bytes()).hexdigest() == digest
     split = json.loads((root / "data/tb2_split.json").read_text())
     results = [
-        collect(label, ledger, split, manifest)
-        for label in CONFIGS | MEDIUM_CONFIGS
+        collect(label, ledger, split, manifest) for label in ALL_CONFIGS
     ]
     assert all(r and r["n_results"] == 60 for r in results)
     request_ids = set()
     requests_by_run = {}
     interrupted = []
-    config_map = CONFIGS | MEDIUM_CONFIGS
+    config_map = ALL_CONFIGS
     for run in manifest["runs"]:
         run_id = run["job_name"]
         if run["kind"] == "diagnostic":
@@ -74,7 +80,9 @@ def audit(root=ROOT):
                 "endpoint_prefix": endpoint,
                 "max_steps": 24,
                 "reasoning_effort": run["reasoning_effort"],
-                "max_completion_tokens": 4096,
+                "max_completion_tokens": run.get(
+                    "max_completion_tokens", 4096
+                ),
                 "api_max_retries": 0,
                 "rollout_budget_usd": 1,
                 "shared_budget_usd": run["budget_usd"],
@@ -111,7 +119,9 @@ def audit(root=ROOT):
             request_ids.add(call_id)
             payload = json.loads(path.read_text())
             assert payload["reasoning_effort"] == run["reasoning_effort"]
-            assert payload["max_completion_tokens"] == 4096
+            assert payload["max_completion_tokens"] == run.get(
+                "max_completion_tokens", 4096
+            )
             assert not {"temperature", "seed"} & payload.keys()
             if run["kind"] == "benchmark":
                 assert payload["model"] == model
@@ -180,12 +190,17 @@ def audit(root=ROOT):
                 <= int(trial["reward"] == 1)
             )
             assert trial["no_action"] == (not trial["action_evidence"])
-            # A trial exception shorthand produces the same labels here once
-            # protocol and nonzero-command events are handled explicitly.
+            # Validate the stated contract without a trial-exception shortcut.
             assert trial["pass_l1"] == int(
                 trial["reward"] == 1
-                and not trial["exception_type"]
+                and not trial["agent_timeout"]
                 and not trial["tool_failure_l1"]
+                and not trial["token_exhaustion"]
+                and not trial["step_exhaustion"]
+                and not trial["budget_exhaustion"]
+            )
+            assert trial["pass_l2"] == int(
+                trial["pass_l1"] and not trial["nonzero_commands"]
             )
     accounting = account(ledger, manifest, results, root)
     for cohort, totals in accounting.items():
@@ -217,6 +232,7 @@ def audit(root=ROOT):
         "response_usage_and_cost_checks": True,
         "action_presence_uncertain_attempts": 0,
         "source_checks": source_checks,
+        "allowance_source_checks": allowance_sources,
         "backend_change": (
             "HTTP error-body archiving only; "
             "historical bytes verified from archive"
@@ -230,7 +246,7 @@ def audit(root=ROOT):
 
 def main():
     report = audit()
-    path = ROOT / "logs/calibration-r7-reanalysis/audit.json"
+    path = ROOT / "logs/calibration-8k-followup-260910/audit.json"
     path.parent.mkdir(exist_ok=True)
     path.write_text(json.dumps(report, indent=2) + "\n")
     print(json.dumps(report, indent=2))

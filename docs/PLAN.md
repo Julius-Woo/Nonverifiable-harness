@@ -311,6 +311,8 @@ Exit criteria: one TB2 task completed end-to-end by the seed harness with an ora
 
 - 2026-09-11: W5e re-analysis under corrected contracts: no configuration qualifies under L1 (executor-level failures) or L2 (strict); terra/json low 28.3% L1 but 9/60 no-action (8 token exhaustions); luna/json 15.0% L1 with 6-7 inability claims at both reasoning levels; mini medium 13.3% with 18 exhaustions. W5f launched: terra-low, mini-medium, luna-medium re-run at an 8,192-token allowance as AD12 evidence (USD 15 guard). 368 tests pass. W9 evolution loop: A0 confirmation 52/72, A1 confirmation started.
 
+- 2026-09-11 (later): W5f (8,192-token allowance) done: terra-low 30.0% L1, 4/60 no-action (all API timeouts), about USD 0.112/rollout; mini-medium 11.7%, 2/60; luna-medium 8.3%, 9/60 (inability claims persist). With AD10-AD13 terra-low-8k is the only eligible task model; AD1 revised accordingly, AD13 (API timeouts as infrastructure) and AD14 (pilot budget USD 400, guard USD 600 / 5 days) added for ratification. 375 tests pass.
+
 ### 9.7 Proposed Amendments to Sections 1-8 (pending user approval)
 
 Sources: the literature digest `docs/background.md` (Part B deltas; independent review R2 pending) and the GDPevo assessment `docs/gdpevo_assessment.md` with its independent review R1 (`docs/reviews.md`). Sections 1-8 are unchanged until the user approves. Review R2 of the digest is complete; its dispositions are in `docs/reviews.md`.

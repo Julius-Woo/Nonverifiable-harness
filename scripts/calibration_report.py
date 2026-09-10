@@ -9,7 +9,7 @@ from collections import Counter, defaultdict
 from datetime import datetime, timezone
 from pathlib import Path
 
-from scripts.calibrate import CONFIGS, MEDIUM_CONFIGS, ROOT
+from scripts.calibrate import ALL_CONFIGS, ALLOWANCE_CONFIGS, ROOT
 from scripts.calibration_cohorts import (
     account,
     load_manifest,
@@ -225,11 +225,17 @@ def collect(label, ledger, split, manifest=None):
             for r in manifest["runs"]
             if r["configuration"] == label
         ),
+        "max_completion_tokens": config.get("agents", [{}])[0]
+        .get("kwargs", {})
+        .get("max_completion_tokens", 4096),
         "labels": labels,
         "raw_reward_ones": sum(t["reward"] == 1 for t in trials),
         "termination_counts": dict(Counter(t["termination"] for t in trials)),
         "no_action_reasons": dict(
             Counter(t["termination"] for t in trials if t["no_action"])
+        ),
+        "no_action_details": dict(
+            Counter(t["termination_detail"] for t in trials if t["no_action"])
         ),
         "run_id": run_id,
         "summary": summary,
@@ -352,6 +358,14 @@ def contrasts(results):
         ("mini-native", "mini-json"),
         ("luna-json", "mini-json"),
     ]
+    pairs += [
+        (label, label.removesuffix("-8k")) for label in ALLOWANCE_CONFIGS
+    ]
+    pairs += [
+        ("luna-json-medium-8k", "terra-json-8k"),
+        ("terra-json-8k", "mini-json-medium-8k"),
+        ("luna-json-medium-8k", "mini-json-medium-8k"),
+    ]
     output = []
     for first, second in pairs:
         if first not in by_name or second not in by_name:
@@ -395,13 +409,11 @@ def render(results, split, manifest=None, accounting=None, comparisons=None):
     text = [
         "# Terminal-Bench 2 task-model and protocol calibration",
         "",
-        "Date: 2026-09-10. **R7 corrected offline re-analysis (P1.2, "
-        "including W5d). "
-        "No configuration is eligible under either A9 reading.** "
-        "No benchmark reruns, Docker commands, or model calls were made "
-        "for this re-analysis. "
-        "All rewards are from the saved, unmodified Harbor 0.22 verifier "
-        "evidence.",
+        "Date: 2026-09-10. **P1.2 allowance experiment (W5f), reported "
+        "under the W5e/R7 corrected contracts.** Three new 8,192-token "
+        "jobs extend the eight historical 4,096-token configurations. "
+        "All rewards use saved, unmodified Harbor 0.22 verifier evidence. "
+        "This is AD12 evidence; AD10–AD12 remain pending decisions.",
         "",
         "## Setup and reproducibility",
         "",
@@ -445,7 +457,8 @@ def render(results, split, manifest=None, accounting=None, comparisons=None):
     text += [
         "Every configuration has 30 tasks × 2 finalized attempts. Shared "
         "settings: "
-        "4,096 completion tokens (reasoning plus output), 24 model calls, "
+        "4,096 completion tokens historically and 8,192 for rows ending "
+        "`-8k` (reasoning plus output), 24 model calls, "
         "30 seconds per "
         "command, 180 seconds per API call, $1 per-rollout guard, and "
         "task-defined Harbor "
@@ -453,7 +466,10 @@ def render(results, split, manifest=None, accounting=None, comparisons=None):
         "original six rows "
         "use low reasoning; W5d adds Mini/JSON and Luna/JSON at medium. No "
         "Terra/medium "
-        "row exists. Native means Chat Completions function tools, with "
+        "row exists. W5f repeats Terra/low, Mini/medium, and Luna/medium "
+        "with the shared 8,192-token allowance, concurrency 3, a separate "
+        "$15 cohort guard, and the unchanged $1 rollout guard. Native "
+        "means Chat Completions function tools, with "
         "`parallel_tool_calls=false`, terminal/read_file/write_file, and a "
         "plain final answer. "
         "JSON uses the same common serialized history and prompt across "
@@ -461,7 +477,7 @@ def render(results, split, manifest=None, accounting=None, comparisons=None):
         "There is no model-specific prompt, planning, self-verification, "
         "or rescue.",
         "",
-        "Regenerate all corrected results, both cohorts, and costs with "
+        "Regenerate all corrected results, all cohorts, and costs with "
         "`uv run python -m scripts.calibration_report`; validate with "
         "`uv run python -m scripts.audit_calibration`. These are offline "
         "reducers. "
@@ -530,7 +546,7 @@ def render(results, split, manifest=None, accounting=None, comparisons=None):
         "[calibration_results.json](../costs/calibration_results.json). "
         "The derived "
         "[attempt "
-        "events](../logs/calibration-r7-reanalysis/attempts.jsonl) "
+        "events](../logs/calibration-8k-followup-260910/attempts.jsonl) "
         "preserve execution "
         "evidence without inventing timestamps or changing historical "
         "traces. Adding execution "
@@ -677,7 +693,8 @@ def render(results, split, manifest=None, accounting=None, comparisons=None):
         ],
     )
     text += [
-        "Luna/low’s seven no-action attempts comprise six inability claims "
+        "At 4,096 tokens, Luna/low’s seven no-action attempts comprise "
+        "six inability claims "
         "and one "
         "instruction-only final answer (`configure-git-webserver`); all "
         "seven contain "
@@ -707,7 +724,7 @@ def render(results, split, manifest=None, accounting=None, comparisons=None):
         "Overall contrasts "
         "appear below; corresponding search/anchor/sealed contrasts and "
         "CIs are archived in "
-        "[contrasts.json](../logs/calibration-r7-reanalysis/contrasts.json).",
+        "[contrasts.json](../logs/calibration-8k-followup-260910/contrasts.json).",
         "",
     ]
     text += table(
@@ -723,8 +740,11 @@ def render(results, split, manifest=None, accounting=None, comparisons=None):
             if r["scope"] == "overall"
         ],
     )
+    from scripts.calibration_allowance_report import render_allowance
+
+    text += render_allowance(results)
     text += [
-        "## Eligibility and decision",
+        "## Eligibility and pending decisions",
         "",
         "The screen requires complete avg@2 in **15–45% inclusive**, no "
         "action "
@@ -771,45 +791,37 @@ def render(results, split, manifest=None, accounting=None, comparisons=None):
                 for r in results
             ],
         )
+    eligibility = {
+        name: [r["configuration"] for r in results if eligible(r, key)]
+        for key, name in (("pass_l1", "L1"), ("pass_l2", "L2"))
+    }
     text += [
-        "**No eligible configuration exists under L1 or L2, including both "
-        "medium rows.** "
-        "The published Terra recommendation is withdrawn. Under L1 the "
-        "Luna and Terra "
-        "pass-rate bands alone cannot overcome their no-action failures. "
-        "Under L2 all "
-        "operational configurations are also below 15%. Mini’s required "
-        "medium escalation "
-        "has been measured and does not establish eligibility. Luna/medium "
-        "does not resolve "
-        "the no-action concern. Selection remains unresolved: AD1 prefers "
-        "eligible Luna, "
-        "then cheapest eligible, whereas PREREG specifies cheapest "
-        "eligible and different "
-        "fallback/escalation rules. That conflict requires ratification; "
-        "this report does "
-        "not choose a favorable fallback or change strata, prompts, "
-        "budgets, or token limits.",
+        "**Eligible under L1: "
+        + (", ".join(eligibility["L1"]) or "none")
+        + "; under L2: "
+        + (", ".join(eligibility["L2"]) or "none")
+        + ".** "
+        "The historical Terra recommendation remains withdrawn. "
+        "Eligibility is an empirical screen, not a model freeze or "
+        "ratification of AD10–AD12. Selection also depends on the pending "
+        "AD1 versus PREREG selection/fallback rule and full pilot guards.",
         "",
         "### Pilot cost projection and operating limits",
         "",
-        "**Eligible configurations to project: none under L1; none under "
-        "L2.** "
-        "For review of the rejected alternatives, the following "
-        "descriptive projections "
-        "multiply mean known cost over all 60 finalized attempts by 2,800 "
-        "solver rollouts. "
-        "They exclude judges, evolution, cross-judges, interruptions, and "
-        "unresolved billing. "
-        "They are not projections conditional on success.",
+        "The following descriptive projections cover every configuration "
+        "and multiply mean known cost over all 60 finalized attempts by "
+        "2,800 solver rollouts. They exclude judges, evolution, "
+        "cross-judges, interruptions, and unresolved billing. They are "
+        "not projections conditional on success.",
         "",
     ]
     text += table(
         [
-            "Configuration (all ineligible)",
+            "Configuration",
             "Mean calls",
-            "USD / finalized rollout",
-            "USD / 2,800",
+            "Known USD / finalized rollout",
+            "Known USD / 2,800",
+            "Max known USD / rollout",
             "All-work known USD",
             "Agent s",
             "Batch wall s",
@@ -825,6 +837,9 @@ def render(results, split, manifest=None, accounting=None, comparisons=None):
                 f"{2800 * r['mean_usd']:.2f}"
                 if r["response_calls"]
                 else "not estimable",
+                f"{r['max_usd']:.6f}"
+                if r["response_calls"]
+                else "unknown billing",
                 f"{r['known_usd']:.8f}",
                 f"{r['mean_agent_s']:.2f}",
                 ("≥" if r["summary"].get("wall_is_lower_bound") else "")
@@ -837,7 +852,8 @@ def render(results, split, manifest=None, accounting=None, comparisons=None):
     text += [
         "Prices are standard API proxies from "
         "[scripts/prices.json](../scripts/prices.json), "
-        "not verified Azure invoices. Terra’s $347.94 solver-only "
+        "not verified Azure invoices. Historical Terra/4k’s $347.94 "
+        "solver-only "
         "projection already exceeds "
         "the $300 whole-pilot guard. Low-cost early failures do not "
         "establish useful capacity. "
@@ -846,14 +862,16 @@ def render(results, split, manifest=None, accounting=None, comparisons=None):
         "Mini/JSON used nominal concurrency 8; other original jobs used 4; "
         "medium jobs used "
         "3 while W9 shared Docker with a six-container combined admission "
-        "limit. The "
+        "limit. The new 8k jobs use concurrency 3 and a combined "
+        "seven-container admission limit, with MemAvailable admission "
+        "paused below 6 GiB and resumed at 10 GiB. The "
         "Mini/native resume log also shows four old containers alongside "
         "four new containers. "
         "Nominal launcher concurrency therefore does not fully describe "
         "host load. Batches "
         "were sequential, cache conditions differed, and agent/window "
         "times are descriptive. "
-        "Only Mini supplies concurrency-eight evidence. All eight "
+        "Only Mini supplies concurrency-eight evidence. The eight historical "
         "configurations record "
         "zero HTTP 429s, zero 5xx responses, and zero Harbor agent "
         "timeouts; command timeouts "
@@ -924,6 +942,27 @@ def render(results, split, manifest=None, accounting=None, comparisons=None):
             for name, r in accounting.items()
         ],
     )
+    if "w5f-8k" in accounting:
+        new = accounting["w5f-8k"]
+        states = new["cost_states"]
+        text += [
+            "The 8k cohort has "
+            f"{states.get('priced', 0)} priced call records, "
+            f"{states.get('other_unknown', 0)} API-timeout records with "
+            "unknown charges, "
+            f"{states.get('http_error_charge_unknown', 0)} HTTP rejection "
+            "with unknown charges, and "
+            f"{states.get('local_budget_stop_no_dispatch', 0)} local "
+            "rollout-budget stop with no API dispatch or additional API "
+            "usage. Thus the eight null-cost records do not mean eight "
+            "unresolved dispatched charges. All seven unresolved "
+            "dispatched requests belong to Terra. The $1 rollout cap was "
+            "retained for every attempt. The dedicated "
+            "[8k manifest](../data/calibration_8k_run_manifest.json) "
+            "records the allowance, guards, baseline configurations, and "
+            "final job hashes. No 8k attempts were interrupted or replaced.",
+            "",
+        ]
     text += [
         "Original Mini/native resolves as **51 original + 2 resume + 7 "
         "recovery2 = 60** "
@@ -959,12 +998,13 @@ def render(results, split, manifest=None, accounting=None, comparisons=None):
         "prohibited PREREG file "
         "was not edited, and formal policy reconciliation remains pending.",
         "",
-        "The [cohort audit](../logs/calibration-r7-reanalysis/audit.json) "
+        "The [cohort audit]"
+        "(../logs/calibration-8k-followup-260910/audit.json) "
         "checks UUID "
         "bijection, finalized slots, payload parity, response token usage, "
-        "prices, and both "
+        "prices, and all "
         "budget guards. [costs/summary.md](../costs/summary.md) presents "
-        "the two cohorts "
+        "the three cohorts "
         "separately, with other project calls outside those guards.",
         "",
         "## Native rejection evidence",
@@ -993,7 +1033,7 @@ def render(results, split, manifest=None, accounting=None, comparisons=None):
         "would create "
         "another model-specific experimental difference.",
         "",
-        "The only backend change in this task archives sanitized HTTP "
+        "The W5e backend change archives sanitized HTTP "
         "error bodies and "
         "endpoint metadata per HTTP attempt, including retried errors, "
         "without changing "
@@ -1016,9 +1056,8 @@ def render(results, split, manifest=None, accounting=None, comparisons=None):
         "- Whether to ratify common JSON (AD11), or implement and "
         "calibrate a common valid "
         "native transport. Terra’s exact rejection body is unavailable.",
-        "- Whether raising the common 4,096-token allowance changes "
-        "eligibility (AD12); "
-        "no higher-allowance or Terra/medium runs exist.",
+        "- Whether to ratify the 8,192-token allowance (AD12). The three "
+        "new jobs supply evidence; Terra/medium remains unmeasured.",
         "- Repeat-run variability, effects of provider sampling defaults, "
         "and a generation "
         "seed. Task-bootstrap CIs do not estimate these sources of "
@@ -1071,8 +1110,7 @@ def main():
     ledger = read_ledger(ROOT / "costs/ledger.jsonl")
     split = json.loads((ROOT / "data/tb2_split.json").read_text())
     results = [
-        collect(label, ledger, split, manifest)
-        for label in CONFIGS | MEDIUM_CONFIGS
+        collect(label, ledger, split, manifest) for label in ALL_CONFIGS
     ]
     assert all(r and r["n_results"] == 60 for r in results)
     assert all(
@@ -1081,7 +1119,7 @@ def main():
     )
     accounting = account(ledger, manifest, results, ROOT)
     comparisons = contrasts(results)
-    archive = ROOT / "logs/calibration-r7-reanalysis"
+    archive = ROOT / "logs/calibration-8k-followup-260910"
     archive.mkdir(exist_ok=True)
     for name, value in (
         ("accounting.json", accounting),
