@@ -21,13 +21,20 @@ CONFIGS = {
     "terra-native": ("gpt56terra", "TASK_ALT2", "native"),
     "terra-json": ("gpt56terra", "TASK_ALT2", "json"),
 }
+MEDIUM_CONFIGS = {
+    "mini-json-medium": CONFIGS["mini-json"],
+    "luna-json-medium": CONFIGS["luna-json"],
+}
 
 
 def job_config(label, concurrency):
-    if concurrency != 4:
+    medium = label in MEDIUM_CONFIGS
+    if medium and concurrency != 3:
+        raise ValueError("Medium follow-up requires concurrency 3")
+    if not medium and concurrency != 4:
         raise ValueError("Resumed calibration requires concurrency 4")
     split = json.loads((ROOT / "data/tb2_split.json").read_text())
-    model, endpoint, protocol = CONFIGS[label]
+    model, endpoint, protocol = (CONFIGS | MEDIUM_CONFIGS)[label]
     run_id = f"calibration-{label}-260910"
     return JobConfig.model_validate(
         {
@@ -49,7 +56,7 @@ def job_config(label, concurrency):
                         "arm": label,
                         "endpoint_prefix": endpoint,
                         "max_steps": 24,
-                        "reasoning_effort": "low",
+                        "reasoning_effort": "medium" if medium else "low",
                         "max_completion_tokens": 4096,
                         "api_max_retries": 0,
                         "rollout_budget_usd": 1.0,
@@ -58,9 +65,15 @@ def job_config(label, concurrency):
                             ROOT / "logs" / run_id / "timing.jsonl"
                         ),
                         "shared_budget_path": str(
-                            ROOT / "costs/calibration_budget.json"
+                            ROOT
+                            / "costs"
+                            / (
+                                "calibration_medium_budget.json"
+                                if medium
+                                else "calibration_budget.json"
+                            )
                         ),
-                        "shared_budget_usd": 40.0,
+                        "shared_budget_usd": 8.0 if medium else 40.0,
                     },
                 }
             ],
@@ -80,8 +93,8 @@ def job_config(label, concurrency):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("configuration", choices=CONFIGS)
-    parser.add_argument("--concurrency", type=int, choices=[4], default=4)
+    parser.add_argument("configuration", choices=CONFIGS | MEDIUM_CONFIGS)
+    parser.add_argument("--concurrency", type=int, choices=[3, 4], default=4)
     parser.add_argument("--recover-missing", action="store_true")
     parser.add_argument("--timeout", type=int, default=4200)
     args = parser.parse_args()
@@ -124,10 +137,12 @@ def main():
         "--config",
         str(config_path),
         "--n-concurrent",
-        "4",
+        str(args.concurrency),
     ]
     (run_dir / "command.json").write_text(json.dumps(command, indent=2))
     os.environ["CALIBRATION_MEMORY_LOG"] = str(run_dir / "memory.jsonl")
+    if args.configuration in MEDIUM_CONFIGS:
+        os.environ["CALIBRATION_DOCKER_LIMIT"] = "6"
     subprocess.run(
         ["docker", "ps"], check=True, capture_output=True, timeout=20
     )
