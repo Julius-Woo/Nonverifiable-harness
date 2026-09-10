@@ -313,6 +313,8 @@ Exit criteria: one TB2 task completed end-to-end by the seed harness with an ora
 
 - 2026-09-11 (later): W5f (8,192-token allowance) done: terra-low 30.0% L1, 4/60 no-action (all API timeouts), about USD 0.112/rollout; mini-medium 11.7%, 2/60; luna-medium 8.3%, 9/60 (inability claims persist). With AD10-AD13 terra-low-8k is the only eligible task model; AD1 revised accordingly, AD13 (API timeouts as infrastructure) and AD14 (pilot budget USD 400, guard USD 600 / 5 days) added for ratification. 375 tests pass.
 
+- 2026-09-11 (W9 done): isolated evolution loop (P1.3), integrated Section 5 acceptance matrix (P1.6), and C-TTS implemented; two real iterations on the 18 search tasks: A0 accepted candidate i01-c2 (search 3/18, confirmed gain +0.056, anchors 1/6 to 2/6, sealed 1/12 with one verifier timeout); A1 rejected i01-c2 (judge gain -0.083; seed retained; one anchor timeout). API cost USD 6.69; 377 tests; completed-run resume adds no requests. Review R8 launched; W8d (judge-layer fixes from R6 plus loop-side items 4-5) launched.
+
 ### 9.7 Proposed Amendments to Sections 1-8 (pending user approval)
 
 Sources: the literature digest `docs/background.md` (Part B deltas; independent review R2 pending) and the GDPevo assessment `docs/gdpevo_assessment.md` with its independent review R1 (`docs/reviews.md`). Sections 1-8 are unchanged until the user approves. Review R2 of the digest is complete; its dispositions are in `docs/reviews.md`.
