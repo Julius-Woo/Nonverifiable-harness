@@ -317,6 +317,8 @@ Exit criteria: one TB2 task completed end-to-end by the seed harness with an ora
 
 - 2026-09-11 (W8d done): judge-layer fixes from R6 applied (evidence contract v2, sanitizer preserves instructions, single quota ownership, cache isolation via API user field, measurement identity, cross tau, signed A3 scores, manifest ingestion); relabelled timeouts change FPR to A1 22.2% / A2 29.8%; 409 tests. R8 (evolution loop review) in progress.
 
+- 2026-09-11 (R8b done): evolution-loop review complete: 3 blocking (isolation gate partly fixture-based; pass label not A9; no fail-closed pilot launcher) and 9 major (C-TTS v2 interface, wire-prompt fix not in paid run, C-TTS resume, recovery after iteration 1, missing-data estimand, condition freezing, ledger crash-completeness, sealed unblinding, call-cap durability). W9b launched to fix all twelve with ratification-dependent settings parameterized.
+
 ### 9.7 Proposed Amendments to Sections 1-8 (pending user approval)
 
 Sources: the literature digest `docs/background.md` (Part B deltas; independent review R2 pending) and the GDPevo assessment `docs/gdpevo_assessment.md` with its independent review R1 (`docs/reviews.md`). Sections 1-8 are unchanged until the user approves. Review R2 of the digest is complete; its dispositions are in `docs/reviews.md`.
