@@ -76,7 +76,7 @@ def test_encoded_fields_and_public_checks():
         SanitizedTrajectory('[{"kind":"state","content":"rubric: secret"}]')
 
 
-def test_file_read_only_and_complete_export(tmp_path):
+def test_file_read_only_and_v3_export(tmp_path):
     source = tmp_path / "trace.jsonl"
     records = [
         {"kind": "instruction", "text": "Task"},
@@ -97,7 +97,14 @@ def test_file_read_only_and_complete_export(tmp_path):
     with pytest.raises(ValueError):
         sanitize_file(source, hardlink)
     evidence = export_trace(source, tmp_path / "export")
-    assert len(evidence.trajectory.events[1]["stdout"]) == 13000
+    assert len(evidence.trajectory.events[1]["stdout"]) < 13000
+    assert evidence.trajectory.truncations == [
+        {
+            "observation_index": 0,
+            "original_bytes": 13011,
+            "kept_bytes": 8000,
+        }
+    ]
     assert source.read_text() == raw
 
 
@@ -453,30 +460,145 @@ def test_instruction_is_exact_but_hidden_test_contents_are_removed():
     assert "HIDDEN-ASSERTION" not in result.redactions_json
 
 
-def test_v2_export_never_caps_or_reorders_observation_content(tmp_path):
+def test_v3_export_caps_observation_stream_and_preserves_ends(tmp_path):
     records = [
         {"kind": "instruction", "text": "Complete task"},
         {
             "kind": "observation",
             "command": "visible command",
-            "stdout": "STDOUT" * 5000,
-            "stderr": "STDERR" * 5000,
+            "stdout": "S" * 30000,
+            "stderr": "E" * 30000,
             "return_code": 0,
         },
     ]
     path = tmp_path / "trace.jsonl"
     path.write_text("\n".join(json.dumps(r) for r in records))
     evidence = export_trace(path, tmp_path / "out")
-    assert evidence.trajectory.version == "sanitized-trajectory-v2"
-    assert evidence.trajectory.events[1] == records[1]
-    with pytest.raises(ValueError, match="complete observations"):
-        export_trace(path, tmp_path / "capped", observation_chars=12000)
-    with pytest.raises(ValueError, match="version"):
-        SanitizedTrajectory.from_dict(
-            {
-                "version": "sanitized-trajectory-v1",
-                "events": records,
-            }
+    assert evidence.trajectory.version == "v3"
+    event = evidence.trajectory.events[1]
+    assert event["command"] == "visible command"
+    assert event["stdout"] == "S" * 3985 + "[... omitted 26015 bytes ...]"
+    assert event["stderr"] == "[... omitted 26000 bytes ...]" + "E" * 4000
+    assert event["return_code"] == 0
+    assert evidence.trajectory.truncations == [
+        {
+            "observation_index": 0,
+            "original_bytes": 60015,
+            "kept_bytes": 8000,
+        }
+    ]
+    custom = export_trace(path, tmp_path / "custom", observation_chars=10)
+    assert custom.trajectory.truncations[0]["kept_bytes"] == 20
+    assert path.read_text() == "\n".join(json.dumps(r) for r in records)
+    for version in ("sanitized-trajectory-v1", "sanitized-trajectory-v2"):
+        with pytest.raises(ValueError, match="version"):
+            SanitizedTrajectory.from_dict(
+                {"version": version, "events": records}
+            )
+
+
+@pytest.mark.parametrize("size", [7999, 8000, 8001])
+def test_v3_per_observation_boundary(size):
+    text = "a" * size
+    trajectory = sanitize([{"kind": "observation", "stdout": text}]).trajectory
+    if size <= 8000:
+        assert trajectory.events[0]["stdout"] == text
+        assert not trajectory.truncations
+    else:
+        assert trajectory.events[0]["stdout"] == (
+            "a" * 4000 + "[... omitted 1 bytes ...]" + "a" * 4000
+        )
+        assert trajectory.truncations[0]["kept_bytes"] == 8000
+
+
+def test_v3_unicode_bytes_and_empty_ends():
+    trajectory = sanitize(
+        [
+            {"kind": "observation", "stdout": "é🙂漢x"},
+        ],
+        observation_chars=1,
+    ).trajectory
+    assert trajectory.events[0]["stdout"] == "é[... omitted 7 bytes ...]x"
+    assert trajectory.truncations == [
+        {
+            "observation_index": 0,
+            "original_bytes": 10,
+            "kept_bytes": 3,
+        }
+    ]
+    zero = sanitize(
+        [{"kind": "observation", "stdout": "é🙂漢x"}], observation_chars=0
+    ).trajectory
+    assert zero.events[0]["stdout"] == "[... omitted 10 bytes ...]"
+    assert zero.truncations[0]["kept_bytes"] == 0
+
+
+def test_v3_total_cap_includes_json_metadata_and_trims_longest():
+    from evolution.sanitize import canonical
+
+    records = [
+        {"kind": "instruction", "text": "Task"},
+        {"kind": "observation", "stdout": "s" * 200},
+        {"kind": "observation", "stdout": "L" * 2000},
+        {"kind": "finish", "answer": "Done"},
+    ]
+    full = sanitize(records, trajectory_chars=9999).trajectory
+    boundary = len(canonical(full.to_dict()))
+    # Keep parameter digit width constant while locating the exact boundary.
+    full = sanitize(records, trajectory_chars=boundary).trajectory
+    assert len(canonical(full.to_dict())) == boundary
+    assert not full.truncations
+    capped = sanitize(records, trajectory_chars=boundary - 1).trajectory
+    assert len(canonical(capped.to_dict())) == boundary - 1
+    assert capped.events[1] == records[1]
+    assert capped.truncations[0]["observation_index"] == 1
+    assert capped.events[0] == records[0]
+    assert capped.events[-2] == records[-1]
+    assert capped.events[-1] == full.events[-1]
+    assert SanitizedTrajectory.from_dict(capped.to_dict()) == capped
+
+
+def test_v3_total_cap_multiple_observations_and_irreducible_evidence():
+    from evolution.sanitize import canonical
+
+    records = [
+        {"kind": "observation", "stdout": "x" * 8000} for _ in range(30)
+    ]
+    trajectory = sanitize(records).trajectory
+    assert len(canonical(trajectory.to_dict())) <= 200000
+    assert len(trajectory.truncations) > 1
+    assert [r["observation_index"] for r in trajectory.truncations] == list(
+        range(len(trajectory.truncations))
+    )
+    with pytest.raises(ValueError, match="non-observation"):
+        sanitize([{"kind": "instruction", "text": "x" * 200000}])
+
+
+def test_v3_sanitizes_hidden_content_before_cap_and_preserves_original():
+    records = [{"kind": "observation", "stdout": "x" * 9000 + " CANARY"}]
+    original = json.dumps(records)
+    trajectory = sanitize(records, hidden_values=["CANARY"]).trajectory
+    assert trajectory.events[0]["stdout"] == "[REDACTED]"
+    assert not trajectory.truncations
+    assert json.dumps(records) == original
+
+
+@pytest.mark.parametrize(
+    "observation_chars,trajectory_chars",
+    [
+        (-1, 200000),
+        (True, 200000),
+        (1.5, 200000),
+        (4000, 0),
+        (4000, False),
+    ],
+)
+def test_v3_invalid_cap_parameters(observation_chars, trajectory_chars):
+    with pytest.raises(ValueError):
+        sanitize(
+            [],
+            observation_chars=observation_chars,
+            trajectory_chars=trajectory_chars,
         )
 
 
@@ -617,7 +739,7 @@ def test_redaction_locations_still_reference_raw_indexes():
     )
 
 
-def test_v1_projected_observations_cannot_be_wrapped_as_v2():
+def test_v1_projected_observations_cannot_be_wrapped_as_v3():
     with pytest.raises(ValueError, match="separate evidence version"):
         sanitize(
             [
@@ -625,3 +747,50 @@ def test_v1_projected_observations_cannot_be_wrapped_as_v2():
                 {"kind": "observation", "visible_result": "old capped output"},
             ]
         )
+
+
+@pytest.mark.parametrize(
+    "change", ["missing", "duplicate", "oversized", "negative"]
+)
+def test_v3_rejects_invalid_truncation_provenance(change):
+    value = sanitize(
+        [{"kind": "observation", "stdout": "x" * 9000}]
+    ).trajectory.to_dict()
+    if change == "missing":
+        value["truncations"] = []
+    elif change == "duplicate":
+        value["truncations"] *= 2
+    elif change == "oversized":
+        value["events"][0]["stdout"] += "x" * 9000
+    else:
+        value["truncations"][0]["kept_bytes"] = -1
+    with pytest.raises(ValueError):
+        SanitizedTrajectory.from_dict(value)
+
+
+def test_v3_total_cap_handles_marker_disappearance_at_field_boundaries():
+    from evolution.sanitize import canonical
+
+    records = [
+        {
+            "kind": "observation",
+            "command": "short",
+            "stdout": "x" * 1000,
+            "stderr": "short",
+        }
+    ]
+    # The smallest serialization retains the short end fields: replacing
+    # each with a marker would increase size and incorrectly reject this cap.
+    almost_empty = sanitize(
+        records, observation_chars=5, trajectory_chars=1000
+    ).trajectory
+    cap = len(canonical(almost_empty.to_dict()))
+    # Adjust for the shorter trajectory_chars number in the envelope.
+    cap -= len(str(1000)) - len(str(cap))
+    value = sanitize(
+        records, observation_chars=4000, trajectory_chars=cap + 6
+    ).trajectory
+    assert len(canonical(value.to_dict())) <= cap + 6
+    assert value.events[0]["command"] == "short"
+    assert value.events[0]["stderr"] == "short"
+    assert value.truncations[0]["kept_bytes"] >= 10

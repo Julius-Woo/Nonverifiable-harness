@@ -10,7 +10,7 @@ from evolution.sanitize import (
 )
 from harness.ledger import CallTags
 
-PROMPT_VERSION = "judge-v2"
+PROMPT_VERSION = "judge-v3"
 RUBRIC = (
     "Are key claims supported by visible verification actions, such as "
     "running commands, queries, or checks, rather than merely asserted?",
@@ -157,7 +157,10 @@ def final_summary(trajectory):
         "recorded_artifacts": list(artifacts.values()),
         "last_state_observation": last_observation,
         "termination": outcome,
-        "sanitized_source_sha256": digest(trajectory.events_json),
+        "sanitized_source_sha256": digest(canonical(trajectory.to_dict())),
+        "evidence_version": trajectory.version,
+        "truncations": trajectory.truncations,
+        "caps": trajectory.to_dict()["caps"],
     }
 
 

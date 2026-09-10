@@ -621,6 +621,9 @@ def cost_summary(ledger, audit, *, arm=None, iteration=None, run_id=None):
                     if e["role"] == role
                 ),
             }
-            for role in ("task", "evolver", "judge")
+            for role in sorted(
+                {"task", "evolver", "judge"}
+                | {e["role"] for e in intents.values()}
+            )
         },
     }

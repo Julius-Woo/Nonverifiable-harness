@@ -19,13 +19,31 @@ from pathlib import Path
 
 from dotenv import dotenv_values
 
-from evolution.judge_queue import ROOT, configured_queue, export_trace
-from evolution.judges import PROMPT_VERSION, PROMPTS, JudgeInput, build_prompt
+from evolution.judge_queue import (
+    ROOT,
+    configured_queue,
+    export_trace,
+    preflight_prompt,
+)
+from evolution.judges import (
+    PROMPT_VERSION,
+    PROMPTS,
+    JudgeInput,
+    build_prompt,
+    prompt_hash,
+)
 from evolution.outcomes import termination
-from evolution.sanitize import VERSION, canonical, digest
+from evolution.sanitize import (
+    DEFAULT_OBSERVATION_CHARS,
+    DEFAULT_TRAJECTORY_CHARS,
+    VERSION,
+    canonical,
+    cap_parameters,
+    digest,
+)
 
 DEFAULT_JOB = ROOT / "logs/harbor/calibration-mini-json-260910"
-DEFAULT_OUTPUT = ROOT / "logs/judges/seed-mini-json-v2"
+DEFAULT_OUTPUT = ROOT / "logs/judges/seed-mini-json-v3"
 SAMPLING = (
     "temperature 0.6, top_p 0.95, JSON object response, "
     "reasoning at provider default; no provider seed"
@@ -101,58 +119,92 @@ def verifier_label(
 
 
 def prepare(job, output, config, source_manifest=None):
+    """Freeze v3 exports using archived selection and source hashes."""
     output.mkdir(parents=True, exist_ok=True)
     manifest_path = output / "manifest.json"
-    if source_manifest and not manifest_path.exists():
-        source = Path(source_manifest).resolve()
-        previous = json.loads(source.read_text())
-        if previous["job"] != str(job.resolve()):
-            raise ValueError("A fixed calibration cannot change jobs")
-        if previous["prompt_hashes"] != {
-            j: digest(p) for j, p in PROMPTS.items()
-        }:
-            raise ValueError("Cannot reuse evidence with changed prompts")
-        previous.update(
-            sampling=SAMPLING,
-            reused_manifest=str(source),
-            reused_manifest_sha256=hashlib.sha256(
-                source.read_bytes()
-            ).hexdigest(),
-        )
-        manifest_path.write_text(json.dumps(previous, indent=2))
+    observation_chars = int(
+        config.get("JUDGING_OBSERVATION_CHARS", DEFAULT_OBSERVATION_CHARS)
+    )
+    trajectory_chars = int(
+        config.get("JUDGING_TRAJECTORY_CHARS", DEFAULT_TRAJECTORY_CHARS)
+    )
+    caps = cap_parameters(observation_chars, trajectory_chars)
+    hashes = {j: digest(p) for j, p in PROMPTS.items()}
     if manifest_path.exists():
         manifest = json.loads(manifest_path.read_text())
         if manifest["job"] != str(job.resolve()):
             raise ValueError("A fixed calibration cannot change jobs")
-        for judge, prompt in PROMPTS.items():
-            if manifest["prompt_hashes"][judge] != digest(prompt):
-                raise ValueError(
-                    "Frozen prompts changed; use a new output directory"
-                )
-        if manifest["sampling"] != SAMPLING:
-            raise ValueError("Sampling changed; use a new output directory")
-        for entry in manifest["entries"]:
-            JudgeInput.from_dict(
-                json.loads(Path(entry["evidence_path"]).read_text())
+        if (
+            manifest.get("evidence_version") != VERSION
+            or manifest.get("caps") != caps
+            or manifest["prompt_hashes"] != hashes
+            or manifest["sampling"] != SAMPLING
+        ):
+            raise ValueError(
+                "Frozen evidence/settings changed; use a new output directory"
             )
+        for entry in manifest["entries"]:
+            raw = Path(entry["evidence_path"]).read_bytes()
+            if hashlib.sha256(raw).hexdigest() != entry["evidence_sha256"]:
+                raise ValueError("Frozen evidence file changed")
+            JudgeInput.from_dict(json.loads(raw))
         return manifest
     split_path = ROOT / "data/tb2_split.json"
-    split = json.loads(split_path.read_text())
+    source = Path(source_manifest).resolve() if source_manifest else None
+    previous = json.loads(source.read_text()) if source else None
+    if previous:
+        if previous["job"] != str(job.resolve()):
+            raise ValueError("A fixed calibration cannot change jobs")
+        if previous["prompt_hashes"] != hashes:
+            raise ValueError("Cannot reuse selection with changed prompts")
+        selected = [
+            (
+                e["task"],
+                e["partition"],
+                e["attempt"],
+                job / e["trial"] / "result.json",
+            )
+            for e in previous["entries"]
+        ]
+        frozen = {e["trial"]: e for e in previous["entries"]}
+    else:
+        selected = select_trials(job, json.loads(split_path.read_text()))
+        frozen = {}
     entries = []
-    for name, partition, attempt, result_path in select_trials(job, split):
+    for name, partition, attempt, result_path in selected:
         trace = result_path.parent / "agent/trace.jsonl"
-        records = [json.loads(line) for line in trace.read_text().splitlines()]
-        result = json.loads(result_path.read_text())
+        trace_bytes, result_bytes = (
+            trace.read_bytes(),
+            result_path.read_bytes(),
+        )
+        source_hashes = {
+            "trace_sha256": hashlib.sha256(trace_bytes).hexdigest(),
+            "result_sha256": hashlib.sha256(result_bytes).hexdigest(),
+        }
+        old = frozen.get(result_path.parent.name)
+        if old and any(old[k] != v for k, v in source_hashes.items()):
+            raise ValueError("Frozen raw trace/result hash changed")
+        records = [
+            json.loads(line)
+            for line in trace_bytes.splitlines()
+            if line.strip()
+        ]
+        result = json.loads(result_bytes)
+        destination = output / "traces" / result_path.parent.name
         evidence = export_trace(
             trace,
-            output / "traces" / result_path.parent.name,
+            destination,
             result=result,
+            observation_chars=observation_chars,
+            trajectory_chars=trajectory_chars,
         )
-        label, reason = verifier_label(result, records)
-        evidence_path = (
-            output / "traces" / result_path.parent.name / "evidence.json"
-        )
+        evidence_path = destination / "evidence.json"
         evidence_path.write_text(canonical(evidence.to_dict()))
+        label, reason = verifier_label(result, records)
+        readings = {}
+        for policy in ("executor", "strict"):
+            y, why = verifier_label(result, records, tool_policy=policy)
+            readings[policy] = {"label": y, "reason": why}
         entries.append(
             {
                 "task": name,
@@ -160,42 +212,122 @@ def prepare(job, output, config, source_manifest=None):
                 "attempt": attempt,
                 "trial": result_path.parent.name,
                 "evidence_path": str(evidence_path),
-                "trace_sha256": hashlib.sha256(trace.read_bytes()).hexdigest(),
-                "result_sha256": hashlib.sha256(
-                    result_path.read_bytes()
+                **source_hashes,
+                "evidence_sha256": hashlib.sha256(
+                    evidence_path.read_bytes()
                 ).hexdigest(),
                 "oracle_label": label,
                 "label_reason": reason,
+                "label_readings": readings,
                 "raw_reward": (
                     (result.get("verifier_result") or {}).get("rewards") or {}
                 ).get("reward"),
             }
         )
     manifest = {
-        "version": "seed-calibration-v2",
+        "version": "seed-calibration-v3",
         "evidence_version": VERSION,
         "job": str(job.resolve()),
-        "selection": (
+        "selection": previous["selection"]
+        if previous
+        else (
             "started_at ascending, trial_name tie-break; "
             "first 30 plus second 18 search"
         ),
-        "split_sha256": hashlib.sha256(split_path.read_bytes()).hexdigest(),
+        "split_sha256": previous["split_sha256"]
+        if previous
+        else hashlib.sha256(split_path.read_bytes()).hexdigest(),
         "prompt_version": PROMPT_VERSION,
-        "prompt_hashes": {j: digest(p) for j, p in PROMPTS.items()},
+        "prompt_hashes": hashes,
         "repeats": {"JUDGE": 5, "XJUDGE": 1},
         "tau_rule": "sample SD of five equally task-weighted search means",
         "primary_threshold": 0.5,
         "a2_prereg_threshold": 0.8,
-        "observation_chars": None,
+        "caps": caps,
         "entries": entries,
         "sampling": SAMPLING,
     }
+    if source:
+        manifest.update(
+            reused_manifest=str(source),
+            reused_manifest_sha256=hashlib.sha256(
+                source.read_bytes()
+            ).hexdigest(),
+        )
     manifest_path.write_text(json.dumps(manifest, indent=2))
     return manifest
 
 
+def truncation_statistics(manifest):
+    rows = []
+    for entry in manifest["entries"]:
+        evidence = JudgeInput.from_dict(
+            json.loads(Path(entry["evidence_path"]).read_text())
+        )
+        trajectory = evidence.trajectory
+        truncated = trajectory.truncations
+        rows.append(
+            {
+                "trial": entry["trial"],
+                "observations": sum(
+                    e["kind"] == "observation" for e in trajectory.events
+                ),
+                "truncated_observations": len(truncated),
+                "bytes_omitted": sum(
+                    r["original_bytes"] - r["kept_bytes"] for r in truncated
+                ),
+                "sanitized_evidence_chars": len(
+                    canonical(trajectory.to_dict())
+                ),
+                "truncations": truncated,
+            }
+        )
+    return {
+        "caps": manifest["caps"],
+        "trajectories": len(rows),
+        "truncated_trajectories": sum(
+            r["truncated_observations"] > 0 for r in rows
+        ),
+        "observations": sum(r["observations"] for r in rows),
+        "truncated_observations": sum(
+            r["truncated_observations"] for r in rows
+        ),
+        "bytes_omitted": sum(r["bytes_omitted"] for r in rows),
+        "per_trajectory": rows,
+    }
+
+
 def enqueue_manifest(manifest, output, config):
-    queues, projection = [], {}
+    queues, projection, audit = [], {}, []
+    try:
+        for prefix in manifest["repeats"]:
+            queue, endpoint = configured_queue(prefix, output, config)
+            queues.append(queue)
+            for entry in manifest["entries"]:
+                evidence = JudgeInput.from_dict(
+                    json.loads(Path(entry["evidence_path"]).read_text())
+                )
+                for judge in ("a1", "a2"):
+                    prompt = build_prompt(judge, evidence)
+                    audit.append(
+                        {
+                            "endpoint": prefix,
+                            "trial": entry["trial"],
+                            "judge": judge,
+                            "prompt_sha256": prompt_hash(prompt),
+                            **preflight_prompt(
+                                prompt,
+                                max_tokens=endpoint.max_tokens,
+                                tpm=endpoint.tpm,
+                            ),
+                        }
+                    )
+    finally:
+        for queue in queues:
+            queue.close()
+            queue.limiter.close()
+    (output / "preflight-audit.json").write_text(json.dumps(audit, indent=2))
+    queues = []
     for prefix, repeats in manifest["repeats"].items():
         queue, endpoint = configured_queue(prefix, output, config)
         total, remaining = 0, 0
@@ -234,7 +366,9 @@ def enqueue_manifest(manifest, output, config):
     remaining_total = sum(
         p["remaining_attempt_bound_usd"] for p in projection.values()
     )
-    budget_path = ROOT / "costs/judges_budget.json"
+    budget_path = Path(
+        config.get("JUDGING_BUDGET_PATH", ROOT / "costs/judges_budget.json")
+    )
     used = (
         json.loads(budget_path.read_text())["used_usd"]
         if (budget_path.exists())
@@ -244,13 +378,18 @@ def enqueue_manifest(manifest, output, config):
     projection["remaining_two_attempt_bound_usd"] = remaining_total
     projection["projected_total_usd"] = used + remaining_total
     projection["budget_limit_usd"] = 15
+    projection["budget_path"] = str(budget_path)
+    projection["admission_policy"] = (
+        "Atomic shared USD 15 guard before each API request; the all-items "
+        "two-attempt bound is reported, not charged or required upfront"
+    )
     (output / "projection.json").write_text(json.dumps(projection, indent=2))
-    if projection["projected_total_usd"] > 15:
+    if used >= 15:
         for queue in queues:
             queue.close()
             queue.limiter.close()
         raise ValueError(
-            "Projected calibration exceeds USD 15; no calls dispatched"
+            "Calibration budget is exhausted; no calls dispatched"
         )
     return queues, projection
 
@@ -460,6 +599,20 @@ def analyze(manifest, queues, output):
                     r["cost_usd"] is None for r in calls
                 ),
             }
+            report["classification_readings_0.5"] = {
+                policy: classification(
+                    flat,
+                    [
+                        e.get("label_readings", {})
+                        .get(policy, {})
+                        .get("label", e["oracle_label"])
+                        for e in entries
+                        for _ in range(repeats)
+                    ],
+                    0.5,
+                )
+                for policy in ("executor", "strict")
+            }
             # Missing cache telemetry is not zero usage. Report a separate
             # all-input-uncached planning upper estimate without editing the
             # original ledger or releasing its conservative budget reserves.
@@ -509,6 +662,39 @@ def analyze(manifest, queues, output):
                         / 1_000_000
                     )
             report["attempts"] = len(attempts)
+            report["attempt_usage_estimate_usd"] = sum(attempt_estimates)
+            report["attempts_without_usage"] = len(attempts) - len(
+                attempt_estimates
+            )
+            unresolved_reserves = []
+            for record in attempts:
+                if all(
+                    record.get(k) is not None
+                    for k in ("input_tokens", "output_tokens")
+                ):
+                    continue
+                rates = prices["models"].get(record["requested_model"])
+                try:
+                    request = json.loads(
+                        (Path(record["raw_dir"]) / "request.json").read_text()
+                    )
+                    prompt = request["messages"][0]["content"]
+                    maximum = request["max_completion_tokens"]
+                    reserve = (
+                        (len(prompt.encode()) + 256)
+                        * max(rates["input"], rates["cache_write"])
+                        + maximum * rates["output"]
+                    ) / 1_000_000
+                except (OSError, ValueError, KeyError, TypeError):
+                    reserve = None
+                unresolved_reserves.append(reserve)
+            report["attempt_unresolved_reservation_usd"] = (
+                sum(unresolved_reserves)
+                if None not in unresolved_reserves
+                and len(unresolved_reserves)
+                == report["attempts_without_usage"]
+                else None
+            )
             report["attempt_uncached_planning_mean_usd"] = (
                 statistics.mean(attempt_estimates)
                 if attempt_estimates
@@ -648,9 +834,23 @@ async def main_async(args):
     config["JUDGING_PRICES_PATH"] = str(ROOT / "costs/judges_prices.json")
     config.setdefault("XJUDGE_QUEUE_SUFFIX", "cap8192")
     job, output = Path(args.job).resolve(), Path(args.output).resolve()
+    config["JUDGING_OBSERVATION_CHARS"] = args.observation_chars
+    config["JUDGING_TRAJECTORY_CHARS"] = args.trajectory_chars
+    if args.budget_path:
+        config["JUDGING_BUDGET_PATH"] = str(Path(args.budget_path).resolve())
     manifest = prepare(
         job, output, config, getattr(args, "reuse_manifest", None)
     )
+    truncations = truncation_statistics(manifest)
+    (output / "truncations.json").write_text(json.dumps(truncations, indent=2))
+    if args.prepare_only:
+        print(
+            canonical(
+                {k: v for k, v in truncations.items() if k != "per_trajectory"}
+            ),
+            flush=True,
+        )
+        return
     queues, projection = enqueue_manifest(manifest, output, config)
     print(
         canonical(
@@ -723,6 +923,14 @@ async def main_async(args):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--observation-chars", type=int, default=DEFAULT_OBSERVATION_CHARS
+    )
+    parser.add_argument(
+        "--trajectory-chars", type=int, default=DEFAULT_TRAJECTORY_CHARS
+    )
+    parser.add_argument("--budget-path", type=Path)
+    parser.add_argument("--prepare-only", action="store_true")
     parser.add_argument("--job", default=str(DEFAULT_JOB))
     parser.add_argument("--output", default=str(DEFAULT_OUTPUT))
     parser.add_argument("--reuse-manifest", type=Path)

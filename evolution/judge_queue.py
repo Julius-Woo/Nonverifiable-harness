@@ -29,8 +29,11 @@ from evolution.judges import (
     judge_once,
     parse_response,
     prompt_hash,
+    prompt_messages,
 )
 from evolution.sanitize import (
+    DEFAULT_OBSERVATION_CHARS,
+    DEFAULT_TRAJECTORY_CHARS,
     VERSION,
     canonical,
     digest,
@@ -249,6 +252,39 @@ class Endpoint:
         )
 
 
+def preflight_prompt(prompt, *, max_tokens=2048, tpm=250_000):
+    """Measure exact wire messages and the unchanged backend's admission bound.
+
+    The backend limits content UTF-8 bytes + 256 to 200,000. Serialized wire
+    bytes additionally include JSON quoting and are reported separately.
+    One minute of TPM includes the maximum completion reservation.
+    """
+    content_bytes = len(prompt.encode("utf-8"))
+    input_reservation = content_bytes + 256
+    reservation = input_reservation + max_tokens
+    report = {
+        "wire_prompt_bytes": len(canonical(prompt_messages(prompt)).encode()),
+        "prompt_content_bytes": content_bytes,
+        "backend_input_reservation": input_reservation,
+        "backend_limit": 200_000,
+        "reserved_tokens": reservation,
+        "endpoint_tpm": tpm,
+    }
+    if input_reservation > 200_000:
+        raise ValueError(
+            f"Evidence v3 wire prompt still exceeds backend limit after caps: "
+            f"{input_reservation} input reservation > 200000 "
+            f"({report['wire_prompt_bytes']} serialized wire bytes)"
+        )
+    if reservation > tpm:
+        raise ValueError(
+            f"Evidence v3 prompt plus completion reservation {reservation} "
+            f"exceeds one minute's endpoint TPM {tpm}; "
+            "choose explicit evidence caps that fit this endpoint"
+        )
+    return report
+
+
 class JudgeQueue:
     def __init__(
         self,
@@ -332,7 +368,11 @@ class JudgeQueue:
             raise ValueError("repeat must be a nonnegative integer")
         if evidence.trajectory.version != self.evidence_version:
             raise ValueError("Mixed evidence versions are forbidden")
-        frozen_hash = prompt_hash(build_prompt(judge, evidence))
+        prompt = build_prompt(judge, evidence)
+        preflight_prompt(
+            prompt, max_tokens=self.max_tokens, tpm=self.limiter.tpm
+        )
+        frozen_hash = prompt_hash(prompt)
         serialized = canonical(evidence.to_dict())
         item_id = digest(
             canonical(
@@ -345,6 +385,16 @@ class JudgeQueue:
             )
         )
         self.db.execute("BEGIN IMMEDIATE")
+        first = self.db.execute(
+            "SELECT evidence FROM items LIMIT 1"
+        ).fetchone()
+        if (
+            first
+            and json.loads(first[0])["trajectory"]["caps"]
+            != (evidence.trajectory.to_dict()["caps"])
+        ):
+            self.db.rollback()
+            raise ValueError("Mixed evidence cap parameters are forbidden")
         previous = self.db.execute(
             "SELECT * FROM items WHERE rollout=? AND judge=? AND repeat=? "
             "AND evidence_version=?",
@@ -721,18 +771,28 @@ class JudgeQueue:
 
 
 def export_trace(
-    trace_path, output, *, observation_chars=None, result=None, execution=None
+    trace_path,
+    output,
+    *,
+    observation_chars=DEFAULT_OBSERVATION_CHARS,
+    trajectory_chars=DEFAULT_TRAJECTORY_CHARS,
+    result=None,
+    execution=None,
 ):
-    """Export complete sanitized observations and trusted terminal fields.
+    """Export v3 capped sanitized observations and trusted terminal fields.
 
     Result/execution records are controller-only inputs: only the termination
     allowlist is exported. No verifier diagnostics, rewards, or paths enter it.
     """
-    if observation_chars is not None:
-        raise ValueError("Evidence v2 requires complete observations; no cap")
     raw = Path(trace_path).read_bytes()
     records = [json.loads(line) for line in raw.splitlines() if line.strip()]
-    full = sanitize(records, result=result, execution=execution)
+    full = sanitize(
+        records,
+        result=result,
+        execution=execution,
+        observation_chars=observation_chars,
+        trajectory_chars=trajectory_chars,
+    )
     instructions = [
         e["text"] for e in full.trajectory.events if e["kind"] == "instruction"
     ]
@@ -748,7 +808,9 @@ def export_trace(
             "source_sha256": hashlib.sha256(raw).hexdigest(),
             "redactions": full.redactions,
             "evidence_version": VERSION,
-            "observation_policy": "complete_sanitized_observations",
+            "observation_policy": "v3_head_tail_then_longest_middle",
+            "caps": full.trajectory.to_dict()["caps"],
+            "truncations": full.trajectory.truncations,
             "sanitized_sha256": digest(full.trajectory.events_json),
         }
     )
@@ -806,7 +868,11 @@ def ingest_manifest(
 
 def configured_queue(prefix, output, config, budget_usd=15):
     endpoint = Endpoint(
-        prefix, config, output, ROOT / "costs/judges_budget.json", budget_usd
+        prefix,
+        config,
+        output,
+        config.get("JUDGING_BUDGET_PATH", ROOT / "costs/judges_budget.json"),
+        budget_usd,
     )
     limiter = TokenBucketLimiter(
         endpoint.rpm,

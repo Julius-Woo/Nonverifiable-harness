@@ -1,6 +1,6 @@
 # Judges and sealed-anchor acceptance (P1.4 / P1.7)
 
-R6 corrections applied on 2026-09-10 using archived scores only. A1 measures outcome plausibility; A2 measures **procedural compliance**, so disagreement with the outcome verifier includes construct disagreement plus error. The paid variance-control calls were not rerun.
+R6 corrections applied on 2026-09-10 using archived scores only. A1 measures outcome plausibility; A2 measures **procedural compliance**, so disagreement with the outcome verifier includes construct disagreement plus error. The R6 correction did not rerun the historical paid calls. The terra v3 control below is a separate measurement condition.
 
 ## Fixed historical evidence
 
@@ -107,15 +107,19 @@ Throughput spans the first dispatch to last completion, including probe/resume p
 
 The shared budget currently retains **$5.180951** of the **$15** cap, including unpriced-call reservations. There are 13 archived setup/compatibility attempts outside the final measurement queues. Rejected `thinking` parameters and Kimi's exhausted 2,048-token responses remain archived; no completed scores were regenerated. Larger output allowances use an explicitly distinct queue configuration, never a reset retry counter. The projection includes remaining permitted attempts plus all previously consumed or reserved budget.
 
-## Current evidence and dispatch contract
+## Current evidence and dispatch contract (v3)
 
-New exports use **sanitized-trajectory-v2** and **judge-v2**. The static A1/A2 wording and response schemas below are unchanged; the version bump identifies the corrected evidence and wire-hash contract. Archived v1 measurements are never relabelled as v2 calibration, and their tau values do not establish variance for v2. No new calibration was performed.
+New exports use evidence version **`v3`** and prompt contract **`judge-v3`**. The static A1/A2 wording and response schemas below are unchanged. V3 implements AD15's proposed cap parameters under this task's explicit authorization; AD15 and AD1 remain pending for pilot adoption. Historical v1 and blocked v2 artifacts retain their original versions and are never reinterpreted as v3 scores.
 
-`JudgeInput` accepts exactly `{task_text: str, trajectory: SanitizedTrajectory}`. The trajectory envelope is `{version, events}`. V2 preserves the complete sanitized observation strings: **no observation cap or solver-visible reconstruction is permitted**. A non-null `observation_chars` fails explicitly. Inputs that exceed endpoint or backend capacity fail without model dispatch, rather than silently shortening evidence. This follows the existing complete-trace choice in PREREG; no preregistration amendment was made.
+`JudgeInput` accepts exactly `{task_text: str, trajectory: SanitizedTrajectory}`. The trajectory envelope is `{version, events, caps, truncations}`. Defaults are `observation_chars=4000` for **each end** and `trajectory_chars=200000`. Observation text forms one ordered stream of `command`, `stdout`, `stderr`, `error`, and `protocol_error`; first and last slices stay in their original fields, with an exact `[... omitted <bytes> bytes ...]` marker for each removed field segment. Thus commands count toward the first 4,000 characters. Short observations remain exact. The cap uses Unicode characters for slicing and UTF-8 bytes for omission counts.
+
+After per-observation capping, the complete canonical trajectory JSON must fit 200,000 characters, including JSON escaping, cap parameters, markers, and provenance. The longest retained observation is shortened from its middle first, with the earliest observation breaking length ties, until the envelope fits. Ends remain balanced (the head gets an odd extra character). Instructions, assistant messages, artifacts, and termination remain intact; an irreducible envelope that cannot fit fails clearly. Every shortened observation has one cumulative `{observation_index, original_bytes, kept_bytes}` record. Indexes are zero-based among sanitized observation events; byte counts cover sanitized source text and exclude markers and JSON framing. Redacted hidden content is excluded from truncation counts. Caps are parameterized, archived, and frozen on calibration resume.
+
+Preflight measures canonical wire-message bytes and the backend's actual bound (`UTF-8 prompt-content bytes + 256 <= 200000`) separately. Before inserting any measurement, the full calibration set is checked against both endpoint limits, including the maximum completion allowance in the one-minute TPM reservation. JSON escaping of the outer wire message can make physical wire bytes larger than the backend input reservation; no tokenizer estimate replaces the backend's conservative rule. A prompt still too large after v3 fails before dispatch or queue insertion. The token bucket accepts a reservation exactly equal to one minute's TPM, including after refilling.
 
 Task instruction text is preserved exactly, including mentions of `/app/test_outputs.py` and other filenames. Redaction applies to hidden-test file contents, paired test outputs, and the listed GDPevo oracle artifacts (`eval.py`, `evaluator.py`, `eval/`, reference `output/`, `notes/`, `judge_api.py`, `judge_train_eval/`, rubric/reference fields), together with known hidden values. Hidden access and its paired observation are removed together. The filter no longer treats singular `test/` or bare `evaluator` as hidden paths. Instruction text is never removed merely for naming an artifact. Hash-only redaction provenance remains separate from judge evidence, and raw traces are never modified. This filter still requires filesystem/service isolation against aliases and copied hidden contents without markers.
 
-V2 exports end with a trusted `termination` event. Its `status` is `finished`, `failed`, or `unknown`; its `reason` follows docs/calibration.md: `normal_finish`, `no_tools_or_inability`, `token_step_budget_exhaustion`, `executor_failure`, `protocol_parse_failure`, or `trial_exception`. `unknown` explicitly covers incomplete legacy evidence without a recorded outcome. Independent boolean fields record `executor_failure`, `protocol_failure`, `nonzero_exit`, `agent_timeout`, `api_timeout`, and `action_executed`. Final finish takes precedence over exhaustion, executor failure, unrecovered protocol failure, and other exceptions; recovered failure flags remain visible. An issued command alone is not proof of execution. The trusted recorder retains final API finish reason; historical command-timeout stacks supply execution evidence locally. Verifier labels, diagnostics, result paths, exception stacks, and arbitrary metadata never enter the judge payload.
+V3 retains v2’s trusted final `termination` event. Its `status` is `finished`, `failed`, or `unknown`; its `reason` follows docs/calibration.md: `normal_finish`, `no_tools_or_inability`, `token_step_budget_exhaustion`, `executor_failure`, `protocol_parse_failure`, or `trial_exception`. `unknown` explicitly covers incomplete legacy evidence without a recorded outcome. Independent boolean fields record `executor_failure`, `protocol_failure`, `nonzero_exit`, `agent_timeout`, `api_timeout`, and `action_executed`. Final finish takes precedence over exhaustion, executor failure, unrecovered protocol failure, and other exceptions; recovered failure flags remain visible. An issued command alone is not proof of execution. The trusted recorder retains final API finish reason; historical command-timeout stacks supply execution evidence locally. Verifier labels, diagnostics, result paths, exception stacks, and arbitrary metadata never enter the judge payload.
 
 Allowed event fields, in addition to `kind`:
 
@@ -173,9 +177,9 @@ Allowed event fields, in addition to `kind`:
 }
 ```
 
-A1 receives exactly `{task_text, final_summary}`. Its deterministic summary includes the final solver claim, recorded artifact/write attempts, the last observation or recorded error, the explicit termination object, and the sanitized-source hash. Writes are identified as solver-authored attempts, not verified artifact contents. A2 receives exactly `{task_text, sanitized_trajectory}`. Neither judge receives file tools, oracle labels, other candidates' scores, partition identities, or notice that its feedback will be optimized.
+A1 receives exactly `{task_text, final_summary}`. Its deterministic summary includes the final solver claim, recorded artifact/write attempts, the last observation or recorded error, the explicit termination object, the sanitized-source hash over the complete envelope, and the v3 caps/truncation records. Writes are identified as solver-authored attempts, not verified artifact contents. A2 receives exactly `{task_text, sanitized_trajectory}`. Neither judge receives file tools, oracle labels, other candidates' scores, partition identities, or notice that its feedback will be optimized.
 
-Queue identity is **rollout ID + judge + repeat + evidence version**, enforced with a SQLite uniqueness constraint. Prompt hash and full serialized evidence are frozen values under that key. Changed evidence or prompt raises a logged conflict and grants no new attempt allowance. Legacy queues and mixed evidence versions are refused; intentional new measurements require a separate versioned queue. Endpoint and limiter-owner settings cannot change on resume. WAL, exclusive runner locking, and durable attempt counts retain the single A9 retry and completed-response recovery.
+Queue identity is **rollout ID + judge + repeat + evidence version**, enforced with a SQLite uniqueness constraint. Prompt hash and full serialized evidence are frozen values under that key. Changed evidence or prompt raises a logged conflict and grants no new attempt allowance. Legacy queues, mixed evidence versions, and mixed cap parameters are refused; intentional new measurements require a separate versioned queue. Endpoint and limiter-owner settings cannot change on resume. WAL, exclusive runner locking, and durable attempt counts retain the single A9 retry and completed-response recovery.
 
 Limiter ownership is explicit. A plain backend uses the queue's bucket; `AccountedBackend` owns admission at the final HTTP boundary and the queue reserves no quota. A mismatched composition is rejected. Every retry still consumes exactly one endpoint reservation. The persistent bounded consumer accepts new rollouts while judging earlier ones and delivers each committed judgment immediately. Loop batches feed completed rollouts into this consumer and persist their scores as judgments finish, with backpressure and cancellation through the task group.
 
@@ -435,3 +439,97 @@ Four selected traces satisfy AD13's narrower first-call/no-response wording: `ma
 | Kimi A2 | undefined | undefined | undefined | undefined |
 
 All terra-v2 TPR/FPR entries have zero observed judge-label pairs under every API-timeout sensitivity above. They are unmeasured, not zero rates.
+
+
+<!-- TERRA_V3_ANALYSIS_BEGIN -->
+## terra-low-8k, evidence v3
+
+Completed as a separate v3 measurement condition on the exact 48 trajectories from the [archived terra v2 manifest](../logs/judges/terra-8k-v2/manifest.json), SHA-256 `918ed919af3d880978fcb9af718f43433bbc5ee345e2ad094b99714bbb578bec`. The selected set remains 36 search, 6 anchor, and 6 sealed trajectories. Raw trace/result hashes were verified before re-expression; no solver was rerun. The [v3 manifest](../logs/judges/terra-8k-v3/manifest.json), [score records](../logs/judges/terra-8k-v3/scores.jsonl), [metrics](../logs/judges/terra-8k-v3/metrics.json), and [report](../logs/judges/terra-8k-v3/report.json) preserve the measured condition.
+
+AD15 defaults were fixed before dispatch: first **4,000** and last **4,000** observation characters; **200,000** characters for the full canonical sanitized trajectory envelope, including markers and provenance. The precise text-field order, byte-count definition, and total-cap algorithm are specified above. Identical v3 evidence was used for both judges and endpoints. Evidence version is `v3`; prompt contract is `judge-v3`; static wording is unchanged. Sampling was temperature 0.6, top_p 0.95, JSON response, provider-default reasoning, and no provider seed. Completion allowances were 2,048 for DeepSeek-V4-Flash and 8,192 for Kimi-K2.6. DeepSeek A1/A2 each ran five repeats; Kimi A1/A2 each ran once. All 591 API attempts used the durable queue and ledger with role `judge`; the two endpoints ran sequentially with at most four in-flight calls within this control. Measured maximum overlap was 4. Each measurement had at most one retry, with no retry-counter resets or score imputation.
+
+**Truncation and preflight.** Terra shortened **15/228 observations** in **12/48 trajectories**, omitting **96,616,869 UTF-8 source bytes**. No trajectory needed the additional total-envelope cap in this fixed set; the maximum capped envelope was 51,856 characters. Every observation omission is in [truncations.json](../logs/judges/terra-8k-v3/truncations.json). The largest wire-message serialization was 57,534 bytes. Maximum input-plus-completion reservations were 56,459 for DeepSeek (250,000 TPM) and 62,603 for Kimi (100,000 TPM). All fixed inputs passed both endpoint checks before insertion. The [wire audit](../logs/judges/terra-8k-v3/preflight-audit.json) and final report verify queued evidence, successful outbound message hashes, model configuration, and all 569 scored records.
+
+**Variance and pilot tau.** Tau is the sample SD of the five search-repeat means: average both attempts within each of 18 search tasks, then weight tasks equally. Pooled within-trace SD is the square root of the mean of the 48 sample variances; mean within-trace SD is also shown. Full per-trace SDs are in metrics.json. Kimi has one repeat, so both within-trace SD and tau are undefined.
+
+| Scorer | Scores/planned | Pooled within-trace SD | Mean within-trace SD | Tau v3 |
+| --- | --- | --- | --- | --- |
+| DeepSeek A1 | 240/240 | 0.140997 | 0.082661 | 0.006022078719 |
+| DeepSeek A2 | 240/240 | 0.147761 | 0.109522 | 0.017391639825 |
+| Kimi A1 | 46/48 | undefined | undefined | undefined |
+| Kimi A2 | 43/48 | undefined | undefined | undefined |
+
+Search-repeat means:
+
+- DeepSeek A1: 0.298611111, 0.284722222, 0.295833333, 0.290277778, 0.298611111
+- DeepSeek A2: 0.716666667, 0.677777778, 0.711111111, 0.711111111, 0.722222222
+
+Once **AD1 and AD15 are ratified**, the terra-low-8k v3 pilot should use **A1 tau = 0.006022078719** and **A2 tau = 0.017391639825** with these exact cap and judge settings. These replace the mini/v1 values for that condition; pooled within-trace SD is not tau. If A4 is used with the existing 0.5/0.5 mixture, its aligned component scores imply tau **0.011495100943**, computed without another call. A3 requires its own scorer-specific calibration. The one-repeat Kimi cross-check cannot supply `cross_tau`; F-agree still requires an independently repeated cross calibration. No pending decision, pilot manifest, or preregistration was changed by this control.
+
+**TPR/FPR at 0.5.** The executor reading has 14 positives / 34 negatives; strict A9 has 6 positives / 42 negatives. Both retain API timeouts as failures for this fixed-denominator table. Nonzero command exits are ordinary observations only in the executor reading; executor failures, protocol failures, and agent timeouts remain failures in both. AD13's four first-call/no-response cases remain potential infrastructure exclusions, not silently removed. Rates use observed judge-label pairs, with counts below; missing Kimi scores remain missing. A2 is procedural compliance, so disagreement with the outcome label includes construct disagreement. Its preregistered positive threshold remains 0.8; these 0.5 rates are descriptive, and the strict 0.8 results remain in metrics.json.
+
+| Scorer | Executor TPR at 0.5 | Executor FPR at 0.5 | Strict TPR at 0.5 | Strict FPR at 0.5 |
+| --- | --- | --- | --- | --- |
+| DeepSeek A1 | 77.14% (54/70) | 17.06% (29/170) | 70.00% (21/30) | 29.52% (62/210) |
+| DeepSeek A2 | 88.57% (62/70) | 55.88% (95/170) | 73.33% (22/30) | 64.29% (135/210) |
+| Kimi A1 | 64.29% (9/14) | 12.50% (4/32) | 66.67% (4/6) | 22.50% (9/40) |
+| Kimi A2 | 100.00% (13/13) | 93.33% (28/30) | 100.00% (6/6) | 94.59% (35/37) |
+
+Missing-score bounds assign each missing Kimi score negative or positive, retaining the full oracle-labelled cohort. They are sensitivity bounds, not imputed measurements or confidence intervals:
+
+| Scorer | Labels | Missing + / − | TPR missing-score bounds | FPR missing-score bounds |
+| --- | --- | --- | --- | --- |
+| Kimi A1 | executor | 0 / 2 | 64.29%–64.29% | 11.76%–17.65% |
+| Kimi A1 | strict | 0 / 2 | 66.67%–66.67% | 21.43%–26.19% |
+| Kimi A2 | executor | 1 / 4 | 92.86%–100.00% | 82.35%–94.12% |
+| Kimi A2 | strict | 0 / 5 | 100.00%–100.00% | 83.33%–95.24% |
+
+**Cost, latency, and throughput.** The all-input-uncached subtotal from measured token usage, including retries, is **USD 3.239492**. **1** attempt(s) lack usage; their unreleased request reservation is **USD 0.036422**. Assigning those attempts zero through their full reserved charge gives a planning total of **USD 3.239492–3.275914**. Cost-table intervals include that uncertainty. The original ledger retains **USD 2.665897** in priced entries and **102** unpriced entries; missing cache telemetry is not treated as zero. The conservative run-budget charge/reservation is **USD 3.942000 / 15**, including reservations retained for unpriced calls. These use the archived planning rates (DeepSeek $0.50 input / $1.20 output per million; Kimi $1 / $4), not invoice-verified billing. Reasoning is included in output tokens. Cost per attempt includes retries; latency is mean successful scored-call latency.
+
+| Scorer | API attempts | Estimated USD/attempt | Estimated total USD | Mean successful latency s | Unpriced successful calls |
+| --- | --- | --- | --- | --- | --- |
+| DeepSeek A1 | 240 | 0.000739 | 0.177271 | 3.41 | 49 |
+| DeepSeek A2 | 244 | 0.003613 | 0.881563 | 7.82 | 36 |
+| Kimi A1 | 51 | 0.011541–0.012256 | 0.588615–0.625037 | 19.93 | 6 |
+| Kimi A2 | 56 | 0.028429 | 1.592044 | 40.23 | 7 |
+
+| Queue | Attempts | Elapsed min | Calls/min | Observed tokens/min | RPM / TPM | 429s |
+| --- | --- | --- | --- | --- | --- | --- |
+| terra-8k-v3-judge | 484 | 24.47 | 19.78 | 78091 | 250 / 250000 | 0 |
+| terra-8k-v3-xjudge-cap8192 | 107 | 21.87 | 4.89 | 38886 | 100 / 100000 | 0 |
+
+Throughput spans first dispatch to final completion for each queue, including any pauses. Conservative prompt-byte-plus-maximum-output reservations are never refunded by the TPM limiter. The initial two-attempt bound for every scheduled measurement was USD 15.983210; it was reported as a worst case while the atomic shared guard enforced USD 15 before every request. The [run budget](../costs/terra-8k-v3-budget.json) is separate from the unchanged historical judge budget; no earlier reservations were reset.
+
+**Comparison with mini/JSON v1.** Historical v1 scores and R6-corrected labels are unchanged. Both task model/allowance and evidence contract differ, so this is a descriptive comparison, not an isolated causal estimate of the cap's effect. Kimi availability also differs across conditions.
+
+| Scorer | Mini v1 tau | Terra v3 tau | Mini v1 pooled SD | Terra v3 pooled SD | Mini v1 USD/attempt | Terra v3 USD/attempt | Mini v1 latency s | Terra v3 latency s |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| DeepSeek A1 | 0.021841354 | 0.006022079 | 0.166552 | 0.140997 | 0.000616 | 0.000739 | 7.44 | 3.41 |
+| DeepSeek A2 | 0.022566773 | 0.017391640 | 0.171026 | 0.147761 | 0.003161 | 0.003613 | 24.07 | 7.82 |
+| Kimi A1 | undefined | undefined | undefined | undefined | 0.012738 | 0.011541–0.012256 | 21.78 | 19.93 |
+| Kimi A2 | undefined | undefined | undefined | undefined | 0.028593 | 0.028429 | 47.77 | 40.23 |
+
+| Scorer | Mini v1 executor TPR/FPR | Terra v3 executor TPR/FPR | Mini v1 strict TPR/FPR | Terra v3 strict TPR/FPR |
+| --- | --- | --- | --- | --- |
+| DeepSeek A1 | 75.00% / 22.27% | 77.14% / 17.06% | 93.33% / 22.22% | 70.00% / 29.52% |
+| DeepSeek A2 | 50.00% / 30.45% | 88.57% / 55.88% | 66.67% / 29.78% | 73.33% / 64.29% |
+| Kimi A1 | 50.00% / 17.07% | 64.29% / 12.50% | 66.67% / 16.67% | 66.67% / 22.50% |
+| Kimi A2 | 75.00% / 82.50% | 100.00% / 93.33% | 100.00% / 80.49% | 100.00% / 94.59% |
+
+**Offline mini re-expression, no re-judging.** Re-exporting the same 48 raw mini/JSON trajectories under the full v3 sanitizer shortens **16/171 observations** in **9/48 trajectories**, omitting **99,390,775 bytes**; see [the offline manifest](../logs/judges/mini-json-v3-offline/manifest.json) and [truncation audit](../logs/judges/mini-json-v3-offline/truncations.json). This reconstruction includes corrected instruction preservation and termination; it is not the historical paid input. A separate cap-only audit of the actual archived v1 projections would shorten a further **12/171 observations** in **10/48 trajectories**, removing **44,571 additional bytes**. That [paid-projection audit](../logs/judges/mini-json-v3-offline/paid-projection-audit.json) preserves the old instruction omissions and treats legacy `visible_result` as opaque text; it cannot recover the already lost suffixes. Neither audit creates new mini scores or a mini v3 tau.
+
+Reproduction:
+
+```sh
+uv run python -m evolution.calibration \
+  --job logs/harbor/calibration-terra-json-8k-260910 \
+  --output logs/judges/terra-8k-v3 \
+  --reuse-manifest logs/judges/terra-8k-v2/manifest.json \
+  --budget-path costs/terra-8k-v3-budget.json --concurrency 4 --run
+uv run python logs/judges/terra-8k-v3/report.py
+```
+
+**Verification.** Project-wide `uv run pytest -q`: **507 passed, 6 skipped in 36.17s**. Cap boundaries, Unicode byte accounting, marker-size transitions, mixed versions/caps, frozen exports, pre-enqueue capacity rejection, and missing-usage cost reservations have regression coverage. All 96 terra/mini exports were rebuilt offline with exact equality and unchanged raw hashes. See the [test log](../logs/judges/terra-8k-v3-pytest.log), [export verification](../logs/judges/terra-8k-v3/export-verification.json), and [verification record](../logs/judges/terra-8k-v3/verification.json).
+
+The durable queues reuse settled results on resume. Offline mini re-expression uses `--prepare-only`, `--job logs/harbor/calibration-mini-json-260910`, `--output logs/judges/mini-json-v3-offline`, and `--reuse-manifest logs/judges/seed-mini-json-v2/manifest.json`. No Docker or model CLI was invoked, and no commit or push was made.
+<!-- TERRA_V3_ANALYSIS_END -->

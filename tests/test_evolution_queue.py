@@ -295,9 +295,10 @@ async def test_oversized_reservation_fails_without_api_call(tmp_path):
     queue = queue_at(tmp_path / "queue.sqlite", handler)
     queue.limiter.close()
     queue.limiter = TokenBucketLimiter(tpm=100)
-    queue.enqueue("rollout", "a1", evidence())
-    assert await queue.run() == {"failed": 1}
-    assert queue.rows()[0]["attempts"] == 0
+    with pytest.raises(ValueError, match="one minute"):
+        queue.enqueue("rollout", "a1", evidence())
+    assert await queue.run() == {}
+    assert not queue.rows()
     assert not Path(queue.ledger).exists()
     close(queue)
 
@@ -554,3 +555,89 @@ def test_plain_endpoint_cache_metadata_is_outside_prompt(tmp_path):
     assert one.params["user"] != two.params["user"]
     assert len(one.params["user"]) == 64
     assert "user" not in endpoint.signature["params"]
+
+
+async def test_v3_preflight_backend_and_full_minute_boundaries():
+    from evolution.judge_queue import preflight_prompt
+
+    prompt = "x" * (200000 - 256)
+    report = preflight_prompt(prompt, max_tokens=2048, tpm=202048)
+    assert report["backend_input_reservation"] == 200000
+    assert report["reserved_tokens"] == 202048
+    clock = Clock()
+    limiter = TokenBucketLimiter(tpm=202048, clock=clock, sleep=clock.sleep)
+    assert await limiter.acquire(report["reserved_tokens"]) == 0
+    assert await limiter.acquire(report["reserved_tokens"]) == pytest.approx(
+        60
+    )
+    limiter.close()
+    with pytest.raises(ValueError, match="backend limit after caps"):
+        preflight_prompt(prompt + "x", tpm=1000000)
+    with pytest.raises(ValueError, match="one minute"):
+        preflight_prompt(prompt, max_tokens=2048, tpm=202047)
+
+
+def test_v3_queue_rejects_backend_overflow_before_insertion(tmp_path):
+    queue = queue_at(
+        tmp_path / "queue.sqlite", lambda r: pytest.fail("No HTTP")
+    )
+    large = JudgeInput("x" * 200000, sanitize([]).trajectory)
+    with pytest.raises(ValueError, match="backend limit after caps"):
+        queue.enqueue("too-large", "a1", large)
+    assert queue.rows() == []
+    close(queue)
+
+
+def test_v3_queue_rejects_mixed_version_on_enqueue(tmp_path):
+    from types import SimpleNamespace
+
+    queue = queue_at(
+        tmp_path / "queue.sqlite", lambda r: pytest.fail("No HTTP")
+    )
+    old = SimpleNamespace(
+        trajectory=SimpleNamespace(version="sanitized-trajectory-v2")
+    )
+    with pytest.raises(ValueError, match="Mixed evidence versions"):
+        queue.enqueue("legacy", "a1", old)
+    assert queue.rows() == []
+    close(queue)
+
+
+def test_v3_queue_freezes_cap_parameters_across_rollouts_and_resume(tmp_path):
+    path = tmp_path / "queue.sqlite"
+
+    def handler(request):
+        pytest.fail("No HTTP")
+
+    queue = queue_at(path, handler)
+    queue.enqueue("one", "a1", evidence())
+    close(queue)
+    queue = queue_at(path, handler)
+    changed = JudgeInput(
+        "Task", sanitize([], observation_chars=2000).trajectory
+    )
+    with pytest.raises(ValueError, match="Mixed evidence cap parameters"):
+        queue.enqueue("two", "a1", changed)
+    assert len(queue.rows()) == 1
+    close(queue)
+
+
+def test_v3_envelope_at_total_cap_still_gets_wire_preflight(tmp_path):
+    from evolution.judge_queue import preflight_prompt
+    from evolution.judges import build_prompt
+
+    events = [{"kind": "instruction", "text": "Task"}] + [
+        {"kind": "observation", "stdout": "x" * 8000} for _ in range(30)
+    ]
+    capped = JudgeInput("Task", sanitize(events).trajectory)
+    # The trajectory cap includes its envelope, but the judge prompt adds
+    # wording and task context. Reject only after measuring that actual input.
+    with pytest.raises(ValueError, match="backend limit after caps"):
+        preflight_prompt(build_prompt("a2", capped))
+    smaller = JudgeInput(
+        "Task", sanitize(events, trajectory_chars=190000).trajectory
+    )
+    assert (
+        preflight_prompt(build_prompt("a2", smaller))["reserved_tokens"]
+        < 250000
+    )

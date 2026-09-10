@@ -323,6 +323,8 @@ Exit criteria: one TB2 task completed end-to-end by the seed harness with an ora
 
 - 2026-09-11 (W8e): tau under evidence v2 for terra could not be measured: complete observations produce 52 MB A2 prompts for two path-tracing trajectories (backend limit 200 kB). Zero cost. AD15 proposes a per-observation head/tail cap (evidence contract v3); W8f launched to implement v3 and run the terra tau calibration. W10 (A3) in progress.
 
+- 2026-09-11 (W8f done): evidence contract v3 (4,000-character head/tail per observation, 200,000 total; truncation recorded) implemented; terra-low-8k judge calibration: tau v3 A1 0.00602, A2 0.01739; TPR/FPR at 0.5 (executor reading) A1 77.1%/17.1%, A2 88.6%/55.9%; Kimi A2 unusable (93% FPR), 7 Kimi scores missing; 15/228 observations truncated (12/48 trajectories, 96.6 MB omitted); USD 3.24; 507 tests. W10 (A3) in progress.
+
 ### 9.7 Proposed Amendments to Sections 1-8 (pending user approval)
 
 Sources: the literature digest `docs/background.md` (Part B deltas; independent review R2 pending) and the GDPevo assessment `docs/gdpevo_assessment.md` with its independent review R1 (`docs/reviews.md`). Sections 1-8 are unchanged until the user approves. Review R2 of the digest is complete; its dispositions are in `docs/reviews.md`.
