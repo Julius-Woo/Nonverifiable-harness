@@ -185,9 +185,10 @@ rollback paths with a separate controller connection.
 The shared endpoint token bucket is keyed by endpoint/deployment and persisted
 across roles and processes. It reserves UTF-8 prompt bytes plus overhead and
 maximum output tokens, with RPM and TPM admission and Retry-After handling.
-The existing judge queue and the transport both reserve quota, conservatively
-reducing throughput rather than exceeding the quota. Each actual outbound
-request has a durable request-intent record, conservative money reservation,
+After R6-4, the final HTTP transport owns quota admission for accounted
+backends; the judge queue reserves no second share. A plain backend instead
+uses queue-owned admission, and mismatched ownership is rejected. Each
+actual outbound request has a durable request-intent record, conservative money reservation,
 exact credential-free payload archive, response/error event, timing, and call
 ledger. A process killed after dispatch leaves an explicit unresolved intent.
 Known partial costs, missing cache telemetry, and unresolved charges remain
@@ -214,6 +215,10 @@ counted as well. Task-defined agent/build/verifier timeouts are preserved. Indep
 screens, paired confirmation/anchor batches, and final search/sealed measurements
 may overlap. A rolling worker queue fills available slots; completed trials keep
 the same identities and are reused. Judge-queue ownership is serialized per arm.
+After R6-4, each completed rollout enters a bounded judge stream while later
+rollouts continue. Each judgment is committed and ingested into trial state as
+it finishes; the batch waits for the consumer to drain. Backpressure bounds
+pending evidence and task-group cancellation stops both streams together.
 
 `--resume --recover-sessions` is an explicit infrastructure recovery operation.
 It is forbidden after iteration completion or sealed dispatch. Older evolver
@@ -233,10 +238,12 @@ Harbor job artifact. It never reruns completed rollouts.
 `evolution.prompts.TEMPLATE` is rendered by substituting only `{score_source}`.
 Each exact session instruction is saved as `sessions/<candidate>/prompt.txt`;
 the API archive additionally records every complete ReAct conversation. A
-fresh random context identifier is placed in the first system message on every
-outbound API request, and an arm/role-specific `user` field is set. The random
-prefix prevents identical prompt prefixes between calls; provider-internal
-cache behavior is not claimed proven merely by the `user` field.
+fresh hashed cache identifier, scoped by run, arm, role, and task, is set in
+the API `user` field before request archival (R6-5). Prompt messages are
+unchanged by transport. The judge queue and audit hash the exact complete wire
+message list; a separate hash covers the outbound request bytes, including
+cache metadata. Provider-internal cache separation is not established by the
+local wire checks.
 
 <!-- PROMPTS -->
 
@@ -309,7 +316,7 @@ It is followed by `\nConversation:\n` and the serialized conversation.
 | Evolver prompt hints at oracle | Single template; actual dispatched initial instruction compared against `render(arm)` for every evolver call | Implemented; only score-source paragraphs differ |
 | Anchor/sealed discovery | Real known-path and alias probes; no held-out text in feedback; acceptance objects remain controller-only; sealed scoring separate | Implemented for workspace and feedback boundaries |
 | Cross-arm contamination | Independent roots/containers, read-only snapshots, actual cross-arm canary reads and writes denied | Implemented; real Docker regression passed |
-| Shared judge/evolver cache | Enforced fresh high-entropy first-message prefix and arm/role user namespace; outbound-prefix uniqueness audit and returned cache telemetry | Prefix isolation implemented; provider-internal cache partition cannot be independently certified from these APIs, so the full formal cache gate remains open |
+| Shared judge/evolver cache | R6-5: fresh API `user` identifier scoped by run/arm/role/task; exact prompt and payload hashes; identifier uniqueness audit and returned cache telemetry | Non-prompt mechanism implemented; provider-internal cache partition remains unverified |
 
 The loop does **not** label this partial matrix as a passed formal P1.6 entry
 gate. T2's business-route/admin-route checks and filtered service images remain

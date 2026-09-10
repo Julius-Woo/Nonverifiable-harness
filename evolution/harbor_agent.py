@@ -11,6 +11,7 @@ from harbor.agents.installed.base import NonZeroAgentExitCodeError
 
 from evolution.accounting import AccountedBackend
 from evolution.candidates import Manifest, atomic_json, source_hash
+from evolution.outcomes import termination
 from evolution.workspace import Workspace
 from harness.ledger import CallTags, append_jsonl, utc_now
 from harness.seed import action_command
@@ -76,6 +77,7 @@ class CandidateAgent(BaseAgent):
         self.step = -1
         self.tool_failed = False
         self.tool_calls = 0
+        self.outcome_events = []
 
     @staticmethod
     def name():
@@ -105,6 +107,23 @@ class CandidateAgent(BaseAgent):
             raise RuntimeError("Hidden artifact exists before task execution")
 
     def event(self, row):
+        self.outcome_events.append(
+            {
+                k: v
+                for k, v in row.items()
+                if k
+                in {
+                    "kind",
+                    "command",
+                    "error",
+                    "protocol_error",
+                    "return_code",
+                    "answer",
+                    "finish_reason",
+                    "status",
+                }
+            }
+        )
         append_jsonl(self.evidence_dir / "trace.jsonl", row)
 
     async def handle(self, message, environment, context):
@@ -122,6 +141,7 @@ class CandidateAgent(BaseAgent):
                     "text": reply.text,
                     "ok": reply.record["ok"],
                     "call_id": reply.record["call_id"],
+                    "finish_reason": reply.record.get("finish_reason"),
                 }
             )
             for attr, key in (
@@ -211,6 +231,7 @@ class CandidateAgent(BaseAgent):
 
     async def run(self, instruction, environment, context):
         started, status = time.monotonic(), "failed"
+        exception = {}
         self.event({"kind": "instruction", "text": instruction})
         name = "nvhe-task-" + self.identity[-48:]
         proc = None
@@ -254,6 +275,10 @@ class CandidateAgent(BaseAgent):
             status = "timeout_or_cancelled"
             raise
         except Exception as exc:
+            exception = {
+                "exception_type": type(exc).__name__,
+                "exception_message": str(exc),
+            }
             raise NonZeroAgentExitCodeError(str(exc)) from exc
         finally:
             if proc and proc.returncode is None:
@@ -262,7 +287,12 @@ class CandidateAgent(BaseAgent):
                 except ProcessLookupError:
                     pass
                 await proc.wait()
-            self.event({"kind": "termination", "status": status})
+            outcome = termination(
+                self.outcome_events,
+                result={"exception_info": exception},
+                execution={"status": status, "tool_calls": self.tool_calls},
+            )
+            self.event(outcome)
             context.metadata = {
                 "status": status,
                 "calls": self.backend.calls,
@@ -272,6 +302,7 @@ class CandidateAgent(BaseAgent):
             atomic_json(
                 self.evidence_dir / "execution.json",
                 {
+                    **{k: v for k, v in outcome.items() if k != "kind"},
                     "status": status,
                     "calls": self.backend.calls,
                     "tool_failed": self.tool_failed,

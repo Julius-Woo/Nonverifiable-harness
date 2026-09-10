@@ -1,4 +1,4 @@
-"""Durable asynchronous judging; CLI never reads a verifier result.
+"""Durable asynchronous judging; only terminal flags may leave trusted results.
 
 SQLite serializes endpoint token reservations across processes. One runner
 owns each queue. HTTP retries are disabled in the backend; the queue dispatches
@@ -14,6 +14,7 @@ import math
 import os
 import sqlite3
 import time
+import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -27,12 +28,13 @@ from evolution.judges import (
     build_prompt,
     judge_once,
     parse_response,
+    prompt_hash,
 )
 from evolution.sanitize import (
+    VERSION,
     canonical,
     digest,
     sanitize,
-    solver_visible,
 )
 from harness.ledger import CallTags, append_jsonl, utc_now
 from harness.openai_api import OpenAIAPIBackend, retry_delay
@@ -51,10 +53,14 @@ class ErrorArchiveTransport(httpx.AsyncHTTPTransport):
         response = await super().handle_async_request(request)
         if response.status_code >= 400:
             body = (await response.aread()).decode("utf-8", errors="replace")
-            append_jsonl(self.path, {
-                "ts": utc_now(), "status_code": response.status_code,
-                "body": body.replace(self.key, "[REDACTED]"),
-            })
+            append_jsonl(
+                self.path,
+                {
+                    "ts": utc_now(),
+                    "status_code": response.status_code,
+                    "body": body.replace(self.key, "[REDACTED]"),
+                },
+            )
         return response
 
 
@@ -172,12 +178,18 @@ class Endpoint:
         self.identity = digest(self.base.rstrip("/") + "/" + self.model)
         self.output, self.budget_path = Path(output), Path(budget_path)
         self.budget_usd = budget_usd
-        self.rpm = float(config.get(
-            f"{prefix}_RPM", 100 if prefix == "XJUDGE" else 250,
-        ))
-        self.tpm = float(config.get(
-            f"{prefix}_TPM", 100000 if prefix == "XJUDGE" else 250000,
-        ))
+        self.rpm = float(
+            config.get(
+                f"{prefix}_RPM",
+                100 if prefix == "XJUDGE" else 250,
+            )
+        )
+        self.tpm = float(
+            config.get(
+                f"{prefix}_TPM",
+                100000 if prefix == "XJUDGE" else 250000,
+            )
+        )
         self.max_tokens = int(
             config.get(
                 f"{prefix}_MAX_COMPLETION_TOKENS",
@@ -215,14 +227,22 @@ class Endpoint:
             timeout_s=self.timeout,
             effort=None,
             max_completion_tokens=self.max_tokens,
-            extra_params=self.params,
+            extra_params={
+                **self.params,
+                "user": digest(
+                    f"{self.identity}:{item_id}:{attempt}:{uuid.uuid4().hex}"
+                ),
+            },
             max_retries=0,
             budget_usd=self.budget_usd,
             prices_path=Path(self.prices_path) if self.prices_path else None,
             shared_budget_path=self.budget_path,
             shared_budget_usd=self.budget_usd,
             transport=ErrorArchiveTransport(
-                self.output / "calls" / item_id / str(attempt)
+                self.output
+                / "calls"
+                / item_id
+                / str(attempt)
                 / "errors.jsonl",
                 self.key,
             ),
@@ -242,7 +262,12 @@ class JudgeQueue:
         ledger=None,
         archive_root=None,
         run_id="judge-queue",
+        limiter_owner="queue",
     ):
+        if limiter_owner not in {"queue", "transport"}:
+            raise ValueError("Unknown limiter owner")
+        self.limiter_owner = limiter_owner
+        self.evidence_version = VERSION
         self.path = Path(path)
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self.db = sqlite3.connect(self.path)
@@ -252,8 +277,22 @@ class JudgeQueue:
         self.db.execute("""CREATE TABLE IF NOT EXISTS items (
             id TEXT PRIMARY KEY, rollout TEXT, judge TEXT, repeat INTEGER,
             evidence TEXT, prompt_hash TEXT, status TEXT, attempts INTEGER,
-            result TEXT, error TEXT, updated TEXT
+            result TEXT, error TEXT, updated TEXT, evidence_version TEXT,
+            UNIQUE(rollout, judge, repeat, evidence_version)
         )""")
+        columns = {r[1] for r in self.db.execute("PRAGMA table_info(items)")}
+        if "evidence_version" not in columns:
+            self.db.close()
+            raise ValueError("Legacy evidence version: use a new queue")
+        versions = {
+            r[0]
+            for r in self.db.execute(
+                "SELECT DISTINCT evidence_version FROM items"
+            )
+        }
+        if versions - {VERSION}:
+            self.db.close()
+            raise ValueError("Mixed or unsupported evidence versions")
         self.db.commit()
         self.backend_factory, self.limiter = backend_factory, limiter
         self.signature = endpoint_signature or {}
@@ -262,9 +301,14 @@ class JudgeQueue:
             "CREATE TABLE IF NOT EXISTS configuration "
             "(id INTEGER PRIMARY KEY CHECK(id=1), value TEXT)"
         )
-        configuration = canonical({
-            "endpoint": self.signature, "max_tokens": self.max_tokens,
-        })
+        configuration = canonical(
+            {
+                "endpoint": self.signature,
+                "max_tokens": self.max_tokens,
+                "evidence_version": VERSION,
+                "limiter_owner": limiter_owner,
+            }
+        )
         previous = self.db.execute(
             "SELECT value FROM configuration WHERE id=1"
         ).fetchone()
@@ -286,37 +330,60 @@ class JudgeQueue:
     def enqueue(self, rollout, judge, evidence, repeat=0):
         if type(repeat) is not int or repeat < 0:
             raise ValueError("repeat must be a nonnegative integer")
-        prompt_hash = digest(build_prompt(judge, evidence))
+        if evidence.trajectory.version != self.evidence_version:
+            raise ValueError("Mixed evidence versions are forbidden")
+        frozen_hash = prompt_hash(build_prompt(judge, evidence))
+        serialized = canonical(evidence.to_dict())
         item_id = digest(
             canonical(
                 {
                     "rollout": rollout,
                     "judge": judge,
                     "repeat": repeat,
-                    "prompt_hash": prompt_hash,
-                    "endpoint": self.signature,
-                    "max_tokens": self.max_tokens,
+                    "evidence_version": self.evidence_version,
                 }
             )
         )
+        self.db.execute("BEGIN IMMEDIATE")
+        previous = self.db.execute(
+            "SELECT * FROM items WHERE rollout=? AND judge=? AND repeat=? "
+            "AND evidence_version=?",
+            (rollout, judge, repeat, self.evidence_version),
+        ).fetchone()
+        if previous and (
+            previous["evidence"] != serialized
+            or previous["prompt_hash"] != frozen_hash
+        ):
+            self.db.rollback()
+            self._event(
+                previous,
+                "conflict",
+                reason="frozen_input_changed",
+                proposed_prompt_hash=frozen_hash,
+                proposed_evidence_hash=digest(serialized),
+            )
+            raise ValueError(
+                "Frozen measurement conflict: prompt or evidence changed"
+            )
         self.db.execute(
-            "INSERT OR IGNORE INTO items VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+            "INSERT OR IGNORE INTO items VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
             (
                 item_id,
                 rollout,
                 judge,
                 repeat,
-                canonical(evidence.to_dict()),
-                prompt_hash,
+                serialized,
+                frozen_hash,
                 "pending",
                 0,
                 None,
                 None,
                 utc_now(),
+                self.evidence_version,
             ),
         )
         self.db.commit()
-        return item_id
+        return previous["id"] if previous else item_id
 
     def rows(self):
         return [
@@ -358,7 +425,7 @@ class JudgeQueue:
                 try:
                     payload = json.loads((raw / "request.json").read_text())
                     if (
-                        digest(payload["messages"][0]["content"])
+                        digest(canonical(payload["messages"]))
                         != item["prompt_hash"]
                     ):
                         continue
@@ -375,6 +442,7 @@ class JudgeQueue:
                         "model": record.get("model"),
                         "prompt_sha256": item["prompt_hash"],
                         "prompt_version": PROMPT_VERSION,
+                        "evidence_version": item["evidence_version"],
                     }
                 except (OSError, ValueError, KeyError, TypeError):
                     continue
@@ -407,16 +475,17 @@ class JudgeQueue:
         if self.archive_root is None or self.ledger is None:
             return
         known = {r["call_id"] for r in records.get(item["id"], [])}
-        for path in sorted((self.archive_root / item["id"]).glob(
-            "*/*/response.json"
-        )):
+        for path in sorted(
+            (self.archive_root / item["id"]).glob("*/*/response.json")
+        ):
             if path.parent.name in known:
                 continue
             try:
                 request_path = path.parent / "request.json"
                 request = json.loads(request_path.read_text())
-                if digest(request["messages"][0]["content"]) != (
-                    item["prompt_hash"]
+                if (
+                    digest(canonical(request["messages"]))
+                    != (item["prompt_hash"])
                 ):
                     continue
                 response = json.loads(path.read_text())
@@ -428,27 +497,38 @@ class JudgeQueue:
             except (OSError, ValueError, KeyError, TypeError, IndexError):
                 continue
             record = {
-                "phase": "P1.4", "run_id": self.run_id,
-                "task": item["id"], "role": "judge",
-                "arm": item["judge"].upper(), "iteration": item["repeat"],
-                "call_id": path.parent.name, "backend": "openai_api",
+                "phase": "P1.4",
+                "run_id": self.run_id,
+                "task": item["id"],
+                "role": "judge",
+                "arm": item["judge"].upper(),
+                "iteration": item["repeat"],
+                "call_id": path.parent.name,
+                "backend": "openai_api",
                 "ts": datetime.fromtimestamp(
-                    request_path.stat().st_mtime, timezone.utc,
+                    request_path.stat().st_mtime,
+                    timezone.utc,
                 ).isoformat(),
                 "requested_model": request["model"],
                 "model": response.get("model") or request["model"],
-                "raw_dir": str(path.parent), "ok": bool(content),
+                "raw_dir": str(path.parent),
+                "ok": bool(content),
                 "finish_reason": choice.get("finish_reason"),
                 "input_tokens": usage.get("prompt_tokens"),
                 "output_tokens": usage.get("completion_tokens"),
                 "cached_input_tokens": prompt_usage.get("cached_tokens"),
                 "cache_write_tokens": prompt_usage.get("cache_write_tokens"),
                 "reasoning_tokens": output_usage.get("reasoning_tokens"),
-                "cost_usd": None, "cost_source": "unknown", "wall_s": None,
-                "api_ms": None, "http_429s": 0, "attempts": [],
+                "cost_usd": None,
+                "cost_source": "unknown",
+                "wall_s": None,
+                "api_ms": None,
+                "http_429s": 0,
+                "attempts": [],
                 "note": "Recovered response after interruption before ledger",
                 "request_params": {
-                    k: v for k, v in request.items()
+                    k: v
+                    for k, v in request.items()
                     if k not in {"messages", "model"}
                 },
                 "recovered_from_archive": True,
@@ -459,12 +539,26 @@ class JudgeQueue:
     async def _one(self, item):
         evidence = JudgeInput.from_dict(json.loads(item["evidence"]))
         prompt = build_prompt(item["judge"], evidence)
-        if digest(prompt) != item["prompt_hash"]:
+        if prompt_hash(prompt) != item["prompt_hash"]:
             raise ValueError("Queued evidence or prompt changed after enqueue")
         reservation = len(prompt.encode()) + 256 + self.max_tokens
         for attempt in range(item["attempts"] + 1, 3):
+            backend = self.backend_factory(item["id"], attempt)
+            transport_owned = getattr(backend, "owns_endpoint_quota", False)
+            if transport_owned != (self.limiter_owner == "transport"):
+                raise ValueError(
+                    "Queue and backend disagree on limiter ownership"
+                )
             try:
-                waited = await self.limiter.acquire(reservation)
+                if hasattr(backend, "projected_cost"):
+                    backend.projected_cost(prompt)
+                if reservation > self.limiter.tpm:
+                    raise ValueError("Endpoint capacity exceeded")
+                waited = (
+                    await self.limiter.acquire(reservation)
+                    if self.limiter_owner == "queue"
+                    else 0
+                )
             except ValueError:
                 self.db.execute(
                     "UPDATE items SET status='failed',error=?,updated=? "
@@ -486,10 +580,12 @@ class JudgeQueue:
                 item,
                 "dispatch",
                 attempt=attempt,
-                reserved_tokens=reservation,
+                reserved_tokens=(
+                    reservation if self.limiter_owner == "queue" else 0
+                ),
+                limiter_owner=self.limiter_owner,
                 limiter_wait_s=waited,
             )
-            backend = self.backend_factory(item["id"], attempt)
             tags = CallTags(
                 "P1.4",
                 self.run_id,
@@ -510,7 +606,8 @@ class JudgeQueue:
                     if details
                     else 1
                 )
-                self.limiter.defer(delay)
+                owner = backend.limiter if transport_owned else self.limiter
+                owner.defer(delay)
                 status = "failed" if attempt == 2 else "pending"
                 self.db.execute(
                     "UPDATE items SET status=?,error=?,updated=? WHERE id=?",
@@ -536,7 +633,14 @@ class JudgeQueue:
                 )
                 return
 
-    async def run(self, concurrency=4, *, limit=None):
+    async def run(
+        self, concurrency=4, *, limit=None, source=None, on_result=None
+    ):
+        """Drain durable work and an optional async stream with backpressure.
+
+        Source yields (rollout, judge, JudgeInput, repeat). Committed results
+        reach on_result immediately, including already settled keys.
+        """
         if type(concurrency) is not int or not 1 <= concurrency <= 4:
             raise ValueError("concurrency must be an integer from 1 to 4")
         # A restart may reclaim running items only after exclusive ownership.
@@ -548,25 +652,59 @@ class JudgeQueue:
                     "This queue already has an active runner"
                 ) from exc
             self._recover()
-            pending = asyncio.Queue()
-            for row in self.rows():
-                if row["status"] == "pending" and (
-                    limit is None or pending.qsize() < limit
-                ):
-                    pending.put_nowait(row)
+            pending = asyncio.Queue(maxsize=2 * concurrency)
+            scheduled = set()
+
+            async def emit(item):
+                if on_result is not None:
+                    await on_result(
+                        dict(
+                            self.db.execute(
+                                "SELECT * FROM items WHERE id=?", (item["id"],)
+                            ).fetchone()
+                        )
+                    )
+
+            async def producer():
+                count = 0
+                for row in self.rows():
+                    if row["status"] == "pending" and (
+                        limit is None or count < limit
+                    ):
+                        scheduled.add(row["id"])
+                        await pending.put(row)
+                        count += 1
+                if source is not None:
+                    async for rollout, judge, evidence, repeat in source:
+                        identity = self.enqueue(
+                            rollout, judge, evidence, repeat
+                        )
+                        row = dict(
+                            self.db.execute(
+                                "SELECT * FROM items WHERE id=?", (identity,)
+                            ).fetchone()
+                        )
+                        if row["status"] in {"done", "failed"}:
+                            await emit(row)
+                        elif identity not in scheduled:
+                            scheduled.add(identity)
+                            await pending.put(row)
+                for _ in range(concurrency):
+                    await pending.put(None)
 
             async def worker():
-                while not pending.empty():
+                while True:
+                    item = await pending.get()
                     try:
-                        item = pending.get_nowait()
-                    except asyncio.QueueEmpty:
-                        return
-                    try:
+                        if item is None:
+                            return
                         await self._one(item)
+                        await emit(item)
                     finally:
                         pending.task_done()
 
             async with asyncio.TaskGroup() as group:
+                group.create_task(producer())
                 for _ in range(concurrency):
                     group.create_task(worker())
         return self.counts()
@@ -582,45 +720,88 @@ class JudgeQueue:
         self.db.close()
 
 
-def export_trace(trace_path, output, *, observation_chars=None):
-    """Read only the trace; sanitize before any visibility projection."""
+def export_trace(
+    trace_path, output, *, observation_chars=None, result=None, execution=None
+):
+    """Export complete sanitized observations and trusted terminal fields.
+
+    Result/execution records are controller-only inputs: only the termination
+    allowlist is exported. No verifier diagnostics, rewards, or paths enter it.
+    """
+    if observation_chars is not None:
+        raise ValueError("Evidence v2 requires complete observations; no cap")
     raw = Path(trace_path).read_bytes()
     records = [json.loads(line) for line in raw.splitlines() if line.strip()]
-    full = sanitize(records)
-    output = Path(output)
-    output.mkdir(parents=True, exist_ok=True)
-    raw_hash = hashlib.sha256(raw).hexdigest()
-    (output / "sanitized-full.json").write_text(
-        canonical(full.trajectory.to_dict())
-    )
-    # Apply projection to already-sanitized fields, so hidden content beyond
-    # the visibility cutoff can never cause a partially exposed tainted field.
-    visible, projection = full.trajectory.events, []
-    if observation_chars is not None:
-        visible, projection = solver_visible(visible, observation_chars)
-    judged = sanitize(visible)
-    (output / "sanitized.json").write_text(
-        canonical(judged.trajectory.to_dict())
-    )
-    (output / "redactions.json").write_text(
-        canonical(
-            {
-                "source_sha256": raw_hash,
-                "redactions": full.redactions,
-                "visibility_projection": projection,
-                "projection_redactions": judged.redactions,
-                "sanitized_sha256": digest(judged.trajectory.events_json),
-            }
-        )
-    )
+    full = sanitize(records, result=result, execution=execution)
     instructions = [
-        e["text"]
-        for e in judged.trajectory.events
-        if e["kind"] == "instruction"
+        e["text"] for e in full.trajectory.events if e["kind"] == "instruction"
     ]
     if len(instructions) != 1:
         raise ValueError("Exactly one task instruction is required")
-    return JudgeInput(instructions[0], judged.trajectory)
+    evidence = JudgeInput(instructions[0], full.trajectory)
+    documents = {
+        name: canonical(full.trajectory.to_dict())
+        for name in ("sanitized-full.json", "sanitized.json")
+    }
+    documents["redactions.json"] = canonical(
+        {
+            "source_sha256": hashlib.sha256(raw).hexdigest(),
+            "redactions": full.redactions,
+            "evidence_version": VERSION,
+            "observation_policy": "complete_sanitized_observations",
+            "sanitized_sha256": digest(full.trajectory.events_json),
+        }
+    )
+    output = Path(output)
+    # Check all files before writing any: a rejected frozen-input change must
+    # not replace the original evidence or redaction provenance on disk.
+    for name, content in documents.items():
+        path = output / name
+        if path.exists() and path.read_text() != content:
+            raise ValueError("Frozen trace export conflict; use a new version")
+    output.mkdir(parents=True, exist_ok=True)
+    for name, content in documents.items():
+        path = output / name
+        if not path.exists():
+            path.write_text(content)
+    return evidence
+
+
+def ingest_manifest(
+    queue, manifest, output, *, judges=("a1", "a2"), repeats=1
+):
+    """Layout-independent trusted trajectory manifest; metadata stays local.
+
+    Envelope: {"trajectories": [{"rollout_id": str, "path": str,
+    "metadata": object, "execution": object (optional)}]}. Paths are relative
+    to the manifest file; no implicit result discovery or oracle export.
+    """
+    manifest = Path(manifest)
+    data = json.loads(manifest.read_text())
+    entries = data["trajectories"]
+    if type(repeats) is not int or repeats < 1:
+        raise ValueError("repeats must be positive")
+    identities = []
+    for entry in entries:
+        rollout = entry["rollout_id"]
+        if not isinstance(rollout, str) or not rollout:
+            raise ValueError("rollout_id must be nonempty")
+        metadata = entry.get("metadata", {})
+        if not isinstance(metadata, dict):
+            raise ValueError("metadata must be an object")
+        destination = Path(output) / "traces" / digest(rollout)
+        evidence = export_trace(
+            manifest.parent / entry["path"],
+            destination,
+            execution=entry.get("execution"),
+        )
+        for repeat in range(repeats):
+            for judge in judges:
+                identities.append(
+                    queue.enqueue(rollout, judge, evidence, repeat)
+                )
+        (destination / "metadata.json").write_text(canonical(metadata))
+    return identities
 
 
 def configured_queue(prefix, output, config, budget_usd=15):
@@ -651,7 +832,8 @@ def configured_queue(prefix, output, config, budget_usd=15):
 
 
 async def main_async(args):
-    job = Path(args.job).resolve()
+    source = args.manifest or args.job
+    job = Path(source).resolve()
     judges = args.judges.lower().split(",")
     if not set(judges) <= {"a1", "a2"} or args.repeats < 1:
         raise ValueError("judges must be a1,a2 and repeats must be positive")
@@ -659,13 +841,26 @@ async def main_async(args):
     config = {**dotenv_values(ROOT / ".env"), **os.environ}
     queue, _ = configured_queue(args.endpoint, output, config)
     try:
-        for trace in sorted(job.glob("*/agent/trace.jsonl")):
+        if args.manifest:
+            ingest_manifest(
+                queue,
+                args.manifest,
+                output,
+                judges=judges,
+                repeats=args.repeats,
+            )
+        for trace in (
+            [] if args.manifest else sorted(job.glob("*/agent/trace.jsonl"))
+        ):
             trial = trace.parents[1]
-            # No result contents enter this ingestion path. Presence alone is
-            # the Harbor completion marker; incomplete trials are left alone.
+            # A trusted result marks completion. Only allowlisted execution
+            # outcomes enter the evidence; verification contents stay local.
             if not (trial / "result.json").is_file():
                 continue
-            evidence = export_trace(trace, output / "traces" / trial.name)
+            result = json.loads((trial / "result.json").read_text())
+            evidence = export_trace(
+                trace, output / "traces" / trial.name, result=result
+            )
             for repeat in range(args.repeats):
                 for judge in judges:
                     queue.enqueue(str(trial), judge, evidence, repeat)
@@ -677,7 +872,9 @@ async def main_async(args):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--job", required=True)
+    source = parser.add_mutually_exclusive_group(required=True)
+    source.add_argument("--job")
+    source.add_argument("--manifest", type=Path)
     parser.add_argument("--judges", default="a1,a2")
     parser.add_argument("--repeats", type=int, default=1)
     parser.add_argument(

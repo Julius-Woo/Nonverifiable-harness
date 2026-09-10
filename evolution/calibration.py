@@ -14,13 +14,15 @@ import random
 import statistics
 from collections import defaultdict
 from datetime import datetime
+from fractions import Fraction
 from pathlib import Path
 
 from dotenv import dotenv_values
 
 from evolution.judge_queue import ROOT, configured_queue, export_trace
-from evolution.judges import PROMPTS, PROMPT_VERSION, JudgeInput, build_prompt
-from evolution.sanitize import canonical, digest
+from evolution.judges import PROMPT_VERSION, PROMPTS, JudgeInput, build_prompt
+from evolution.outcomes import termination
+from evolution.sanitize import VERSION, canonical, digest
 
 DEFAULT_JOB = ROOT / "logs/harbor/calibration-mini-json-260910"
 DEFAULT_OUTPUT = ROOT / "logs/judges/seed-mini-json-v2"
@@ -57,32 +59,44 @@ def select_trials(job, split):
     return selected
 
 
-def verifier_label(result, records):
-    """No credit from invalid verification; preserve unlabelled exclusions."""
+def verifier_label(
+    result, records, *, tool_policy="strict", api_timeout_policy="failure"
+):
+    """A9 failures precede verifier availability; pending AD10/13 are explicit.
+
+    Strict counts nonzero exits as failures; executor (AD10) treats them as
+    ordinary observations. A missing grader result is never a favourable zero.
+    """
+    if tool_policy not in {"strict", "executor"}:
+        raise ValueError("Unknown tool failure policy")
+    if api_timeout_policy not in {"failure", "infrastructure"}:
+        raise ValueError("Unknown API timeout policy")
+    outcome = termination(records, result=result)
+    exception = result.get("exception_info") or {}
+    error = exception.get("exception_type", "")
+    if outcome["agent_timeout"]:
+        return 0, "solver_timeout"
+    if outcome["executor_failure"] or outcome["protocol_failure"]:
+        return 0, "executor_or_protocol_failure"
+    if tool_policy == "strict" and outcome["nonzero_exit"]:
+        return 0, "nonzero_command_failure"
+    if outcome["reason"] == "token_step_budget_exhaustion":
+        return 0, "solver_budget_exhaustion"
+    if outcome["api_timeout"]:
+        return (
+            (None, "api_timeout_infrastructure")
+            if (api_timeout_policy == "infrastructure")
+            else (0, "api_timeout_failure")
+        )
+    if error == "NonZeroAgentExitCodeError":
+        return 0, "solver_failure"
     reward = ((result.get("verifier_result") or {}).get("rewards") or {}).get(
         "reward"
     )
-    exception = result.get("exception_info") or {}
-    error = exception.get("exception_type", "")
-    if reward not in (0, 1) or isinstance(reward, bool):
+    if type(reward) not in (int, float) or reward not in (0, 1):
         return None, "missing_or_invalid_verifier"
-    if error and error not in {
-        "NonZeroAgentExitCodeError",
-        "AgentTimeoutError",
-        "AgentTimeout",
-    }:
+    if error:
         return None, "verifier_or_infrastructure_exception"
-    tool_failure = any(
-        e.get("kind") == "observation"
-        and (
-            e.get("error")
-            or e.get("protocol_error")
-            or e.get("return_code") not in (None, 0)
-        )
-        for e in records
-    )
-    if error or tool_failure:
-        return 0, "solver_or_tool_failure"
     return int(reward == 1), "valid_verifier"
 
 
@@ -99,7 +113,8 @@ def prepare(job, output, config, source_manifest=None):
         }:
             raise ValueError("Cannot reuse evidence with changed prompts")
         previous.update(
-            sampling=SAMPLING, reused_manifest=str(source),
+            sampling=SAMPLING,
+            reused_manifest=str(source),
             reused_manifest_sha256=hashlib.sha256(
                 source.read_bytes()
             ).hexdigest(),
@@ -117,9 +132,9 @@ def prepare(job, output, config, source_manifest=None):
         if manifest["sampling"] != SAMPLING:
             raise ValueError("Sampling changed; use a new output directory")
         for entry in manifest["entries"]:
-            JudgeInput.from_dict(json.loads(
-                Path(entry["evidence_path"]).read_text()
-            ))
+            JudgeInput.from_dict(
+                json.loads(Path(entry["evidence_path"]).read_text())
+            )
         return manifest
     split_path = ROOT / "data/tb2_split.json"
     split = json.loads(split_path.read_text())
@@ -127,11 +142,12 @@ def prepare(job, output, config, source_manifest=None):
     for name, partition, attempt, result_path in select_trials(job, split):
         trace = result_path.parent / "agent/trace.jsonl"
         records = [json.loads(line) for line in trace.read_text().splitlines()]
-        evidence = export_trace(
-            trace, output / "traces" / result_path.parent.name,
-            observation_chars=12000,
-        )
         result = json.loads(result_path.read_text())
+        evidence = export_trace(
+            trace,
+            output / "traces" / result_path.parent.name,
+            result=result,
+        )
         label, reason = verifier_label(result, records)
         evidence_path = (
             output / "traces" / result_path.parent.name / "evidence.json"
@@ -156,7 +172,8 @@ def prepare(job, output, config, source_manifest=None):
             }
         )
     manifest = {
-        "version": "seed-calibration-v1",
+        "version": "seed-calibration-v2",
+        "evidence_version": VERSION,
         "job": str(job.resolve()),
         "selection": (
             "started_at ascending, trial_name tie-break; "
@@ -169,7 +186,7 @@ def prepare(job, output, config, source_manifest=None):
         "tau_rule": "sample SD of five equally task-weighted search means",
         "primary_threshold": 0.5,
         "a2_prereg_threshold": 0.8,
-        "observation_chars": 12000,
+        "observation_chars": None,
         "entries": entries,
         "sampling": SAMPLING,
     }
@@ -214,12 +231,15 @@ def enqueue_manifest(manifest, output, config):
             "remaining_attempt_bound_usd": remaining,
         }
         queues.append(queue)
-    remaining_total = sum(p["remaining_attempt_bound_usd"]
-                          for p in projection.values())
+    remaining_total = sum(
+        p["remaining_attempt_bound_usd"] for p in projection.values()
+    )
     budget_path = ROOT / "costs/judges_budget.json"
-    used = json.loads(budget_path.read_text())["used_usd"] if (
-        budget_path.exists()
-    ) else 0
+    used = (
+        json.loads(budget_path.read_text())["used_usd"]
+        if (budget_path.exists())
+        else 0
+    )
     projection["used_or_reserved_usd"] = used
     projection["remaining_two_attempt_bound_usd"] = remaining_total
     projection["projected_total_usd"] = used + remaining_total
@@ -268,7 +288,14 @@ def roc_optimal(scores, labels):
         p for p in points if p["tpr"] is not None and p["fpr"] is not None
     ]
     return (
-        max(valid, key=lambda p: (p["tpr"] - p["fpr"], p["threshold"]))
+        max(
+            valid,
+            key=lambda p: (
+                Fraction(p["tp"], p["positive_denominator"])
+                - Fraction(p["fp"], p["negative_denominator"]),
+                p["threshold"],
+            ),
+        )
         if valid
         else None
     )
@@ -290,7 +317,8 @@ def aggregate_repeat_sd(task_scores):
     if any(
         type(s) not in (int, float) or not math.isfinite(s)
         for attempts in task_scores.values()
-        for attempt in attempts for s in attempt
+        for attempt in attempts
+        for s in attempt
     ):
         raise ValueError("Repeat scores must be finite numbers")
     if repeats < 2:
@@ -305,12 +333,12 @@ def aggregate_repeat_sd(task_scores):
     return statistics.stdev(means), means
 
 
-def bootstrap_rates(entries, repeat_scores, threshold=0.5, draws=2000):
+def bootstrap_rates(entries, repeat_scores, threshold=0.5, draws=10000):
     """Task-cluster bootstrap; retain all attempts/repeats within each task."""
     tasks = defaultdict(list)
     for index, entry in enumerate(entries):
         tasks[entry["task"]].append(index)
-    names, rng = sorted(tasks), random.Random(260910)
+    names, rng = sorted(tasks), random.Random(260911)
     rates = {"tpr": [], "fpr": []}
     for _ in range(draws):
         indexes = [
@@ -326,7 +354,7 @@ def bootstrap_rates(entries, repeat_scores, threshold=0.5, draws=2000):
         for key in rates:
             if result[key] is not None:
                 rates[key].append(result[key])
-    return {
+    intervals = {
         key: (
             [
                 sorted(values)[int(0.025 * len(values))],
@@ -336,6 +364,12 @@ def bootstrap_rates(entries, repeat_scores, threshold=0.5, draws=2000):
             else None
         )
         for key, values in rates.items()
+    }
+    return {
+        **intervals,
+        "draws": draws,
+        "seed": 260911,
+        "undefined_draws": {k: draws - len(v) for k, v in rates.items()},
     }
 
 
@@ -348,9 +382,11 @@ def analyze(manifest, queues, output):
         attempted = []
         if queue.ledger and queue.ledger.exists():
             with queue.ledger.open() as handle:
-                attempted = [r for line in handle
-                             if (r := json.loads(line)).get("run_id")
-                             == queue.run_id]
+                attempted = [
+                    r
+                    for line in handle
+                    if (r := json.loads(line)).get("run_id") == queue.run_id
+                ]
         repeats = manifest["repeats"][prefix]
         by_key = {(r["rollout"], r["judge"], r["repeat"]): r for r in rows}
         for judge in ("a1", "a2"):
@@ -376,17 +412,21 @@ def analyze(manifest, queues, output):
                 "complete": complete,
                 "settled": all(
                     r["status"] in {"done", "failed"}
-                    for r in rows if r["judge"] == judge
+                    for r in rows
+                    if r["judge"] == judge
                 ),
                 "failed": sum(
                     r["status"] == "failed"
-                    for r in rows if r["judge"] == judge
+                    for r in rows
+                    if r["judge"] == judge
                 ),
                 "scored": len(calls),
                 "scheduled": len(flat),
                 "missing_judge_by_oracle_label": {
-                    str(label): sum(s is None and y == label
-                                    for s, y in zip(flat, labels, strict=True))
+                    str(label): sum(
+                        s is None and y == label
+                        for s, y in zip(flat, labels, strict=True)
+                    )
                     for label in (0, 1, None)
                 },
                 "classification_0.5": classification(flat, labels, 0.5),
@@ -395,8 +435,11 @@ def analyze(manifest, queues, output):
                 ),
                 "classification_raw_reward_0.5": classification(
                     flat,
-                    [e["raw_reward"] if e["raw_reward"] in (0, 1)
-                     else None for e in entries for _ in range(repeats)],
+                    [
+                        e["raw_reward"] if e["raw_reward"] in (0, 1) else None
+                        for e in entries
+                        for _ in range(repeats)
+                    ],
                     0.5,
                 ),
                 "roc_optimal": roc_optimal(flat, labels),
@@ -423,33 +466,48 @@ def analyze(manifest, queues, output):
             estimates = []
             for record in calls:
                 rates = prices["models"].get(record["model"])
-                if rates and all(record.get(k) is not None for k in (
-                    "input_tokens", "output_tokens",
-                )):
-                    estimates.append((
-                        record["input_tokens"]
-                        * max(rates["input"], rates["cache_write"])
-                        + record["output_tokens"] * rates["output"]
-                    ) / 1_000_000)
+                if rates and all(
+                    record.get(k) is not None
+                    for k in (
+                        "input_tokens",
+                        "output_tokens",
+                    )
+                ):
+                    estimates.append(
+                        (
+                            record["input_tokens"]
+                            * max(rates["input"], rates["cache_write"])
+                            + record["output_tokens"] * rates["output"]
+                        )
+                        / 1_000_000
+                    )
             report["uncached_planning_total_usd"] = (
                 sum(estimates) if len(estimates) == len(calls) else None
             )
             report["uncached_planning_mean_usd"] = (
                 statistics.mean(estimates)
-                if estimates and len(estimates) == len(calls) else None
+                if estimates and len(estimates) == len(calls)
+                else None
             )
             attempts = [r for r in attempted if r["arm"] == judge.upper()]
             attempt_estimates = []
             for record in attempts:
                 rates = prices["models"].get(record["model"])
-                if rates and all(record.get(k) is not None for k in (
-                    "input_tokens", "output_tokens",
-                )):
-                    attempt_estimates.append((
-                        record["input_tokens"]
-                        * max(rates["input"], rates["cache_write"])
-                        + record["output_tokens"] * rates["output"]
-                    ) / 1_000_000)
+                if rates and all(
+                    record.get(k) is not None
+                    for k in (
+                        "input_tokens",
+                        "output_tokens",
+                    )
+                ):
+                    attempt_estimates.append(
+                        (
+                            record["input_tokens"]
+                            * max(rates["input"], rates["cache_write"])
+                            + record["output_tokens"] * rates["output"]
+                        )
+                        / 1_000_000
+                    )
             report["attempts"] = len(attempts)
             report["attempt_uncached_planning_mean_usd"] = (
                 statistics.mean(attempt_estimates)
@@ -459,7 +517,8 @@ def analyze(manifest, queues, output):
             )
             report["attempt_uncached_planning_total_usd"] = (
                 sum(attempt_estimates)
-                if len(attempt_estimates) == len(attempts) else None
+                if len(attempt_estimates) == len(attempts)
+                else None
             )
             if calls and not report["unknown_cost_calls"]:
                 report["mean_call_cost_usd"] = report["known_cost_usd"] / len(
@@ -467,8 +526,7 @@ def analyze(manifest, queues, output):
                 )
             else:
                 report["mean_call_cost_usd"] = None
-            if complete:
-                report["bootstrap_ci95"] = bootstrap_rates(entries, vectors)
+            report["bootstrap_ci95"] = bootstrap_rates(entries, vectors)
             if complete and repeats >= 2:
                 search = defaultdict(list)
                 for entry, vector in zip(entries, vectors, strict=True):
@@ -529,34 +587,45 @@ def observed_operations(queues):
                         records.append(record)
         events = []
         if queue.event_log.exists():
-            events = [json.loads(s)
-                      for s in queue.event_log.read_text().splitlines()]
+            events = [
+                json.loads(s) for s in queue.event_log.read_text().splitlines()
+            ]
         dispatches = [e for e in events if e["status"] == "dispatch"]
         if not records:
             report[queue.run_id] = {"calls": 0}
             continue
-        starts = [datetime.fromisoformat(r["ts"]).timestamp()
-                  for r in records]
-        elapsed = max(s + (r["wall_s"] or 0) for s, r in zip(
-            starts, records, strict=True,
-        )) - min(starts)
-        tokens = sum((r.get("input_tokens") or 0)
-                     + (r.get("output_tokens") or 0) for r in records)
+        starts = [datetime.fromisoformat(r["ts"]).timestamp() for r in records]
+        elapsed = max(
+            s + (r["wall_s"] or 0)
+            for s, r in zip(
+                starts,
+                records,
+                strict=True,
+            )
+        ) - min(starts)
+        tokens = sum(
+            (r.get("input_tokens") or 0) + (r.get("output_tokens") or 0)
+            for r in records
+        )
         report[queue.run_id] = {
-            "calls": len(records), "queue_counts": queue.counts(),
+            "calls": len(records),
+            "queue_counts": queue.counts(),
             "elapsed_including_pauses_s": elapsed,
             "calls_per_minute": 60 * len(records) / elapsed,
             "observed_tokens": tokens,
             "observed_tokens_per_minute": 60 * tokens / elapsed,
             "mean_latency_s": statistics.mean(
                 r["wall_s"] for r in records if r["wall_s"] is not None
-            ) if any(r["wall_s"] is not None for r in records) else None,
+            )
+            if any(r["wall_s"] is not None for r in records)
+            else None,
             "unknown_latency_calls": sum(r["wall_s"] is None for r in records),
             "http_429s": sum(r["http_429s"] for r in records),
             "unknown_cost_calls": sum(r["cost_usd"] is None for r in records),
             "limiter_wait_s_sum": sum(e["limiter_wait_s"] for e in dispatches),
             "reserved_tokens": sum(e["reserved_tokens"] for e in dispatches),
-            "rpm": queue.limiter.rpm, "tpm": queue.limiter.tpm,
+            "rpm": queue.limiter.rpm,
+            "tpm": queue.limiter.tpm,
             "max_reservation": max(e["reserved_tokens"] for e in dispatches),
             "endpoint_signature": queue.signature,
         }
@@ -617,15 +686,29 @@ async def main_async(args):
             )
             with (ROOT / "costs/judges_ledger.jsonl").open() as handle:
                 ledger = [json.loads(line) for line in handle]
-            (ROOT / "docs/judges.md").write_text(render_report(
-                manifest, metrics, operations, output, budget, ledger,
-            ))
+            (ROOT / "docs/judges.md").write_text(
+                render_report(
+                    manifest,
+                    metrics,
+                    operations,
+                    output,
+                    budget,
+                    ledger,
+                )
+            )
         print(
             canonical(
                 {
-                    k: {x: v[x] for x in (
-                        "scored", "scheduled", "failed", "complete", "settled",
-                    )}
+                    k: {
+                        x: v[x]
+                        for x in (
+                            "scored",
+                            "scheduled",
+                            "failed",
+                            "complete",
+                            "settled",
+                        )
+                    }
                     for k, v in metrics.items()
                 }
             ),

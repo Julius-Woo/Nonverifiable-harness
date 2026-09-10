@@ -56,7 +56,7 @@ def audit_experiment(root, experiment):
     peer = root / "runs" / experiment / "isolation-peer/canary.txt"
     if peer.exists():
         canaries.append(peer.read_text())
-    errors, prefixes, by_arm = [], [], {}
+    errors, cache_users, by_arm = [], [], {}
     judge_prompts = {}
     for queue_path in (root / "logs/evolution" / experiment).glob(
         "*/judges/queue.sqlite"
@@ -80,14 +80,14 @@ def audit_experiment(root, experiment):
                 {"request": request_id, "error": "canary_in_payload"}
             )
         messages = payload["messages"]
-        namespace = messages[0]["content"]
-        prefixes.append(namespace)
-        if not namespace.startswith("Context identifier: "):
+        namespace = payload.get("user", "")
+        cache_users.append(namespace)
+        if not namespace:
             errors.append(
-                {"request": request_id, "error": "missing_unique_prefix"}
+                {"request": request_id, "error": "missing_cache_user"}
             )
         if intent["role"] == "evolver":
-            text = messages[1]["content"]
+            text = messages[0]["content"]
             conversation = json.loads(text.split("Conversation:\n", 1)[1])
             if conversation[0]["content"] != render(intent["arm"]):
                 errors.append(
@@ -97,7 +97,7 @@ def audit_experiment(root, experiment):
             expected = judge_prompts.get(intent["task"])
             if (
                 expected is None
-                or messages[1:] != [{"role": "user", "content": expected}]
+                or messages != [{"role": "user", "content": expected}]
                 or "tools" in payload
             ):
                 errors.append(
@@ -142,8 +142,8 @@ def audit_experiment(root, experiment):
         elapsed = terminal.get("wall_s", 0)
         row["api_wall_s"] += elapsed
         role["api_wall_s"] += elapsed
-    if len(prefixes) != len(set(prefixes)):
-        errors.append({"error": "duplicate_cache_prefix"})
+    if len(cache_users) != len(set(cache_users)):
+        errors.append({"error": "duplicate_cache_user"})
     task_calls = Counter(
         (r["arm"], r["task"]) for r in intents.values() if r["role"] == "task"
     )
@@ -322,7 +322,7 @@ def audit_experiment(root, experiment):
         "task_start_traces_audited": checked_task_traces,
         "private_task_traces_audited": private_task_traces,
         "legacy_task_traces": legacy_task_traces,
-        "unique_cache_prefixes": len(set(prefixes)),
+        "unique_cache_cache_users": len(set(cache_users)),
         "feedback_files_audited": feedback_count,
         "judge_payloads_match_queue": judged_payloads,
         "trace_exports_audited": trace_exports,
@@ -331,7 +331,7 @@ def audit_experiment(root, experiment):
         "costs_by_arm": by_arm,
         "role_calls": dict(Counter(r["role"] for r in intents.values())),
         "cache_gate": (
-            "Unique outbound prefixes enforced; provider internal cache "
+            "Unique outbound cache_users enforced; provider internal cache "
             "partition is not independently observable"
         ),
         "cost_note": (

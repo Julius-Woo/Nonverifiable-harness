@@ -19,14 +19,18 @@ class SearchEvaluation:
     baseline: float
     candidate: float | None
     family: str = "deepseek"
+    scale: Literal["unit", "signed_preference"] = "unit"
 
     def __post_init__(self):
+        if self.scale not in {"unit", "signed_preference"}:
+            raise ValueError("Unknown judge score scale")
+        lower = -1 if self.scale == "signed_preference" else 0
         _finite(self.baseline, "baseline judge score")
         for score in (self.baseline, self.candidate):
             if score is not None:
                 _finite(score, "judge score")
-                if not 0 <= score <= 1:
-                    raise ValueError("Judge scores must be in [0, 1]")
+                if not lower <= score <= 1:
+                    raise ValueError(f"Judge scores must be in [{lower}, 1]")
         if not isinstance(self.family, str) or not self.family.strip():
             raise ValueError("Judge family is required")
 
@@ -91,6 +95,7 @@ class EvolverContext:
                 "baseline": self.search.baseline,
                 "candidate": self.search.candidate,
                 "family": self.search.family,
+                "scale": self.search.scale,
             }
         }
 
@@ -126,7 +131,9 @@ def accept(
             candidate_eval.search.family.casefold().strip()
         ):
             raise ValueError("F-agree requires different model families")
-        threshold = tau if cross_tau is None else cross_tau
+        if cross_tau is None:
+            raise ValueError("F-agree requires explicit calibrated cross_tau")
+        threshold = cross_tau
         _finite(threshold, "cross_tau")
         if threshold < 0:
             raise ValueError("cross_tau must be nonnegative")

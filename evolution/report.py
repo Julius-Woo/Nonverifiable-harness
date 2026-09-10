@@ -4,7 +4,7 @@ import json
 from collections import Counter
 from pathlib import Path
 
-from evolution.judges import PROMPTS, PROMPT_VERSION
+from evolution.judges import PROMPT_VERSION, PROMPTS
 from evolution.sanitize import ALLOWED, VERSION
 
 
@@ -30,8 +30,11 @@ def measurements_ready(metrics):
     return (
         {"JUDGE/a1", "JUDGE/a2", "XJUDGE/a1", "XJUDGE/a2"} <= metrics.keys()
         and all(m.get("settled", False) for m in metrics.values())
-        and all(m["complete"] for name, m in metrics.items()
-                if name.startswith("JUDGE/"))
+        and all(
+            m["complete"]
+            for name, m in metrics.items()
+            if name.startswith("JUDGE/")
+        )
     )
 
 
@@ -41,6 +44,11 @@ def render_report(manifest, metrics, operations, output, budget, ledger):
         raise ValueError(
             "The report requires every scheduled score to finish under A9 "
             "and complete primary variance repeats"
+        )
+    if manifest.get("evidence_version") != VERSION:
+        raise ValueError(
+            "Historical v1 reports use evolution.reanalyze_judges; "
+            "do not regenerate them with the current evidence contract"
         )
     entries = manifest["entries"]
     counts = Counter(e["partition"] for e in entries)
@@ -68,8 +76,9 @@ def render_report(manifest, metrics, operations, output, budget, ledger):
         "| --- | ---: | ---: |",
     ]
     for partition, count in counts.items():
-        tasks = len({e["task"] for e in entries
-                     if e["partition"] == partition})
+        tasks = len(
+            {e["task"] for e in entries if e["partition"] == partition}
+        )
         lines.append(f"| {partition} | {tasks} | {count} |")
     lines += [
         "",
@@ -78,29 +87,18 @@ def render_report(manifest, metrics, operations, output, budget, ledger):
         "implement "
         "PREREG: reward 1 requires a valid verifier and no solver timeout or "
         "in-rollout tool failure. Raw rewards remain in the manifest and "
-        "receive a separate sensitivity table below. Missing verifier labels "
-        "are excluded only from TPR/FPR, not from repeated judging or tau. "
-        "The existing job's unavailable grader results cannot be repaired "
-        "within this read-only calibration; no favourable labels are imputed.",
+        "receive a separate sensitivity table below. Proven solver and "
+        "executor failures count before verifier availability is checked; "
+        "unresolved grader/infrastructure outcomes remain unlabelled.",
         "",
-        "The seed exposed at most 12,000 characters of each serialized tool "
-        "observation to its solver. This calibration retains **every event** "
-        "in order and applies that existing visibility limit after hidden "
-        "content redaction. Two raw path-tracing logs are about 51 MB each; "
-        "their full sanitized observations are archived as "
-        "`sanitized-full.json`, but are not sent wholesale to the API. "
-        "`sanitized.json`, `evidence.json`, and `redactions.json` record the "
-        "exact judged evidence and each visibility projection. This is a "
-        "solver-visible-trace calibration, not a claim that every raw output "
-        "byte fits the judge context. Generic queue exports default to full "
-        "sanitized traces and fail explicitly if an input exceeds capacity.",
-        "",
-        "The frozen sanitizer conservatively removes an entire text field "
-        "when it contains a hidden-artifact marker. As a result, both "
-        "`break-filter-js-from-html` task instructions became `[REDACTED]` "
-        "(2/48 trajectories). Their other allowed events remain visible. "
-        "This loss of task context is a calibration limitation; the fixed "
-        "evidence and completed judgments were not changed after dispatch.",
+        "Evidence v2 retains complete sanitized observations and explicit "
+        "termination fields. No observation cap is permitted; oversized "
+        "requests fail capacity checks before model dispatch. "
+        "Task instruction "
+        "text is preserved exactly, including hidden-file mentions. Hidden "
+        "contents and paired test outputs are removed with hash-only "
+        "provenance. Historical v1 scores retain their old evidence contract "
+        "and are reported separately by evolution.reanalyze_judges.",
         "",
         "## Measured variance and frozen tau",
         "",
@@ -129,7 +127,9 @@ def render_report(manifest, metrics, operations, output, budget, ledger):
             f"{number(report.get('search_sigma_fpr_0.5'))} |"
         )
     lines += [
-        "", "Search aggregate scores in repeat order (repeat IDs 0–4):", "",
+        "",
+        "Search aggregate scores in repeat order (repeat IDs 0–4):",
+        "",
     ]
     for name, report in metrics.items():
         if "search_repeat_means" in report:
@@ -150,8 +150,8 @@ def render_report(manifest, metrics, operations, output, budget, ledger):
         "Pool the five independently judged scores for each labelled "
         "DeepSeek trajectory; the denominator therefore repeats each "
         "trajectory five times. These are not independent task observations. "
-        "The deterministic 2,000-draw bootstrap resamples whole task blocks "
-        "with all their attempts and repeats (local seed 260910). "
+        "The deterministic 10,000-draw bootstrap resamples whole task blocks "
+        "with all their attempts and repeats (local seed 260911). "
         "Kimi contributes at most one observed score per labelled trajectory.",
         "",
         "Kimi failures after the one allowed retry remain missing, never "
@@ -167,7 +167,8 @@ def render_report(manifest, metrics, operations, output, budget, ledger):
     for name, report in metrics.items():
         roc = report["roc_optimal"]
         threshold = (
-            "above 1 (all negative)" if roc and roc["threshold"] > 1
+            "above 1 (all negative)"
+            if roc and roc["threshold"] > 1
             else number(roc["threshold"] if roc else None)
         )
         lines.append(
@@ -176,7 +177,9 @@ def render_report(manifest, metrics, operations, output, budget, ledger):
             f"{percent(roc['fpr'] if roc else None)} |"
         )
     lines += [
-        "", "Missing judge scores by oracle label:", "",
+        "",
+        "Missing judge scores by oracle label:",
+        "",
         "| Model / judge | Oracle positive | Oracle negative | Unlabelled |",
         "| --- | ---: | ---: | ---: |",
     ]
@@ -202,24 +205,28 @@ def render_report(manifest, metrics, operations, output, budget, ledger):
                 f"{number(report.get('search_sigma_fpr_0.8'))} |"
             )
     lines += [
-        "", "Sensitivity: direct comparison to available raw reward "
-        "(before the timeout/tool-failure override), at threshold 0.5:", "",
+        "",
+        "Sensitivity: direct comparison to available raw reward "
+        "(before the timeout/tool-failure override), at threshold 0.5:",
+        "",
         "| Model / judge | Raw-reward TPR | Raw-reward FPR |",
         "| --- | ---: | ---: |",
     ]
     for name, report in metrics.items():
         rates = report["classification_raw_reward_0.5"]
-        lines.append(
-            f"| {name} | {rate_cells(rates)} |"
-        )
+        lines.append(f"| {name} | {rate_cells(rates)} |")
     lines += [
-        "", "Unlabelled fixed trajectories (still judged in all repeats):", "",
+        "",
+        "Unlabelled fixed trajectories (still judged in all repeats):",
+        "",
     ]
     for entry in entries:
         if entry["oracle_label"] is None:
             lines.append(f"- `{entry['trial']}`: `{entry['label_reason']}`.")
     lines += [
-        "", "## Cost, latency, and observed throughput", "",
+        "",
+        "## Cost, latency, and observed throughput",
+        "",
         "Every attempted request uses the unchanged `OpenAIAPIBackend` "
         "and [judge ledger](../costs/judges_ledger.jsonl), role `judge`. "
         "Some responses omit cached-input counts. The ledger therefore "
@@ -246,7 +253,8 @@ def render_report(manifest, metrics, operations, output, budget, ledger):
             f"{report['unknown_cost_calls']} |"
         )
     lines += [
-        "", "| Queue | Attempts | Elapsed minutes | Calls/min | "
+        "",
+        "| Queue | Attempts | Elapsed minutes | Calls/min | "
         "Observed tokens/min | Reserved RPM / TPM | 429s |",
         "| --- | ---: | ---: | ---: | ---: | --- | ---: |",
     ]
@@ -282,7 +290,8 @@ def render_report(manifest, metrics, operations, output, budget, ledger):
         "a reset retry counter. The projection includes remaining permitted "
         "attempts plus all previously consumed or reserved budget.",
         "",
-        "## Prompts and schemas", "",
+        "## Prompts and schemas",
+        "",
         f"Prompt version: `{PROMPT_VERSION}`. Sanitizer version: `{VERSION}`. "
         "The following prompts are verbatim; each is followed by "
         "`\\n\\nEvidence JSON:\\n` and canonical JSON evidence. "
@@ -291,25 +300,40 @@ def render_report(manifest, metrics, operations, output, budget, ledger):
     ]
     lines += [
         "Sampling and endpoint settings actually used by the final queues:",
-        "", "```json", json.dumps({
-            name: report["endpoint_signature"]
-            for name, report in operations.items()
-        }, indent=2), "```", "",
+        "",
+        "```json",
+        json.dumps(
+            {
+                name: report["endpoint_signature"]
+                for name, report in operations.items()
+            },
+            indent=2,
+        ),
+        "```",
+        "",
     ]
     for name, prompt in PROMPTS.items():
         lines += [
-            f"### {name.upper()} prompt", "", "```text", prompt, "```", "",
+            f"### {name.upper()} prompt",
+            "",
+            "```text",
+            prompt,
+            "```",
+            "",
         ]
     lines += [
-        "### Evidence contracts", "",
+        "### Evidence contracts",
+        "",
         "`JudgeInput` accepts exactly `{task_text: str, trajectory: "
         "SanitizedTrajectory}`. The immutable trajectory envelope is "
         "`{version: str, events: list[allowlisted scalar event objects]}`. "
         "Additional envelope/event fields are rejected. Allowed event "
-        "fields (in addition to `kind`) are:", "",
+        "fields (in addition to `kind`) are:",
+        "",
         "```json",
         json.dumps({k: sorted(v) for k, v in ALLOWED.items()}, indent=2),
-        "```", "",
+        "```",
+        "",
         "A1 sends exactly `{task_text, final_summary}`. The deterministic "
         "summary has `final_solver_message`, `recorded_artifacts`, "
         "`last_state_observation`, `termination`, and "
@@ -328,7 +352,8 @@ def render_report(manifest, metrics, operations, output, budget, ledger):
         "scores, with zero additional model calls; a missing component "
         "fails the mixture. Rationale text and raw responses remain archived.",
         "",
-        "### Sanitization and trust boundaries", "",
+        "### Sanitization and trust boundaries",
+        "",
         "The sanitizer removes hidden `test_*.py`, `tests/`, `eval.py`, "
         "`evaluator.py`, `eval/`, reference `output/`, `notes/`, "
         "`judge_api.py`, `judge_train_eval/`, rubric fields, oracle/verifier "
@@ -352,18 +377,25 @@ def render_report(manifest, metrics, operations, output, budget, ledger):
         "gain thresholds, and does not use an anchor. These are prospective "
         "repair rules, not permission to use anchors for pilot selection.",
         "",
-        "## Operation and verification", "",
-        "Generic asynchronous queue:", "", "```bash",
+        "## Operation and verification",
+        "",
+        "Generic asynchronous queue:",
+        "",
+        "```bash",
         "uv run python -m evolution.judge_queue --job <completed-harbor-job> "
-        "--judges a1,a2 --repeats 5", "```", "",
+        "--judges a1,a2 --repeats 5",
+        "```",
+        "",
         "Reproduce this report from the durable queues without API calls:",
-        "", "```bash",
+        "",
+        "```bash",
         "W8_CALIBRATION_MODE=report W8_WRITE_DOCS=1 \\",
         f"W8_CALIBRATION_OUTPUT={artifact_dir} \\",
         "XJUDGE_MAX_COMPLETION_TOKENS=8192 XJUDGE_QUEUE_SUFFIX=cap8192 \\",
         "uv run pytest -q -s "
         "tests/test_evolution_calibration.py::test_authorized_calibration",
-        "```", "",
+        "```",
+        "",
         "Configure `JUDGE_API_BASE`, `JUDGE_API_KEY`, `JUDGE_MODEL` and "
         "the corresponding `XJUDGE_*` variables. Optional `{PREFIX}_RPM`, "
         "`{PREFIX}_TPM`, `{PREFIX}_MAX_COMPLETION_TOKENS`, "
@@ -392,16 +424,14 @@ def render_report(manifest, metrics, operations, output, budget, ledger):
         "mixtures, retry failures, both crash windows, resumption, "
         "concurrency, admission control, statistics, and anchor separation.",
         "",
-        "## Remaining limitations", "",
+        "## Remaining limitations",
+        "",
         "- Invoice prices, cache counts, and dated served model snapshots "
         "are unavailable; requests and exact returned model names are "
         "archived. No claim of deterministic or cache-isolated sampling "
         "is made. The separate P1.6 cache/isolation gate remains necessary.",
-        "- Full raw observations exceed API capacity on some traces; "
-        "calibration uses the seed-visible observation limit described above. "
-        "Whole-field redaction also removes two task instructions. A future "
-        "sanitizer revision should preserve public instruction spans and "
-        "receive a separately versioned calibration.",
+        "- Full observations can exceed API capacity. Such measurements "
+        "fail explicitly; v1 variance does not calibrate the v2 condition.",
         "- Missing verifier results and the small number of valid positives "
         "limit classification precision. ROC thresholds are descriptive only.",
         "- Kimi has one repeat; its variance and tau are undefined. This "
@@ -420,9 +450,11 @@ def render_report(manifest, metrics, operations, output, budget, ledger):
     if verification.exists():
         summary = verification.read_text().strip().splitlines()[-1]
         lines += [
-            "## Recorded verification", "",
+            "## Recorded verification",
+            "",
             f"Latest project-wide offline test result: **{summary}** "
-            f"([raw output](../{artifact_dir}/pytest.txt)).", "",
+            f"([raw output](../{artifact_dir}/pytest.txt)).",
+            "",
         ]
     audit = Path(output) / "export-audit.json"
     if audit.exists():
@@ -432,6 +464,7 @@ def render_report(manifest, metrics, operations, output, budget, ledger):
             f"verified {data['raw_trace_hashes_verified']} unchanged raw "
             f"trace hashes and {data['completed_payloads_verified']} "
             "completed API payloads against the exact queued evidence; "
-            "no tools or oracle fields were added to the request schema.", "",
+            "no tools or oracle fields were added to the request schema.",
+            "",
         ]
     return "\n".join(lines)

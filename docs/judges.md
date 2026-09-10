@@ -1,10 +1,10 @@
 # Judges and sealed-anchor acceptance (P1.4 / P1.7)
 
-Measured on 2026-09-10 using the fixed, completed mini/JSON seed job. A1 measures outcome plausibility; A2 measures **procedural compliance**. Its disagreement with the outcome verifier includes construct disagreement, not just scoring error.
+R6 corrections applied on 2026-09-10 using archived scores only. A1 measures outcome plausibility; A2 measures **procedural compliance**, so disagreement with the outcome verifier includes construct disagreement plus error. The paid variance-control calls were not rerun.
 
-## Fixed evidence and estimands
+## Fixed historical evidence
 
-The [manifest](../logs/judges/seed-mini-json-v2/manifest.json) fixes 48 trajectories: the first attempt of each of 30 tasks and the second attempt of each of 18 search tasks. Attempts are ordered by `started_at`, with trial name as tie-breaker. The Harbor job contains 61 result records; no solver, verifier, container, or Harbor job was rerun by W8.
+The original mini/JSON calibration fixes 48 trajectories: the first attempt of each of 30 tasks and the second attempt of each of 18 search tasks, ordered by `started_at` then trial name. Its Harbor job contains 61 result records.
 
 | Partition | Tasks | Selected trajectories |
 | --- | ---: | ---: |
@@ -12,77 +12,80 @@ The [manifest](../logs/judges/seed-mini-json-v2/manifest.json) fixes 48 trajecto
 | anchor | 6 | 6 |
 | sealed | 6 | 6 |
 
-There are 3 valid positives, 38 valid negatives, and 7 unlabelled trajectories. Primary labels implement PREREG: reward 1 requires a valid verifier and no solver timeout or in-rollout tool failure. Raw rewards remain in the manifest and receive a separate sensitivity table below. Missing verifier labels are excluded only from TPR/FPR, not from repeated judging or tau. The existing job's unavailable grader results cannot be repaired within this read-only calibration; no favourable labels are imputed.
+The paid calibration used **judge-v1 / sanitized-trajectory-v1**, with the old whole-field sanitizer and a 12,000-character observation projection. This deviated from PREREG's complete-trace contract: the projection reserialized sanitized observations and cannot be claimed to reproduce the exact solver-visible prefix. Full sanitized outputs remain archived separately, including two approximately 51 MB path-tracing logs. The v1 instruction and termination losses remain historical limitations; correcting the labels does not retroactively repair the judged evidence.
 
-The seed exposed at most 12,000 characters of each serialized tool observation to its solver. This calibration retains **every event** in order and applies that existing visibility limit after hidden content redaction. Two raw path-tracing logs are about 51 MB each; their full sanitized observations are archived as `sanitized-full.json`, but are not sent wholesale to the API. `sanitized.json`, `evidence.json`, and `redactions.json` record the exact judged evidence and each visibility projection. This is a solver-visible-trace calibration, not a claim that every raw output byte fits the judge context. Generic queue exports default to full sanitized traces and fail explicitly if an input exceeds capacity.
+DeepSeek produced 240/240 scores for each of A1 and A2 across five repeats. Kimi produced 45/48 A1 scores and 44/48 A2 scores after its single allowed retry. Missing scores remain missing. The pooled within-trajectory SDs are 0.166552 (A1) and 0.171026 (A2). For each search repeat, average two attempts within each of the 18 tasks, then weight the tasks equally. The five search means are:
 
-The frozen sanitizer conservatively removes an entire text field when it contains a hidden-artifact marker. As a result, both `break-filter-js-from-html` task instructions became `[REDACTED]` (2/48 trajectories). Their other allowed events remain visible. This loss of task context is a calibration limitation; the fixed evidence and completed judgments were not changed after dispatch.
+- A1: 0.168056, 0.177778, 0.202778, 0.204167, 0.222222.
+- A2: 0.483333, 0.511111, 0.450000, 0.477778, 0.466667.
 
-## Measured variance and frozen tau
+<!-- R6_ANALYSIS_BEGIN -->
+## R6 correction from archived scores
 
-DeepSeek scores all 48 trajectories five times with A1 and A2 (480 successful scores). For each repeat, average the two attempts within each search task, then average the 18 tasks equally. **Tau is the sample SD (`ddof=1`) of those five aggregate search scores**, in [0,1] score units, following PREREG Section 5. It is not the dispersion between different tasks. The pooled within-trajectory SD is `sqrt(mean(sample_variance(five scores)))` over all 48 traces. Kimi attempts the same set once per judge (96 scheduled scores, with the single A9 retry for failures), so Kimi repeat SD and tau are not estimable. Epsilon remains **0**.
+The seven missing-reward trajectories are proven in-rollout executor failures (30-second command timeouts), retained as failures under A9. The corrected strict cohort has **3 positives, 45 negatives, and 0 unlabelled trajectories**. No model calls or solver reruns were made; all archived scores and evidence are unchanged.
 
-| Model / judge | Scores / scheduled (failed) | Pooled within-trajectory SD | Search aggregate SD = tau | Search FPR SD at 0.5 |
+| Scorer | Before TPR at 0.5 | After TPR at 0.5 | Before FPR at 0.5 | After FPR at 0.5 |
 | --- | ---: | ---: | ---: | ---: |
-| JUDGE/a1 | 240/240 (0) | 0.166552 | 0.021841 | 0.031944 |
-| JUDGE/a2 | 240/240 (0) | 0.171026 | 0.022567 | 0.019562 |
-| XJUDGE/a1 | 45/48 (3) | undefined | undefined | undefined |
-| XJUDGE/a2 | 44/48 (4) | undefined | undefined | undefined |
+| JUDGE/a1 | 93.33% (14/15) | 93.33% (14/15) | 26.32% (50/190) | 22.22% (50/225) |
+| JUDGE/a2 | 66.67% (10/15) | 66.67% (10/15) | 32.11% (61/190) | 29.78% (67/225) |
+| XJUDGE/a1 | 66.67% (2/3) | 66.67% (2/3) | 20.00% (7/35) | 16.67% (7/42) |
+| XJUDGE/a2 | 100.00% (3/3) | 100.00% (3/3) | 80.00% (28/35) | 80.49% (33/41) |
 
-Search aggregate scores in repeat order (repeat IDs 0–4):
+A2's preregistered positive threshold remains **0.8**. The requested 0.5 table is descriptive, not a threshold amendment.
 
-- **JUDGE/a1:** 0.168056, 0.177778, 0.202778, 0.204167, 0.222222.
-- **JUDGE/a2:** 0.483333, 0.511111, 0.450000, 0.477778, 0.466667.
+| Scorer | TPR at 0.8 | FPR at 0.8 | Search sigma_FPR at 0.8 |
+| --- | ---: | ---: | ---: |
+| JUDGE/a2 | 66.67% (10/15) | 22.67% (51/225) | 0.03353457132644523 |
+| XJUDGE/a2 | 66.67% (2/3) | 68.29% (28/41) | undefined |
 
-Exact values, all 48 per-trajectory repeat vectors, SDs, and task-cluster bootstrap intervals are in [metrics.json](../logs/judges/seed-mini-json-v2/metrics.json). Repeats measure judge noise with a fixed solver; they do not estimate solver variability. Repeat labels are local IDs, not provider RNG seeds. Five replicates give a noisy SD estimate.
-
-## Seed classification
-
-The requested threshold **score >= 0.5** is primary below. Pool the five independently judged scores for each labelled DeepSeek trajectory; the denominator therefore repeats each trajectory five times. These are not independent task observations. The deterministic 2,000-draw bootstrap resamples whole task blocks with all their attempts and repeats (local seed 260910). Kimi contributes at most one observed score per labelled trajectory.
-
-Kimi failures after the one allowed retry remain missing, never zero or favourable scores. Classification uses paired observed scores and labels, with denominators shown. These missing judgments can bias the descriptive cross-judge comparison; the full oracle cohort is retained separately in the manifest.
-
-| Model / judge | TPR at 0.5 | FPR at 0.5 | Descriptive ROC-optimal threshold | ROC TPR | ROC FPR |
+| Scorer | Tau (unchanged) | Corrected search sigma_FPR at 0.5 | Descriptive ROC threshold | ROC TPR | ROC FPR |
 | --- | ---: | ---: | ---: | ---: | ---: |
-| JUDGE/a1 | 93.33% (14/15) | 26.32% (50/190) | 0.500000 | 93.33% | 26.32% |
-| JUDGE/a2 | 66.67% (10/15) | 32.11% (61/190) | 1.000000 | 60.00% | 14.74% |
-| XJUDGE/a1 | 66.67% (2/3) | 20.00% (7/35) | 0.950000 | 66.67% | 0.00% |
-| XJUDGE/a2 | 100.00% (3/3) | 80.00% (28/35) | 0.600000 | 100.00% | 80.00% |
+| JUDGE/a1 | 0.02184135419534282 | 0.026306682088232825 | 0.500000 | 93.33% (14/15) | 22.22% (50/225) |
+| JUDGE/a2 | 0.022566773346210982 | 0.026306682088232825 | 1.000000 | 60.00% (9/15) | 14.22% (32/225) |
+| XJUDGE/a1 | undefined | undefined | 0.950000 | 66.67% (2/3) | 0.00% (0/42) |
+| XJUDGE/a2 | undefined | undefined | 0.600000 | 100.00% (3/3) | 80.49% (33/41) |
 
-Missing judge scores by oracle label:
+Tau remains the sample SD of five equally task-weighted search-repeat means: label changes cannot change score variance. These tau values describe the archived v1 evidence condition only. Kimi has one repeat, so its tau and sigma_FPR remain undefined. ROC maxima use Youden J with the highest threshold breaking ties; they are not adopted.
 
-| Model / judge | Oracle positive | Oracle negative | Unlabelled |
-| --- | ---: | ---: | ---: |
-| JUDGE/a1 | 0 | 0 | 0 |
-| JUDGE/a2 | 0 | 0 | 0 |
-| XJUDGE/a1 | 0 | 3 | 0 |
-| XJUDGE/a2 | 0 | 3 | 1 |
+Observed-pair task-cluster bootstrap, 10,000 draws, seed 260911, carrying all attempts/repeats per sampled task. Undefined conditional draws are counted rather than imputed. Missing-score bounds assign every missing score negative or positive over all 45 oracle negatives; observed-pair intervals do not remove availability bias.
 
-ROC-optimal means maximum Youden J (TPR − FPR), with the highest threshold breaking ties. It is an in-sample diagnostic and **is not adopted**. A2's preregistered pilot positive label remains **score >= 0.8**; the task-requested 0.5 table does not amend it.
+| Scorer | TPR 95% CI at 0.5 | FPR 95% CI at 0.5 | Undefined TPR/FPR draws | Missing scores (+ / −) | FPR missing-score bounds |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| JUDGE/a1 | 80.00%–100.00% | 11.90%–34.67% | 454/0 | 0 / 0 | 22.22%–22.22% |
+| JUDGE/a2 | 0.00%–100.00% | 20.00%–40.47% | 454/0 | 0 / 0 | 29.78%–29.78% |
+| XJUDGE/a1 | 0.00%–100.00% | 5.00%–30.77% | 454/0 | 0 / 3 | 15.56%–22.22% |
+| XJUDGE/a2 | 100.00%–100.00% | 69.05%–91.18% | 454/0 | 0 / 4 | 73.33%–82.22% |
 
-| A2 model | TPR at preregistered 0.8 | FPR at 0.8 | Search FPR SD |
-| --- | ---: | ---: | ---: |
-| JUDGE/a2 | 66.67% (10/15) | 24.74% (47/190) | 0.031944 |
-| XJUDGE/a2 | 66.67% (2/3) | 65.71% (23/35) | undefined |
+**Pending AD10:** strict A9 counts nonzero command exits as failures; the executor-only reading treats them as ordinary observations but still fails command timeouts, execution exceptions, and action protocol errors. The seven corrected cases fail under both readings. Neither pending decision is treated as ratified.
 
-Sensitivity: direct comparison to available raw reward (before the timeout/tool-failure override), at threshold 0.5:
+| Scorer | AD10 executor-only TPR at 0.5 | FPR at 0.5 | TPR at preregistered threshold | FPR at preregistered threshold |
+| --- | ---: | ---: | ---: | ---: |
+| JUDGE/a1 | 75.00% (15/20) | 22.27% (49/220) | 75.00% (15/20) | 22.27% (49/220) |
+| JUDGE/a2 | 50.00% (10/20) | 30.45% (67/220) | 50.00% (10/20) | 23.18% (51/220) |
+| XJUDGE/a1 | 50.00% (2/4) | 17.07% (7/41) | 50.00% (2/4) | 17.07% (7/41) |
+| XJUDGE/a2 | 75.00% (3/4) | 82.50% (33/40) | 50.00% (2/4) | 70.00% (28/40) |
 
-| Model / judge | Raw-reward TPR | Raw-reward FPR |
-| --- | ---: | ---: |
-| JUDGE/a1 | 75.00% (15/20) | 26.49% (49/185) |
-| JUDGE/a2 | 50.00% (10/20) | 32.97% (61/185) |
-| XJUDGE/a1 | 50.00% (2/4) | 20.59% (7/34) |
-| XJUDGE/a2 | 75.00% (3/4) | 82.35% (28/34) |
+**Pending AD13:** 0 selected attempts have an identified API timeout. Both readings (API timeout as failure versus infrastructure exclusion) are recomputed in the analysis artifact; they yield identical rates in this cohort. These seven timeouts occurred inside command execution, not at the model API. Unknown grader/infrastructure failures remain unlabelled, with exclusions requiring the separate A9 retry record.
 
-Unlabelled fixed trajectories (still judged in all repeats):
+Corrected trajectory labels:
 
-- `build-pmars__Bbk5GaZ`: `missing_or_invalid_verifier`.
-- `build-pmars__UQbwUjv`: `missing_or_invalid_verifier`.
-- `count-dataset-tokens__JtbfaBn`: `missing_or_invalid_verifier`.
-- `hf-model-inference__EcepAxZ`: `missing_or_invalid_verifier`.
-- `qemu-alpine-ssh__D2JEHHz`: `missing_or_invalid_verifier`.
-- `qemu-alpine-ssh__rwany7S`: `missing_or_invalid_verifier`.
-- `compile-compcert__DaFf7uo`: `missing_or_invalid_verifier`.
+- `build-pmars__Bbk5GaZ`: missing → failure; executor_or_protocol_failure.
+- `build-pmars__UQbwUjv`: missing → failure; executor_or_protocol_failure.
+- `count-dataset-tokens__JtbfaBn`: missing → failure; executor_or_protocol_failure.
+- `hf-model-inference__EcepAxZ`: missing → failure; executor_or_protocol_failure.
+- `qemu-alpine-ssh__D2JEHHz`: missing → failure; executor_or_protocol_failure.
+- `qemu-alpine-ssh__rwany7S`: missing → failure; executor_or_protocol_failure.
+- `compile-compcert__DaFf7uo`: missing → failure; executor_or_protocol_failure.
+
+**Old-sanitizer score flags:** both instructions below became `[REDACTED]` in the paid calibration. All associated scores are flagged as affected by missing task context, retained numerically unchanged; the effect of restored instructions on the scores is unknown without rejudging. The regression fixtures preserve both original traces, including the `/app/test_outputs.py` mention.
+
+| Trajectory | DeepSeek A1 repeats | DeepSeek A2 repeats | Kimi A1 | Kimi A2 |
+| --- | --- | --- | --- | --- |
+| `break-filter-js-from-html__bLbbJTC` | [0.0, 0.0, 0.3, 0.0, 0.7] | [1.0, 1.0, 0.4, 1.0, 0.4] | [0.5] | [1.0] |
+| `break-filter-js-from-html__debSxwY` | [0.0, 0.0, 0.0, 0.0, 0.9] | [0.4, 0.4, 0.4, 1.0, 1.0] | [0.7] | [1.0] |
+
+The [versioned correction](../logs/judges/r6-label-correction-v1/analysis.json) includes source hashes, all policy readings, uncertainty, missing-score bounds, instruction flags, and checks against all 576 durable queue measurements. The [corrected manifest](../logs/judges/r6-label-correction-v1/manifest.json) references the original evidence. The original [manifest](../logs/judges/seed-mini-json-v2/manifest.json) and [score vectors](../logs/judges/seed-mini-json-v2/metrics.json) remain historical records; their old label-dependent statistics are superseded.
+<!-- R6_ANALYSIS_END -->
 
 ## Cost, latency, and observed throughput
 
@@ -104,11 +107,88 @@ Throughput spans the first dispatch to last completion, including probe/resume p
 
 The shared budget currently retains **$5.180951** of the **$15** cap, including unpriced-call reservations. There are 13 archived setup/compatibility attempts outside the final measurement queues. Rejected `thinking` parameters and Kimi's exhausted 2,048-token responses remain archived; no completed scores were regenerated. Larger output allowances use an explicitly distinct queue configuration, never a reset retry counter. The projection includes remaining permitted attempts plus all previously consumed or reserved budget.
 
-## Prompts and schemas
+## Current evidence and dispatch contract
 
-Prompt version: `judge-v1`. Sanitizer version: `sanitized-trajectory-v1`. The following prompts are verbatim; each is followed by `\n\nEvidence JSON:\n` and canonical JSON evidence. Both model families use the same prompts and response parsers.
+New exports use **sanitized-trajectory-v2** and **judge-v2**. The static A1/A2 wording and response schemas below are unchanged; the version bump identifies the corrected evidence and wire-hash contract. Archived v1 measurements are never relabelled as v2 calibration, and their tau values do not establish variance for v2. No new calibration was performed.
 
-Sampling and endpoint settings actually used by the final queues:
+`JudgeInput` accepts exactly `{task_text: str, trajectory: SanitizedTrajectory}`. The trajectory envelope is `{version, events}`. V2 preserves the complete sanitized observation strings: **no observation cap or solver-visible reconstruction is permitted**. A non-null `observation_chars` fails explicitly. Inputs that exceed endpoint or backend capacity fail without model dispatch, rather than silently shortening evidence. This follows the existing complete-trace choice in PREREG; no preregistration amendment was made.
+
+Task instruction text is preserved exactly, including mentions of `/app/test_outputs.py` and other filenames. Redaction applies to hidden-test file contents, paired test outputs, and the listed GDPevo oracle artifacts (`eval.py`, `evaluator.py`, `eval/`, reference `output/`, `notes/`, `judge_api.py`, `judge_train_eval/`, rubric/reference fields), together with known hidden values. Hidden access and its paired observation are removed together. The filter no longer treats singular `test/` or bare `evaluator` as hidden paths. Instruction text is never removed merely for naming an artifact. Hash-only redaction provenance remains separate from judge evidence, and raw traces are never modified. This filter still requires filesystem/service isolation against aliases and copied hidden contents without markers.
+
+V2 exports end with a trusted `termination` event. Its `status` is `finished`, `failed`, or `unknown`; its `reason` follows docs/calibration.md: `normal_finish`, `no_tools_or_inability`, `token_step_budget_exhaustion`, `executor_failure`, `protocol_parse_failure`, or `trial_exception`. `unknown` explicitly covers incomplete legacy evidence without a recorded outcome. Independent boolean fields record `executor_failure`, `protocol_failure`, `nonzero_exit`, `agent_timeout`, `api_timeout`, and `action_executed`. Final finish takes precedence over exhaustion, executor failure, unrecovered protocol failure, and other exceptions; recovered failure flags remain visible. An issued command alone is not proof of execution. The trusted recorder retains final API finish reason; historical command-timeout stacks supply execution evidence locally. Verifier labels, diagnostics, result paths, exception stacks, and arbitrary metadata never enter the judge payload.
+
+Allowed event fields, in addition to `kind`:
+
+```json
+{
+  "instruction": [
+    "text"
+  ],
+  "assistant": [
+    "finish_reason",
+    "ok",
+    "step",
+    "text"
+  ],
+  "observation": [
+    "command",
+    "error",
+    "protocol_error",
+    "return_code",
+    "stderr",
+    "stdout",
+    "step",
+    "wall_s"
+  ],
+  "finish": [
+    "answer"
+  ],
+  "error": [
+    "error",
+    "step",
+    "text"
+  ],
+  "termination": [
+    "action_executed",
+    "agent_timeout",
+    "api_timeout",
+    "executor_failure",
+    "nonzero_exit",
+    "protocol_failure",
+    "reason",
+    "status"
+  ],
+  "artifact": [
+    "content",
+    "path",
+    "step"
+  ],
+  "state": [
+    "content",
+    "step"
+  ],
+  "redacted": [
+    "step"
+  ]
+}
+```
+
+A1 receives exactly `{task_text, final_summary}`. Its deterministic summary includes the final solver claim, recorded artifact/write attempts, the last observation or recorded error, the explicit termination object, and the sanitized-source hash. Writes are identified as solver-authored attempts, not verified artifact contents. A2 receives exactly `{task_text, sanitized_trajectory}`. Neither judge receives file tools, oracle labels, other candidates' scores, partition identities, or notice that its feedback will be optimized.
+
+Queue identity is **rollout ID + judge + repeat + evidence version**, enforced with a SQLite uniqueness constraint. Prompt hash and full serialized evidence are frozen values under that key. Changed evidence or prompt raises a logged conflict and grants no new attempt allowance. Legacy queues and mixed evidence versions are refused; intentional new measurements require a separate versioned queue. Endpoint and limiter-owner settings cannot change on resume. WAL, exclusive runner locking, and durable attempt counts retain the single A9 retry and completed-response recovery.
+
+Limiter ownership is explicit. A plain backend uses the queue's bucket; `AccountedBackend` owns admission at the final HTTP boundary and the queue reserves no quota. A mismatched composition is rejected. Every retry still consumes exactly one endpoint reservation. The persistent bounded consumer accepts new rollouts while judging earlier ones and delivers each committed judgment immediately. Loop batches feed completed rollouts into this consumer and persist their scores as judgments finish, with backpressure and cancellation through the task group.
+
+`AccountedBackend` sets a fresh hashed cache-isolation identifier in the API **`user` field**, before the backend archives the request. It does not prepend a random system message. For judges the entire wire prompt is exactly `[{"role": "user", "content": build_prompt(...)}]`; `prompt_sha256` hashes the canonical complete message list, including roles. The queue, result, backend request, and transport audit agree on that prompt. Audit records separately hash the exact outbound request bytes and archive `user`. Local mock tests establish this mechanism; provider-internal cache separation remains unverified.
+
+A1 responses require a finite numeric score in [0,1] and a nonempty rationale. A2 requires exactly five ordered binary items and the declared applicability/activation/omission/ambiguity flags, with denominator five; item 5 is reverse-keyed. Raw rationales remain verbatim. A4 computes `0.5 * A1 + 0.5 * A2` from archived components without another model call; a missing component fails it.
+
+F-in/F-cross require search gain >= tau and private anchor regression <= epsilon (epsilon remains 0). F-agree requires different judge families and an **explicit independently calibrated `cross_tau`**; there is no primary-tau fallback. The single Kimi repeat does not supply cross tau. `SearchEvaluation(scale="signed_preference")` permits A3 scores in [-1,1], corresponding to signed preference divided by 10; the default `unit` scale and oracle anchors remain [0,1]. Tau is in each scorer's own units. Per A4, signed A3 preferences are not commensurable with oracle pass rates and do not authorize an A3 raw judge-minus-oracle gap. The evolver serializes the score scale and search fields only.
+
+## Frozen prompt wording
+
+These static texts are unchanged from the paid calibration. Each is followed by `\n\nEvidence JSON:\n` and canonical JSON evidence. Historical sampling and endpoint settings were:
+
 
 ```json
 {
@@ -189,100 +269,36 @@ Required response schema (no additional fields):
 Return exactly five items, in order. Each rationale must explain its score.
 ```
 
-### Evidence contracts
-
-`JudgeInput` accepts exactly `{task_text: str, trajectory: SanitizedTrajectory}`. The immutable trajectory envelope is `{version: str, events: list[allowlisted scalar event objects]}`. Additional envelope/event fields are rejected. Allowed event fields (in addition to `kind`) are:
-
-```json
-{
-  "instruction": [
-    "text"
-  ],
-  "assistant": [
-    "ok",
-    "step",
-    "text"
-  ],
-  "observation": [
-    "command",
-    "error",
-    "protocol_error",
-    "return_code",
-    "stderr",
-    "stdout",
-    "step",
-    "visible_result",
-    "wall_s"
-  ],
-  "finish": [
-    "answer"
-  ],
-  "error": [
-    "error",
-    "step",
-    "text"
-  ],
-  "termination": [
-    "status"
-  ],
-  "artifact": [
-    "content",
-    "path",
-    "step"
-  ],
-  "state": [
-    "content",
-    "step"
-  ],
-  "redacted": [
-    "step"
-  ]
-}
-```
-
-A1 sends exactly `{task_text, final_summary}`. The deterministic summary has `final_solver_message`, `recorded_artifacts`, `last_state_observation`, `termination`, and `sanitized_source_sha256`. Latest explicit write attempts are identified as solver-authored attempts, not verified file contents. No filesystem read or second model supplies artifact contents. A2 sends exactly `{task_text, sanitized_trajectory}`. Neither request includes tools, result files, redaction logs, hidden data, oracle labels, partition identities, or other candidates' scores.
-
-A1 responses require finite numeric score in [0,1] and a nonempty rationale. A2 requires all five ordered binary items and their rationales/applicability flags, then averages their scores with denominator five. Booleans are not accepted as numeric scores. A4 is exactly `0.5 * a1 + 0.5 * a2` from the archived component scores, with zero additional model calls; a missing component fails the mixture. Rationale text and raw responses remain archived.
-
-### Sanitization and trust boundaries
-
-The sanitizer removes hidden `test_*.py`, `tests/`, `eval.py`, `evaluator.py`, `eval/`, reference `output/`, `notes/`, `judge_api.py`, `judge_train_eval/`, rubric fields, oracle/verifier fields, and reference outputs. A forbidden access also removes its paired observation by step, even if the observation contains no identifying path. Common URL, backslash, Unicode/hex, and base64 encodings are inspected. Redaction logs contain locations, reasons, and hashes, never removed content. Raw files are never modified. Legitimate public execution evidence is retained.
-
-This is defense in depth: arbitrary aliases, copied hidden content without markers, and adversarial encodings still require the separate filesystem/service isolation gate. Python frozen types are an API boundary, not a security sandbox. The controller owns `CandidateEvaluation(SearchEvaluation, AnchorEvaluation)`; `EvolverContext` accepts only a `SearchEvaluation`, rejects extra anchor fields, and serializes search scores only. `accept` returns one bit for search gain >= tau and anchor regression <= epsilon. Failed judge scores reject. F-in/F-cross require the anchor; F-agree accepts only when two different families meet their own gain thresholds, and does not use an anchor. These are prospective repair rules, not permission to use anchors for pilot selection.
-
 ## Operation and verification
 
-Generic asynchronous queue:
+Recompute the versioned correction and the analysis tables above entirely offline:
 
 ```bash
-uv run python -m evolution.judge_queue --job <completed-harbor-job> --judges a1,a2 --repeats 5
+uv run python -m evolution.reanalyze_judges --write-docs
 ```
 
-Reproduce this report from the durable queues without API calls:
+This entry point reads archived score vectors, independently checks all 576 SQLite measurement slots in read-only mode, verifies the 48 raw trace/result hashes, and writes only the separate correction artifacts and the marked analysis section of this document. It never loads endpoint credentials or dispatches calls. The old calibration/report command is not a v2 migration path.
 
-```bash
-W8_CALIBRATION_MODE=report W8_WRITE_DOCS=1 \
-W8_CALIBRATION_OUTPUT=logs/judges/seed-mini-json-v2 \
-XJUDGE_MAX_COMPLETION_TOKENS=8192 XJUDGE_QUEUE_SUFFIX=cap8192 \
-uv run pytest -q -s tests/test_evolution_calibration.py::test_authorized_calibration
+Future queue ingestion supports either a completed Harbor job (`--job`) or a layout-independent JSON manifest (`--manifest`). The manifest accepts both Harbor `agent/trace.jsonl` and GDPevo `trajectory.jsonl` paths, resolved relative to the manifest file:
+
+```json
+{"trajectories": [
+  {"rollout_id": "harbor-trial", "path": "harbor/agent/trace.jsonl",
+   "metadata": {"task": "public-task-id"}},
+  {"rollout_id": "gdpevo-trial", "path": "gdpevo/trajectory.jsonl",
+   "metadata": {"task": "public-task-id"},
+   "execution": {"status": "finished"}}
+]}
 ```
 
-Configure `JUDGE_API_BASE`, `JUDGE_API_KEY`, `JUDGE_MODEL` and the corresponding `XJUDGE_*` variables. Optional `{PREFIX}_RPM`, `{PREFIX}_TPM`, `{PREFIX}_MAX_COMPLETION_TOKENS`, `{PREFIX}_TIMEOUT_S`, and `{PREFIX}_QUEUE_SUFFIX` override defaults. Primary limits default to 250 RPM / 250k TPM; Kimi defaults to 100 RPM / 100k TPM. `JUDGING_PRICES_PATH` selects the planning price table. Default completion allowances are 2,048 tokens for DeepSeek and 8,192 for Kimi. Queue settings cannot change on resume. An explicit suffix archives a separate compatibility configuration. Exact model settings are retained in every request and ledger record.
+`metadata` is archived on the trusted side and never interpolated into the prompt. Optional trusted `execution` data contributes only allowlisted termination fields. A manifest declares completed, frozen trajectories; callers are responsible for that completion boundary. The Harbor convenience path derives only termination fields from the trusted result. R5-2's judge-layout limitation is fixed; changing the GDPevo experiment runner remains outside this task.
 
-SQLite WAL and exclusive runner locking preserve queue state. Each attempt is durably counted before dispatch. Backend retries are disabled; the queue retries once, then durably fails the measurement. Resume recovers completed responses from ledger/raw archives before dispatching pending items. A crash with an in-flight request and no response is ambiguous: its reservation and attempt stay consumed. The independent shared endpoint bucket persists across restarts and honors Retry-After.
+Endpoint defaults remain 250 RPM / 250k TPM for DeepSeek and 100 RPM / 100k TPM for Kimi, with 2,048 and 8,192 maximum completion tokens respectively. Backend API retries are disabled and the queue owns the single same-evidence retry. New judging is a separate operation and was not run during this fix.
 
-Run offline verification with `uv run pytest -q`. Live calibration is explicitly opt-in through `W8_CALIBRATION_MODE` in the calibration test; normal test runs make no judge API calls. Regression tests cover filters, captured payloads, strict schemas, mixtures, retry failures, both crash windows, resumption, concurrency, admission control, statistics, and anchor separation.
+Offline regression coverage includes both real instruction-loss traces, hidden-content removal, full observations, termination precedence and timeout evidence, logical-key conflicts, mixed-version refusal, both trajectory layouts, one limiter reservation per HTTP attempt, exact wire-prompt hashes, streaming completion before the final rollout finishes, explicit cross tau, signed A3 scores, archived label recomputation, and missing-score uncertainty. Final verification: `uv run pytest -q` passed with **409 passed, 5 skipped**. Ruff passed on the changed Python files, and `git diff --check` passed. Live API and Docker checks were skipped. Archived input hashes and static prompt wording were verified unchanged; the judge ledger still has 602 rows and the retained budget remains $5.180951.
 
-## Remaining limitations
+## Remaining limits
 
-- Invoice prices, cache counts, and dated served model snapshots are unavailable; requests and exact returned model names are archived. No claim of deterministic or cache-isolated sampling is made. The separate P1.6 cache/isolation gate remains necessary.
-- Full raw observations exceed API capacity on some traces; calibration uses the seed-visible observation limit described above. Whole-field redaction also removes two task instructions. A future sanitizer revision should preserve public instruction spans and receive a separately versioned calibration.
-- Missing verifier results and the small number of valid positives limit classification precision. ROC thresholds are descriptive only.
-- Kimi has one repeat; its variance and tau are undefined. This seed cross-judge baseline was explicitly requested for W8, whereas the pilot preregistration reserves cross-judging for final traces. Some Kimi responses exhaust the 8,192-token allowance without a final answer; their A9 failures and missing-score denominators are reported above. No extra retries or post-hoc score imputation were used to complete that baseline.
-- The root wheel configuration packages `harness` and `scripts` only. `evolution` works from the project checkout; adding it to wheel packaging requires a future authorized pyproject change.
+The v1 calibration retains its old sanitizer and observation projection; restored-instruction scores and v2 variance are unmeasured. The small positive cohort produces wide or undefined bootstrap draws, and Kimi availability limits cross-judge comparisons. Neither descriptive ROC thresholds nor observed-pair rates establish unbiased transfer. AD10 and AD13 remain pending.
 
-## Recorded verification
-
-Latest project-wide offline test result: **309 passed, 4 skipped in 8.92s** ([raw output](../logs/judges/seed-mini-json-v2/pytest.txt)).
-
-The [export audit](../logs/judges/seed-mini-json-v2/export-audit.json) verified 48 unchanged raw trace hashes and 569 completed API payloads against the exact queued evidence; no tools or oracle fields were added to the request schema.
+R6-6's broader crash-accounting and shared-budget migration belongs to P1.11b and was not part of these fixes. The loop's transport intent journal remains available, but generic response-absent crash reconciliation is not claimed complete. API `user` metadata is archived; provider cache isolation is not independently certified. The root wheel still packages `harness` and `scripts` only; `evolution` runs from the checkout.

@@ -147,7 +147,8 @@ class Evaluator:
             evidence = export_trace(
                 trace,
                 self.logs / "exports" / identity,
-                observation_chars=12000,
+                result=result,
+                execution=execution,
             )
             atomic_json(
                 self.logs / "exports" / identity / "evidence.json",
@@ -286,6 +287,26 @@ class Evaluator:
         for index, spec in enumerate(specs):
             pending.put_nowait((index, spec))
         completed = 0
+        judging = (
+            judge
+            and partition == "search"
+            and self.arm not in ("A0", "C-TTS-A0")
+        )
+        ready = asyncio.Queue(maxsize=2 * self.concurrency)
+
+        async def stream():
+            while True:
+                row = await ready.get()
+                if row is None:
+                    return
+                yield row
+
+        async def rollouts():
+            async with asyncio.TaskGroup() as group:
+                for _ in range(min(self.concurrency, len(specs))):
+                    group.create_task(worker())
+            if judging:
+                await ready.put(None)
 
         async def worker():
             nonlocal completed
@@ -319,6 +340,8 @@ class Evaluator:
                     },
                 )
                 results[index] = await self.one(candidate, spec)
+                if judging:
+                    await ready.put(results[index])
                 completed += 1
                 print(
                     f"{self.arm} {stage} {partition}: "
@@ -329,19 +352,14 @@ class Evaluator:
 
         try:
             async with asyncio.TaskGroup() as group:
-                for _ in range(min(self.concurrency, len(specs))):
-                    group.create_task(worker())
+                group.create_task(rollouts())
+                if judging:
+                    group.create_task(self.score_stream(stream()))
         except* BudgetHalt as failures:
             raise BudgetHalt(
                 "Phase guard halted the Harbor queue"
             ) from failures
         rows = results
-        if (
-            judge
-            and partition == "search"
-            and self.arm not in ("A0", "C-TTS-A0")
-        ):
-            rows = await self.score(rows)
         if partition == "search" and stage != "smoke":
             self.export_feedback(rows)
         metrics = aggregate(rows)
@@ -355,10 +373,18 @@ class Evaluator:
         return rows
 
     async def score(self, rows):
-        async with self.score_lock:
-            return await self._score(rows)
+        async def stream():
+            for row in rows:
+                yield row
 
-    async def _score(self, rows):
+        await self.score_stream(stream())
+        return rows
+
+    async def score_stream(self, rows):
+        async with self.score_lock:
+            return await self._score_stream(rows)
+
+    async def _score_stream(self, rows):
         from evolution.judges import JudgeInput
 
         output = self.logs / "judges"
@@ -421,10 +447,13 @@ class Evaluator:
             ledger=self.accounting / "ledger.jsonl",
             archive_root=output / "calls",
             run_id=self.experiment,
+            limiter_owner="transport",
         )
-        ids = {}
-        try:
-            for row in rows:
+        ids, by_rollout, settled = {}, {}, {}
+
+        async def source():
+            async for row in rows:
+                by_rollout[row["id"]] = row
                 if row.get("evidence"):
                     evidence = JudgeInput.from_dict(
                         json.loads(Path(row["evidence"]).read_text())
@@ -432,27 +461,37 @@ class Evaluator:
                     ids[row["id"]] = [
                         queue.enqueue(row["id"], k, evidence) for k in kinds
                     ]
-            await queue.run(concurrency=4)
-            completed = {
-                r["id"]: json.loads(r["result"]) if r["result"] else None
-                for r in queue.rows()
-            }
-            for row in rows:
-                results = [completed[i] for i in ids.get(row["id"], [])]
-                if results and all(r is not None for r in results):
-                    row["score"] = (
-                        mixture(*(r["score"] for r in results))
-                        if len(results) == 2
-                        else results[0]["score"]
-                    )
-                    row["judge_ids"] = ids[row["id"]]
-                self.state.finish(row["id"], row)
+                    for kind in kinds:
+                        yield row["id"], kind, evidence, 0
+                else:
+                    self.state.finish(row["id"], row)
+
+        async def ingest(item):
+            settled[item["id"]] = (
+                json.loads(item["result"]) if item["result"] else None
+            )
+            row = by_rollout.get(item["rollout"])
+            if row is None or not all(i in settled for i in ids[row["id"]]):
+                return
+            results = [settled[i] for i in ids[row["id"]]]
+            row["score"] = None
+            if all(r is not None for r in results):
+                row["score"] = (
+                    mixture(*(r["score"] for r in results))
+                    if len(results) == 2
+                    else results[0]["score"]
+                )
+            row["judge_ids"] = ids[row["id"]]
+            self.state.finish(row["id"], row)
+
+        try:
+            await queue.run(concurrency=4, source=source(), on_result=ingest)
         finally:
             queue.close()
             limiter.close()
             for backend in backends:
                 backend.close()
-        return rows
+        return list(by_rollout.values())
 
     def export_feedback(self, rows):
         for row in rows:

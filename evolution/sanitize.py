@@ -12,12 +12,14 @@ from dataclasses import dataclass
 from pathlib import Path
 from urllib.parse import unquote
 
-VERSION = "sanitized-trajectory-v1"
+from evolution.outcomes import FLAGS, REASONS, termination
+
+VERSION = "sanitized-trajectory-v2"
 REDACTED = "[REDACTED]"
 PATH_PATTERN = re.compile(
     r"(?i)(?:^|[/\\\s\"'=:;(`])(?:"
-    r"tests?[/\\]|test_[\w.-]+\.py\b|"
-    r"eval(?:[/\\]|\.py\b)|evaluator(?:\.py)?\b|"
+    r"tests[/\\]|test_[\w.-]+\.py\b|"
+    r"eval(?:[/\\]|\.py\b)|evaluator\.py\b|"
     r"output[/\\]|notes[/\\]|judge_api(?:\.py)?\b|"
     r"judge_train_eval(?:[/\\]|\b)|oracle(?:[/\\]|\b)|"
     r"verifier(?:[/\\]|\b)|reference[_ -]?(?:outputs?|solutions?)\b|"
@@ -36,7 +38,7 @@ TEXT_FIELD_PATTERN = re.compile(
 )
 ALLOWED = {
     "instruction": {"text"},
-    "assistant": {"text", "step", "ok"},
+    "assistant": {"text", "step", "ok", "finish_reason"},
     "observation": {
         "step",
         "command",
@@ -46,11 +48,10 @@ ALLOWED = {
         "error",
         "protocol_error",
         "wall_s",
-        "visible_result",
     },
     "finish": {"answer"},
     "error": {"text", "step", "error"},
-    "termination": {"status"},
+    "termination": {"status", "reason", *FLAGS},
     "artifact": {"path", "content", "step"},
     "state": {"content", "step"},
     "redacted": {"step"},
@@ -127,8 +128,27 @@ class SanitizedTrajectory:
             for value in event.values():
                 if not isinstance(value, (str, int, float, bool, type(None))):
                     raise ValueError("Event values must be scalar")
-                if isinstance(value, str) and forbidden(value):
+                if (
+                    kind != "instruction"
+                    and isinstance(value, str)
+                    and forbidden(value)
+                ):
                     raise ValueError("Evidence must be sanitized")
+            if kind == "termination":
+                if event.get("reason") not in REASONS:
+                    raise ValueError("Invalid termination reason")
+                if event.get("status") not in {
+                    "finished",
+                    "failed",
+                    "unknown",
+                }:
+                    raise ValueError("Invalid termination status")
+                if any(type(event.get(k)) is not bool for k in FLAGS):
+                    raise ValueError(
+                        "Termination flags must be explicit booleans"
+                    )
+        if not events or events[-1].get("kind") != "termination":
+            raise ValueError("Evidence requires an explicit terminal outcome")
         canonical(events)  # Reject NaN/Infinity even in caller-created values.
 
     @property
@@ -156,7 +176,7 @@ class SanitizationResult:
         return json.loads(self.redactions_json)
 
 
-def sanitize(records, *, hidden_values=()):
+def sanitize(records, *, hidden_values=(), result=None, execution=None):
     """Strip forbidden events/fields and linked results, preserving order.
 
     A disallowed command removes the entire associated result, including
@@ -164,7 +184,17 @@ def sanitize(records, *, hidden_values=()):
     the trusted boundary; matching fields are removed wholesale.
     """
     records = list(records)
+    if any(not isinstance(e, dict) for e in records):
+        raise ValueError("Trace events must be objects")
+    if any(
+        e.get("kind") == "observation" and "visible_result" in e
+        for e in records
+    ):
+        raise ValueError(
+            "Projected observations require a separate evidence version"
+        )
     source = canonical(records)
+    outcome = termination(records, result=result, execution=execution)
     logs, output, tainted_steps = [], [], set()
     hidden = tuple(x for x in hidden_values if x)
 
@@ -194,6 +224,9 @@ def sanitize(records, *, hidden_values=()):
                 tainted_steps.add(event["step"])
     for i, event in enumerate(records):
         kind = event.get("kind")
+        if kind == "termination":
+            log(i, "*", event, "termination_normalized")
+            continue
         if kind not in ALLOWED or (
             kind == "artifact" and unsafe(event.get("path"))
         ):
@@ -219,57 +252,16 @@ def sanitize(records, *, hidden_values=()):
                 continue
             if key not in ALLOWED[kind] or FIELD_PATTERN.search(key):
                 log(i, key, value, "disallowed_field")
-            elif unsafe(value):
+            elif kind != "instruction" and unsafe(value):
                 clean[key] = REDACTED
                 log(i, key, value, "hidden_content")
             else:
                 clean[key] = value
         output.append(clean)
+    output.append(outcome)
     return SanitizationResult(
         SanitizedTrajectory(canonical(output)), canonical(logs), digest(source)
     )
-
-
-def solver_visible(records, observation_chars=12000):
-    """Reproduce run_seed history visibility, retaining every decision/event.
-
-    Call only for traces generated with this known seed visibility limit.
-    Full raw/sanitized observation archives remain separate.
-    """
-    if observation_chars <= 0:
-        raise ValueError("observation_chars must be positive")
-    result, projection = [], []
-    for i, event in enumerate(records):
-        event = dict(event)
-        if event.get("kind") == "observation":
-            observation = {
-                k: v
-                for k, v in event.items()
-                if k not in {"kind", "step", "wall_s"}
-            }
-            visible = json.dumps(observation)
-            if len(visible) > observation_chars:
-                projection.append(
-                    {
-                        "event": i,
-                        "source_chars": len(visible),
-                        "visible_chars": observation_chars,
-                        "sha256": digest(visible),
-                        "reason": "seed_observation_visibility",
-                    }
-                )
-                # Retain command and execution status for A2; never fabricate
-                # missing output past the boundary visible to the solver.
-                event = {
-                    k: v
-                    for k, v in event.items()
-                    if k not in {"stdout", "stderr"}
-                }
-                event["visible_result"] = (
-                    visible[:observation_chars] + "\n[observation truncated]"
-                )
-        result.append(event)
-    return result, projection
 
 
 def sanitize_file(source: Path, destination: Path, *, hidden_values=()):

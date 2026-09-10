@@ -14,6 +14,7 @@ import httpx
 
 from evolution.candidates import atomic_json
 from evolution.judge_queue import TokenBucketLimiter
+from evolution.sanitize import canonical, digest
 from harness.ledger import append_jsonl, utc_now
 from harness.openai_api import OpenAIAPIBackend, pricing_model
 
@@ -154,26 +155,9 @@ class AuditTransport(httpx.AsyncBaseTransport):
             p.parent for p in self.backend.logs_dir.glob("*/request.json")
         ]
         backend_raw = max(raw_dirs, key=lambda p: p.stat().st_mtime_ns)
-        namespace = hashlib.sha256(
-            f"{self.tags.arm}:{self.tags.role}:{uuid.uuid4().hex}".encode()
-        ).hexdigest()
-        payload["messages"].insert(
-            0,
-            {
-                "role": "system",
-                "content": f"Context identifier: {namespace}",
-            },
-        )
-        body = json.dumps(payload)
-        headers = dict(request.headers)
-        headers.pop("content-length", None)
-        request = httpx.Request(
-            request.method,
-            request.url,
-            headers=headers,
-            content=body.encode(),
-            extensions=request.extensions,
-        )
+        # The backend archives this exact payload before transport execution.
+        # Cache partitioning belongs in metadata, never in prompt messages.
+        body = request.content.decode()
         reservation = self.backend.projected_cost(body)
         tokens = (
             len(body.encode())
@@ -205,6 +189,8 @@ class AuditTransport(httpx.AsyncBaseTransport):
             "archive": str(archive),
             "backend_raw_dir": str(backend_raw),
             "payload_sha256": hashlib.sha256(request.content).hexdigest(),
+            "prompt_sha256": digest(canonical(payload["messages"])),
+            "cache_user": payload["user"],
         }
         append_jsonl(self.audit, row)
         started = time.monotonic()
@@ -221,8 +207,7 @@ class AuditTransport(httpx.AsyncBaseTransport):
             atomic_json(archive / "response.json", data)
             # Keep JudgeQueue's existing response-archive recovery usable if
             # killed before the backend ledger append. The canonical request
-            # there remains the original judge evidence; the audit archive
-            # above contains the exact outbound cache-isolation envelope.
+            # and audit archives both contain the exact outbound payload.
             atomic_json(backend_raw / "response.json", data)
             usage = data.get("usage") or {}
             rates = self.backend.prices["models"].get(
@@ -283,6 +268,8 @@ class AuditTransport(httpx.AsyncBaseTransport):
 class AccountedBackend(OpenAIAPIBackend):
     """Use existing backend accounting plus pre-dispatch transport intents."""
 
+    owns_endpoint_quota = True
+
     def __init__(
         self,
         *,
@@ -311,9 +298,6 @@ class AccountedBackend(OpenAIAPIBackend):
             path=limiter_path,
             endpoint=endpoint,
         )
-        # A fresh high-entropy first prefix for every call prevents a shared
-        # identical prompt prefix, independent of an advisory provider user ID.
-        self.params["user"] = f"{tags.run_id}:{tags.arm}:{tags.role}"
 
     async def complete(self, prompt, tags, **kwargs):
         if kwargs:
@@ -324,6 +308,15 @@ class AccountedBackend(OpenAIAPIBackend):
         if self.calls >= self.max_calls:
             raise BudgetHalt("Host-enforced model-call cap reached")
         self.calls += 1
+        # Non-prompt cache isolation. Providers must honor this field for a
+        # cache-separation claim; local tests verify the wire mechanism only.
+        self.params = {
+            **self.params,
+            "user": digest(
+                f"{self.tags.run_id}:{self.tags.arm}:{self.tags.role}:"
+                f"{self.tags.task}:{uuid.uuid4().hex}"
+            ),
+        }
         self.transport = AuditTransport(
             inner=self.external_transport or httpx.AsyncHTTPTransport(),
             backend=self,

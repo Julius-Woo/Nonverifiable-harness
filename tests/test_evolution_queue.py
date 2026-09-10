@@ -27,10 +27,15 @@ class Clock:
 
 
 def evidence():
-    return JudgeInput("Write an answer", sanitize([
-        {"kind": "instruction", "text": "Write an answer"},
-        {"kind": "finish", "answer": "Could not finish"},
-    ]).trajectory)
+    return JudgeInput(
+        "Write an answer",
+        sanitize(
+            [
+                {"kind": "instruction", "text": "Write an answer"},
+                {"kind": "finish", "answer": "Could not finish"},
+            ]
+        ).trajectory,
+    )
 
 
 def response(text='{"score":0.6,"rationale":"Visible evidence"}'):
@@ -48,12 +53,16 @@ def response(text='{"score":0.6,"rationale":"Visible evidence"}'):
 def queue_at(path, handler, clock=None, **kwargs):
     clock = clock or Clock()
     limiter = TokenBucketLimiter(
-        tpm=1_000_000, clock=clock, sleep=clock.sleep,
+        tpm=1_000_000,
+        clock=clock,
+        sleep=clock.sleep,
     )
 
     def factory(item_id, attempt):
         return OpenAIAPIBackend(
-            "https://example.test", "mock-private-key", "gpt-5-mini",
+            "https://example.test",
+            "mock-private-key",
+            "gpt-5-mini",
             ledger=path.parent / "ledger.jsonl",
             logs_dir=path.parent / "calls" / item_id / str(attempt),
             max_retries=0,
@@ -63,8 +72,12 @@ def queue_at(path, handler, clock=None, **kwargs):
         )
 
     return JudgeQueue(
-        path, factory, limiter, ledger=path.parent / "ledger.jsonl",
-        archive_root=path.parent / "calls", **kwargs,
+        path,
+        factory,
+        limiter,
+        ledger=path.parent / "ledger.jsonl",
+        archive_root=path.parent / "calls",
+        **kwargs,
     )
 
 
@@ -75,8 +88,9 @@ def close(queue):
 
 async def test_dual_bucket_refill_and_persistent_endpoint_state(tmp_path):
     clock = Clock()
-    options = dict(path=tmp_path / "limits.sqlite", clock=clock,
-                   sleep=clock.sleep)
+    options = dict(
+        path=tmp_path / "limits.sqlite", clock=clock, sleep=clock.sleep
+    )
     first = TokenBucketLimiter(2, 100, endpoint="shared", **options)
     second = TokenBucketLimiter(2, 100, endpoint="shared", **options)
     separate = TokenBucketLimiter(2, 100, endpoint="other", **options)
@@ -264,7 +278,10 @@ async def test_worker_limit_and_exclusive_ownership(tmp_path):
 
 def test_endpoint_settings_cannot_change_on_resume(tmp_path):
     path = tmp_path / "queue.sqlite"
-    handler = lambda request: httpx.Response(200, json=response())
+
+    def handler(request):
+        return httpx.Response(200, json=response())
+
     queue = queue_at(path, handler, endpoint_signature={"model": "one"})
     close(queue)
     with pytest.raises(ValueError, match="cannot change endpoint"):
@@ -283,3 +300,257 @@ async def test_oversized_reservation_fails_without_api_call(tmp_path):
     assert queue.rows()[0]["attempts"] == 0
     assert not Path(queue.ledger).exists()
     close(queue)
+
+
+async def test_frozen_identity_conflicts_never_grant_new_attempts(
+    tmp_path,
+    monkeypatch,
+):
+    from evolution import judges
+
+    queue = queue_at(
+        tmp_path / "queue.sqlite",
+        lambda r: httpx.Response(200, json=response()),
+    )
+    original = evidence()
+    identity = queue.enqueue("rollout", "a1", original)
+    await queue.run()
+    changed = JudgeInput("Changed instruction", original.trajectory)
+    with pytest.raises(ValueError, match="conflict"):
+        queue.enqueue("rollout", "a1", changed)
+    # Even A1 evidence absent from its summary must be frozen too.
+    events = original.trajectory.events
+    events.insert(1, {"kind": "assistant", "text": "Different reasoning"})
+    with pytest.raises(ValueError, match="conflict"):
+        queue.enqueue(
+            "rollout",
+            "a1",
+            JudgeInput(
+                original.task_text,
+                sanitize(events).trajectory,
+            ),
+        )
+    monkeypatch.setitem(judges.PROMPTS, "a1", judges.PROMPTS["a1"] + "changed")
+    with pytest.raises(ValueError, match="conflict"):
+        queue.enqueue("rollout", "a1", original)
+    assert len(queue.rows()) == 1
+    assert queue.rows()[0]["id"] == identity
+    assert queue.rows()[0]["attempts"] == 1
+    assert queue.rows()[0]["status"] == "done"
+    assert (
+        sum(
+            json.loads(s)["status"] == "conflict"
+            for s in queue.event_log.read_text().splitlines()
+        )
+        == 3
+    )
+    close(queue)
+
+
+def test_queue_refuses_legacy_and_mixed_evidence_versions(tmp_path):
+    import sqlite3
+
+    path = tmp_path / "legacy.sqlite"
+    with sqlite3.connect(path) as db:
+        db.execute("CREATE TABLE items (id TEXT)")
+    with pytest.raises(ValueError, match="Legacy evidence version"):
+        queue_at(path, lambda r: None)
+    path = tmp_path / "mixed.sqlite"
+    queue = queue_at(path, lambda r: None)
+    queue.enqueue("one", "a1", evidence())
+    queue.enqueue("two", "a1", evidence())
+    queue.db.execute(
+        "UPDATE items SET evidence_version='v1' WHERE rollout='one'"
+    )
+    queue.db.commit()
+    close(queue)
+    with pytest.raises(ValueError, match="Mixed"):
+        queue_at(path, lambda r: None)
+
+
+async def test_stream_ingests_results_before_source_finishes(tmp_path):
+    fast_done, release_slow = asyncio.Event(), asyncio.Event()
+    completions = []
+
+    async def handler(request):
+        if (
+            "Slow task"
+            in json.loads(request.content)["messages"][0]["content"]
+        ):
+            await release_slow.wait()
+        return httpx.Response(200, json=response())
+
+    async def source():
+        yield "slow", "a1", JudgeInput("Slow task", evidence().trajectory), 0
+        yield "fast", "a1", evidence(), 0
+        await asyncio.wait_for(fast_done.wait(), 3)
+        assert completions == ["fast"]
+        yield "later", "a1", evidence(), 0
+        release_slow.set()
+
+    async def ingest(row):
+        assert row["status"] == "done"
+        completions.append(row["rollout"])
+        if row["rollout"] == "fast":
+            fast_done.set()
+
+    queue = queue_at(tmp_path / "queue.sqlite", handler)
+    assert await queue.run(source=source(), on_result=ingest) == {"done": 3}
+    assert completions[0] == "fast"
+    assert set(completions) == {"fast", "slow", "later"}
+    close(queue)
+
+
+async def test_manifest_accepts_harbor_and_gdpevo_layouts(tmp_path):
+    from evolution.judge_queue import ingest_manifest
+
+    entries = []
+    for identity, layout in [
+        ("harbor", "harbor/agent/trace.jsonl"),
+        ("gdpevo", "gdpevo/trajectory.jsonl"),
+    ]:
+        path = tmp_path / layout
+        path.parent.mkdir(parents=True)
+        path.write_text(json.dumps({"kind": "instruction", "text": identity}))
+        entries.append(
+            {
+                "rollout_id": identity,
+                "path": layout,
+                "metadata": {
+                    "oracle_label": 1,
+                    "task": "PRIVATE_METADATA_CANARY",
+                },
+                "execution": {"status": "failed"},
+            }
+        )
+    manifest = tmp_path / "manifest.json"
+    manifest.write_text(json.dumps({"trajectories": entries}))
+    payloads = []
+
+    def handler(request):
+        payloads.append(json.loads(request.content))
+        return httpx.Response(200, json=response())
+
+    queue = queue_at(tmp_path / "queue.sqlite", handler)
+    ids = ingest_manifest(queue, manifest, tmp_path / "out", judges=["a1"])
+    assert len(ids) == 2
+    await queue.run()
+    assert {r["rollout"] for r in queue.rows()} == {"harbor", "gdpevo"}
+    assert "PRIVATE_METADATA_CANARY" not in json.dumps(payloads)
+    assert "oracle_label" not in json.dumps(payloads)
+    assert (
+        ingest_manifest(queue, manifest, tmp_path / "out", judges=["a1"])
+        == ids
+    )
+    await queue.run()
+    assert len(payloads) == 2
+    close(queue)
+
+
+async def test_accounted_queue_reserves_once_and_hashes_exact_wire_prompt(
+    tmp_path,
+):
+    from evolution.accounting import AccountedBackend
+    from evolution.sanitize import canonical, digest
+    from harness.ledger import CallTags
+
+    payloads, backends, reservations = [], [], []
+    root = Path(__file__).resolve().parents[1]
+
+    async def dispatch(request):
+        payload = json.loads(request.content)
+        payloads.append(payload)
+        intents = [
+            json.loads(s)
+            for s in (tmp_path / "audit.jsonl").read_text().splitlines()
+        ]
+        intent = intents[-1]
+        wire_hash = digest(canonical(payload["messages"]))
+        assert wire_hash == intent["prompt_sha256"]
+        assert wire_hash == queue.rows()[0]["prompt_hash"]
+        for directory in (intent["archive"], intent["backend_raw_dir"]):
+            assert (
+                json.loads((Path(directory) / "request.json").read_text())
+                == payload
+            )
+        assert len(payload["messages"]) == 1
+        assert payload["messages"][0]["role"] == "user"
+        assert "Context identifier" not in json.dumps(payload)
+        assert len(payload["user"]) == 64
+        return httpx.Response(
+            200,
+            json=response(
+                '{"invalid":true}'
+                if len(payloads) == 1
+                else '{"score":0.6,"rationale":"Visible evidence"}',
+            ),
+        )
+
+    def factory(identity, attempt):
+        backend = AccountedBackend(
+            base_url="https://example.test/v1",
+            api_key="mock-key",
+            model="gpt-5-mini",
+            ledger=tmp_path / "ledger.jsonl",
+            logs_dir=tmp_path / "calls" / identity / str(attempt),
+            max_retries=0,
+            budget_usd=1,
+            prices_path=root / "costs/judges_prices.json",
+            guard_path=tmp_path / "budget.sqlite",
+            limiter_path=tmp_path / "limiter.sqlite",
+            audit_path=tmp_path / "audit.jsonl",
+            tags=CallTags(run_id="test", task=identity, role="judge"),
+            scope=identity,
+            transport=httpx.MockTransport(dispatch),
+        )
+
+        async def acquire(tokens):
+            reservations.append(tokens)
+            return 0
+
+        backend.limiter.acquire = acquire
+        backends.append(backend)
+        return backend
+
+    queue = JudgeQueue(
+        tmp_path / "queue.sqlite",
+        factory,
+        TokenBucketLimiter(),
+        limiter_owner="transport",
+    )
+
+    async def forbidden_reservation(tokens):
+        pytest.fail("The queue must not reserve transport-owned quota")
+
+    queue.limiter.acquire = forbidden_reservation
+    queue.enqueue("rollout", "a1", evidence())
+    try:
+        assert await queue.run() == {"done": 1}
+        assert len(payloads) == len(reservations) == 2
+        assert payloads[0]["messages"] == payloads[1]["messages"]
+        assert payloads[0]["user"] != payloads[1]["user"]
+        result = json.loads(queue.rows()[0]["result"])
+        assert result["prompt_sha256"] == queue.rows()[0]["prompt_hash"]
+    finally:
+        close(queue)
+        for backend in backends:
+            backend.close()
+
+
+def test_plain_endpoint_cache_metadata_is_outside_prompt(tmp_path):
+    from evolution.judge_queue import Endpoint
+
+    endpoint = Endpoint(
+        "JUDGE",
+        {
+            "JUDGE_API_BASE": "https://example.test/v1",
+            "JUDGE_API_KEY": "mock-key",
+            "JUDGE_MODEL": "gpt-5-mini",
+        },
+        tmp_path,
+        tmp_path / "budget.json",
+    )
+    one, two = endpoint.backend("rollout", 1), endpoint.backend("rollout", 2)
+    assert one.params["user"] != two.params["user"]
+    assert len(one.params["user"]) == 64
+    assert "user" not in endpoint.signature["params"]

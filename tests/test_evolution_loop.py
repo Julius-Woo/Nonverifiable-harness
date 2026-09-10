@@ -364,3 +364,124 @@ async def test_control_matches_incremental_partition_budget(tmp_path):
     assert second["rollouts"] == 11
     assert loop.evaluator.calls == [("seed", "sealed", "control-task", 2)]
     loop.close()
+
+
+async def test_rollouts_and_judgments_overlap_with_immediate_state_ingestion(
+    tmp_path,
+    monkeypatch,
+):
+    import asyncio
+    from types import SimpleNamespace
+
+    from evolution import evaluation
+    from evolution.judge_queue import export_trace
+    from evolution.state import State
+
+    ready = asyncio.Event()
+    state = State(tmp_path / "state.sqlite")
+    config = {
+        "JUDGE_MODEL": "gpt-5-mini",
+        "JUDGE_API_KEY": "mock-key",
+        "JUDGE_API_BASE": "https://example.test/v1",
+        "JUDGING_PRICES_PATH": str(ROOT / "costs/judges_prices.json"),
+    }
+    (tmp_path / "data").mkdir()
+    (tmp_path / "data/tb2_split.json").write_text(
+        json.dumps(
+            {
+                "splits": {"search": [{"name": "fast"}, {"name": "slow"}]},
+            }
+        )
+    )
+    guard = PhaseGuard(tmp_path / "costs/stream/budget.sqlite")
+    evaluator = evaluation.Evaluator(
+        tmp_path,
+        "stream",
+        "A1",
+        1,
+        state,
+        guard,
+        config,
+        concurrency=2,
+    )
+    original_finish = state.finish
+
+    def finish(identity, row):
+        original_finish(identity, row)
+        if row["task"] == "fast" and row.get("score") == 0.75:
+            ready.set()
+
+    state.finish = finish
+
+    async def one(candidate, spec):
+        if spec["task"] == "slow":
+            # This rollout cannot complete until the fast judge is durably
+            # ingested. Batch-then-judge would deadlock here.
+            await asyncio.wait_for(ready.wait(), 3)
+        identity = state.schedule(spec)
+        trace = tmp_path / f"{spec['task']}.jsonl"
+        trace.write_text(json.dumps({"kind": "instruction", "text": "Task"}))
+        exported = tmp_path / "exports" / identity
+        evidence = export_trace(trace, exported)
+        evidence_path = exported / "evidence.json"
+        evidence_path.write_text(json.dumps(evidence.to_dict()))
+        row = {
+            "id": identity,
+            **spec,
+            "evidence": str(evidence_path),
+            "score": None,
+            "oracle": 0,
+        }
+        state.finish(identity, row)
+        return row
+
+    async def dispatch(request):
+        return httpx.Response(
+            200,
+            json={
+                "model": "gpt-5-mini",
+                "choices": [
+                    {
+                        "message": {
+                            "content": (
+                                '{"score":0.75,'
+                                '"rationale":"Recorded evidence"}'
+                            )
+                        },
+                        "finish_reason": "stop",
+                    }
+                ],
+                "usage": {"prompt_tokens": 100, "completion_tokens": 20},
+            },
+        )
+
+    original_backend = evaluation.AccountedBackend
+
+    def backend(**kwargs):
+        return original_backend(
+            **kwargs, transport=httpx.MockTransport(dispatch)
+        )
+
+    evaluator.one = one
+    monkeypatch.setattr(evaluation, "AccountedBackend", backend)
+    monkeypatch.setattr(evaluation, "available_gib", lambda: 10)
+    monkeypatch.setattr(
+        evaluation, "docker", lambda *args: SimpleNamespace(stdout="")
+    )
+    try:
+        rows = await asyncio.wait_for(
+            evaluator.batch(
+                tmp_path / "candidate",
+                "search",
+                "screen",
+            ),
+            5,
+        )
+        assert [r["task"] for r in rows] == ["fast", "slow"]
+        assert all(r["score"] == 0.75 for r in rows)
+        assert ready.is_set()
+        for row in rows:
+            assert json.loads(state.row(row["id"])["result"])["score"] == 0.75
+    finally:
+        state.close()
+        guard.close()
