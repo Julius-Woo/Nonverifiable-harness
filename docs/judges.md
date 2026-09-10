@@ -302,3 +302,136 @@ Offline regression coverage includes both real instruction-loss traces, hidden-c
 The v1 calibration retains its old sanitizer and observation projection; restored-instruction scores and v2 variance are unmeasured. The small positive cohort produces wide or undefined bootstrap draws, and Kimi availability limits cross-judge comparisons. Neither descriptive ROC thresholds nor observed-pair rates establish unbiased transfer. AD10 and AD13 remain pending.
 
 R6-6's broader crash-accounting and shared-budget migration belongs to P1.11b and was not part of these fixes. The loop's transport intent journal remains available, but generic response-absent crash reconciliation is not claimed complete. API `user` metadata is archived; provider cache isolation is not independently certified. The root wheel still packages `harness` and `scripts` only; `evolution` runs from the checkout.
+
+
+## terra-low-8k, evidence v2
+
+**Blocked before dispatch (2026-09-10); no tau v2 was measured.** The existing calibration CLI exports the correct Harbor job and fixed set, but cannot finish ingestion/cost projection with the required complete v2 observations. Per the task's explicit stop condition, no judge subset was dispatched and no code was changed. No Harbor, Docker, Claude, Codex, or Copilot CLI was started. The outputs below are a capacity-blocker record, not a completed variance control.
+
+The exact offline command was:
+
+```sh
+PYTHONDONTWRITEBYTECODE=1 uv run --no-sync python -m evolution.calibration \
+  --job logs/harbor/calibration-terra-json-8k-260910 \
+  --output logs/judges/terra-8k-v2 --concurrency 4
+```
+
+The [preflight traceback](../logs/judges/terra-8k-v2-preflight.log) ends with `ValueError: Prompt exceeds conservative short-context limit`. `enqueue_manifest` enqueues each item and then calls `backend.projected_cost(build_prompt(...))` (`evolution/calibration.py:218–224`). `OpenAIAPIBackend.projected_cost` rejects `len(prompt.encode()) + 256 > 200000` (`harness/openai_api.py:165–169`). This is a hard-coded backend capacity check with no CLI override. The first rejection is repeat 0, A2, `path-tracing__WU5YcH3`. The full fixed manifest and all 48 v2 exports were already written. A1's summary fits for these two traces, but A2 must receive the complete sanitized trajectory.
+
+| Search trajectory | Attempt | Preserved stdout characters | A2 prompt UTF-8 bytes | Backend input reservation | Backend limit |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| `path-tracing__WU5YcH3` | 1 | 48,262,737 | 52,602,730 | 52,602,986 | 200,000 |
+| `path-tracing__VbPbdac` | 2 | 48,262,737 | 52,616,292 | 52,616,548 | 200,000 |
+
+There is a second independent capacity constraint: `TokenBucketLimiter.acquire` rejects a request reservation larger than one minute's TPM capacity (`evolution/judge_queue.py:103–104`). DeepSeek's reservations for these A2 requests would be 52,605,034 and 52,618,596 tokens against 250,000 TPM; Kimi's would be 52,611,178 and 52,624,740 against 100,000 TPM. These are conservative byte-based reservations, not measured tokenizer counts. Provider context capacity was not tested. Increasing only a queue quota would not resolve the backend check. Truncating, summarizing, dropping, or replacing these A2 observations would change the fixed evidence contract; none was done. The evolution/backend owner must resolve full-evidence ingestion and endpoint feasibility, or obtain an explicit contract amendment and new versioned calibration, before this control can run.
+
+The [durable partial queue](../logs/judges/terra-8k-v2/judge.sqlite) contains 25 pending A1 and 25 pending A2 items from repeat 0, all with zero attempts and no results. The run ID is `terra-8k-v2-judge`; the planned Kimi run ID is `terra-8k-v2-xjudge-cap8192`, but its queue was not reached. The intended role is `judge`. There were **0 API calls, 0 retries, 0 scored measurements, and 0 in-flight requests**. The intended schedule remains 240 A1 + 240 A2 DeepSeek measurements and 48 A1 + 48 A2 Kimi measurements. Pending items must not be interpreted as failed judge responses. The [score archive](../logs/judges/terra-8k-v2/scores.jsonl) is empty; [metrics.json](../logs/judges/terra-8k-v2/metrics.json) records explicit null score vectors and `not_dispatched` status. No missing measurement is imputed as zero.
+
+**Fixed-set manifest.** The completed job is `logs/harbor/calibration-terra-json-8k-260910`: gpt-5.6-terra, low reasoning, JSON, 8,192-token completion allowance. Selection uses ascending `started_at`, then trial-name tie-break: the first attempt of all 30 tasks plus the second attempt of all 18 search tasks, exactly the historical mini/JSON rule. There are 36 search, 6 anchor, and 6 sealed trajectories. [manifest.json](../logs/judges/terra-8k-v2/manifest.json) freezes raw trace/result hashes, paths, selection, split hash, prompt hashes, and settings. Its SHA-256 is `918ed919af3d880978fcb9af718f43433bbc5ee345e2ad094b99714bbb578bec`. [preflight-audit.json](../logs/judges/terra-8k-v2/preflight-audit.json) additionally records each evidence-file hash, terminal flags, label sensitivities, oversized wire-prompt hashes, source-code hashes, and ledger checks. Every raw trace/result hash was rechecked against the manifest; every export has an explicit termination event, and `sanitized.json` equals `sanitized-full.json` byte for byte. Evidence is `sanitized-trajectory-v2`, prompt contract `judge-v2`, `observation_chars = null`. Planned sampling is temperature 0.6, top_p 0.95, JSON response, provider-default reasoning, and no provider seed; completion limits are 2,048 for DeepSeek and 8,192 for Kimi.
+
+| Partition | Attempt | Trajectory ID | Raw trace SHA-256 |
+| --- | ---: | --- | --- |
+| search | 1 | `bn-fit-modify__CvkycU6` | `7ede5a1164c02600fb54f52875c8abb02c6477334bfb7f6241b5b2ae9c558a29` |
+| search | 2 | `bn-fit-modify__rRqTUMx` | `2d7767778518c398bae1acf84517b081826917bc9c067063d09d56cf5fe98870` |
+| search | 1 | `break-filter-js-from-html__HCjCBBu` | `54e13b822ba57937e447ae47769bb1a022cc5554c5e4b86dba74851a850eaf85` |
+| search | 2 | `break-filter-js-from-html__iRo55Ld` | `ab89b8e218cfb96c225a0d3168629528d8f56aae83172fb83f764c048dc26e67` |
+| search | 1 | `build-pmars__8BMti72` | `d21a66145c1ac5a559dfe88de2813cdad3c85f8d231d5cc0a8adc89f62f5e769` |
+| search | 2 | `build-pmars__HqtaaGK` | `5739e22743b1b04e307f1739a6a14141928d8d78332f461204bc53a4f23891c8` |
+| search | 1 | `caffe-cifar-10__dW2JYEh` | `2f2cf0a02c76a274f23ac1ecd89d1312ca93814ef1021a25738236188538ec14` |
+| search | 2 | `caffe-cifar-10__VfSLNeS` | `d54a7b72b8342b28696fd03e4f6497df7054af32fcee77fd23b31508af6066bd` |
+| search | 1 | `cancel-async-tasks__gmk4tuX` | `b20a467c84f2ace2a27e4d1180af63a476b2e9cacdfd833fc704a810df0ac718` |
+| search | 2 | `cancel-async-tasks__qpgYjwG` | `82379ee7f60c56608f88fe7de62c214bc49f1d7d6f87079216e3a34168b7b415` |
+| search | 1 | `cobol-modernization__s5MwQLK` | `178cf9a30048f5fef4e9588a7d124a61a239f9a8f0ea661f0a3b4c3e50c18edb` |
+| search | 2 | `cobol-modernization__hszhAcG` | `64f47a5ecc99e655d3d528494428330a6da929027a9488ca2a55f4444e258c80` |
+| search | 1 | `count-dataset-tokens__pUdWz5f` | `75db956b3eb49cc909b9e3cd6b4f10f6dce51d7bb0db5634ad05edcc0f8f3873` |
+| search | 2 | `count-dataset-tokens__DCtdCUJ` | `abaca755d952213e1d0abbca0ec77de5216261bdbb3135a94d37e167e358811c` |
+| search | 1 | `dna-assembly__4BW87vb` | `74077f0cda261c04da76af7e1f953d690d2fbc9b44eb193238f155a4da73a68e` |
+| search | 2 | `dna-assembly__5SMgsHm` | `6004d43877a841e1077794f46b3f42b01a0dc60e6f24c895d55e409de7112d19` |
+| search | 1 | `hf-model-inference__Q3hsZL5` | `ee686c460224d352a39b3ec1b2acca0afd447dce5857d5b8a2588c485af56809` |
+| search | 2 | `hf-model-inference__wGRtxMX` | `5c681b5993776e8980f1a0b00bf06a1a2f01156e22c12bcdbca99c74157377d3` |
+| search | 1 | `make-doom-for-mips__3ta2eK8` | `4f7de9dad62c28e773cf01984b1cf4789c2ea794389fbf244f0057a304930bad` |
+| search | 2 | `make-doom-for-mips__CPUZNYU` | `97cfd71235fa7b20f75f40d05bbbca1aa7622d61438b6feb93daadd8302078e3` |
+| search | 1 | `mteb-leaderboard__we3bYau` | `a8c4653bff200afda8f65a4dccb0b93084b1ef3b639dc9996eda0e4e1e0d22fb` |
+| search | 2 | `mteb-leaderboard__Vm4pnjF` | `20fa4eb342c7247cd567f358d37d17cbf9da77299e4c20f2bfe997b85f4c9923` |
+| search | 1 | `mteb-retrieve__rfJyHCR` | `3cd1d119c4d9fbc3d576c9b8f61ac5d685254ffcdb50fab3b92dedb0390a05f4` |
+| search | 2 | `mteb-retrieve__q768BPu` | `d6cd59215b2560de8bb486d5b41e350e7b8f254bb285d84fc327db4d9a9002e8` |
+| search | 1 | `path-tracing__WU5YcH3` | `532fcf8ac10b192df9dc6afb3afcce5ee44c59799b76f20a4e709a70489e617c` |
+| search | 2 | `path-tracing__VbPbdac` | `50b66b2f6efcc97bdb8c0d4301a4ce3ad03d2a89ce40c6810da358ad0d85a49b` |
+| search | 1 | `pytorch-model-cli__WRs7VtP` | `5bd3dd8e41ddf8c6e1554cd88646b761b83e7a7ea4570cffe23ab39ab860d120` |
+| search | 2 | `pytorch-model-cli__PZkrvrg` | `dc1d9d9703b2a8f6d3b48fdca942dd7e47caa437c98de813451d74671259c934` |
+| search | 1 | `qemu-alpine-ssh__2z4uZyb` | `2e8d304af6cad4f598259156b6834605023727421146cb348b8a1425199064e6` |
+| search | 2 | `qemu-alpine-ssh__NiWA3Fn` | `230139159db4eae3bdf1cd52dad78fa7421b581d63997e79b7c72d29770a4ec1` |
+| search | 1 | `query-optimize__YJY2nJB` | `dcdb4fa6d09fe6329cc26e99f610bd7293cca2eb675c853e19422736fb06efc6` |
+| search | 2 | `query-optimize__TxcTKsC` | `da3f50c78cb266d8542ddf442d64742192e739b6b6373cecc6eefcf6d9bd4651` |
+| search | 1 | `sqlite-db-truncate__hfesPb9` | `a0de1b99e9c60db8333b06760acbe99f065d13ee2e5a8344597a6b8e49a72be6` |
+| search | 2 | `sqlite-db-truncate__2FrdGci` | `9dc3f991ee5c2a8386e656f08a9271aa1903fe2b8c0077995f7616ff1a256626` |
+| search | 1 | `write-compressor__FWQ6N5v` | `92a04ee58cf8775316fa617bf901187ba7ca446a3641899195b81a44c527cf31` |
+| search | 2 | `write-compressor__vmGpomV` | `d7e4970ab81ace5897c5bfb7fcef640aee77977b7b5098cb1276019b2ce51c05` |
+| anchor | 1 | `chess-best-move__vqw7eKy` | `5d11489f9ee3aa624759cee3346d0a63a7b00b12cb58419c4302cf7e10d2a136` |
+| anchor | 1 | `compile-compcert__BhVUruo` | `3ebb9546d7128a7f39981cff8adedcebdb73576627554a25f1d526f974f0bbbe` |
+| anchor | 1 | `configure-git-webserver__qNEvZcd` | `2b0002eb1d1fc503feb86b90bf40e4f2b358a633832a0221091bdf0a1d251501` |
+| anchor | 1 | `filter-js-from-html__XsthBRg` | `cc3f1287a6b673eaaed5dfc5c15a2982bc8a0daf6068762dd0e4c0b4cacd5a71` |
+| anchor | 1 | `polyglot-rust-c__Tug6U7J` | `b355dd5061b20f3a5fff2cbfbe27656d010b71f351984b2bef1d3e26966fb706` |
+| anchor | 1 | `pypi-server__783MNua` | `bfb7bf536f4810628e09fa6d322fd5d7fbd3e49991038f9fae2df16730e769b5` |
+| sealed | 1 | `adaptive-rejection-sampler__6BmRVQH` | `9ed0c66e690bc2b30483f9c2ae42bc74d5ea29ca23c2d50949dcfcba85d82fea` |
+| sealed | 1 | `gcode-to-text__EhmTFcS` | `6e83352d6dbfbef25c403f74e7d65feb6071e7ea429c85515c44437dce22257f` |
+| sealed | 1 | `headless-terminal__p6tthSs` | `9e558ed7865271edab88b6f106015320d17c9cc01f26d19acf327733565d090c` |
+| sealed | 1 | `protein-assembly__k9B4vxX` | `20c4bf638f4efd70edd85da6c8bc2bb37f9a97ecc19452a6f211da1d101ff98e` |
+| sealed | 1 | `raman-fitting__b8RScms` | `f90a6cb43b924af347053cf008fb526ccf5e985f7059fda1d8acaae1740fb210` |
+| sealed | 1 | `torch-pipeline-parallelism__dagbR3C` | `8ad3061c8a2d122169c982a607a984420b133af39ab15be70716d0711808a120` |
+
+**Labels and pending decisions.** Labels are controller-side analysis only. A9 failures take precedence over verifier credit; AD10 executor reading treats nonzero command exits as observations, whereas strict A9 counts them as failures. Both readings retain command timeouts, executor exceptions, protocol errors, agent timeout, and solver exhaustion as failures. The fixed 48-trace cohort has the following label composition; none of these counts is a judge TPR/FPR.
+
+| Tool-policy reading | API-timeout reading | Positives | Negatives | Unlabelled/potential infrastructure exclusions |
+| --- | --- | ---: | ---: | ---: |
+| Executor (AD10) | Failure | 14 | 34 | 0 |
+| Strict A9 | Failure | 6 | 42 | 0 |
+| Executor (AD10) | AD13 first-call/no-response only | 14 | 30 | 4 |
+| Strict A9 | AD13 first-call/no-response only | 6 | 38 | 4 |
+| Executor (AD10) | Existing CLI broad API-infrastructure sensitivity | 14 | 28 | 6 |
+| Strict A9 | Existing CLI broad API-infrastructure sensitivity | 6 | 36 | 6 |
+
+Four selected traces satisfy AD13's narrower first-call/no-response wording: `make-doom-for-mips__3ta2eK8`, `make-doom-for-mips__CPUZNYU`, `pytorch-model-cli__WRs7VtP`, and `configure-git-webserver__qNEvZcd`. Two additional API-timeout traces, `dna-assembly__4BW87vb` and `write-compressor__vmGpomV`, already executed actions. The existing `verifier_label(api_timeout_policy="infrastructure")` returns no label for all six, so its broad sensitivity is reported separately from the addendum's narrower wording. These are potential exclusions in analysis, not finalized A9 exclusions: no linked retry/exclusion record was established in this control and no solver was rerun. AD1, AD10, and AD13 remain pending.
+
+**Cost and operations.** Incremental cost is **USD 0.000000**, with no unresolved charges from this run. The existing judge ledger has 602 historical rows and no run ID containing `terra-8k-v2`; its retained shared-budget usage remains **USD 5.1809513 / 15**, leaving **USD 9.8190487**. The full-run projection did not complete, so no affordability claim is made. Mean cost per call, latency, and observed throughput are undefined because there were no calls and no dispatch-to-completion interval. MemAvailable was not consulted by this offline preflight.
+
+| Scorer | API calls | New cost USD | Cost/call USD | Mean latency s | Calls/min |
+| --- | ---: | ---: | --- | --- | --- |
+| DeepSeek A1 | 0 | 0 | undefined | undefined | undefined |
+| DeepSeek A2 | 0 | 0 | undefined | undefined | undefined |
+| Kimi A1 | 0 | 0 | undefined | undefined | undefined |
+| Kimi A2 | 0 | 0 | undefined | undefined | undefined |
+
+**Comparison with mini/JSON v1 evidence.** Historical v1 scores and R6-corrected labels are unchanged. The directory named `seed-mini-json-v2` contains the historical v1 evidence calibration; its directory suffix does not make those scores evidence v2. Historical costs below are all-input-uncached planning estimates per API attempt, not invoice-verified charges.
+
+| Scorer | Mini v1 scored/planned | Mini v1 pooled within-trace SD | Mini v1 tau | Mini v1 USD/attempt | Terra v2 scored/planned | Terra v2 within-trace SD / tau |
+| --- | --- | ---: | --- | ---: | --- | --- |
+| DeepSeek A1 | 240/240 | 0.166552 | 0.02184135419534282 | 0.000616 | 0/240 | undefined / undefined |
+| DeepSeek A2 | 240/240 | 0.171026 | 0.022566773346210982 | 0.003161 | 0/240 | undefined / undefined |
+| Kimi A1 | 45/48 | undefined | undefined | 0.012738 | 0/48 | undefined / undefined |
+| Kimi A2 | 44/48 | undefined | undefined | 0.028593 | 0/48 | undefined / undefined |
+
+| Scorer | Mini v1 executor TPR/FPR at 0.5 | Mini v1 strict TPR/FPR at 0.5 | Terra v2 executor TPR/FPR | Terra v2 strict TPR/FPR |
+| --- | --- | --- | --- | --- |
+| DeepSeek A1 | 75.00% / 22.27% | 93.33% / 22.22% | undefined / undefined | undefined / undefined |
+| DeepSeek A2 | 50.00% / 30.45% | 66.67% / 29.78% | undefined / undefined | undefined / undefined |
+| Kimi A1 | 50.00% / 17.07% | 66.67% / 16.67% | undefined / undefined | undefined / undefined |
+| Kimi A2 | 75.00% / 82.50% | 100.00% / 80.49% | undefined / undefined | undefined / undefined |
+
+**Pilot tau after AD1 ratification:** use each arm's newly measured **terra-low-8k evidence-v2 tau**, the sample SD across five complete search-repeat means, averaging the two attempts within each search task and then weighting the 18 tasks equally. Do not substitute the historical mini/v1 tau or the pooled within-trace SD. **No eligible numeric tau is available from this blocked run; P1.4 remains unmet even if AD1 is ratified.** A one-repeat Kimi cross-check cannot estimate within-trace SD or cross tau; F-agree still requires an independent repeated cross-tau calibration. Label readings do not change score tau. A2's preregistered positive threshold stays 0.8; the requested 0.5 rates are descriptive.
+
+| Scorer | Repeats planned / completed | Pooled within-trace SD v2 | Tau v2 |
+| --- | --- | --- | --- |
+| DeepSeek A1 | 5 / 0 | undefined | undefined — no dispatch |
+| DeepSeek A2 | 5 / 0 | undefined | undefined — no dispatch |
+| Kimi A1 | 1 / 0 | undefined | undefined — one repeat would be insufficient |
+| Kimi A2 | 1 / 0 | undefined | undefined — one repeat would be insufficient |
+
+| Scorer | Executor TPR at 0.5 | Executor FPR at 0.5 | Strict TPR at 0.5 | Strict FPR at 0.5 |
+| --- | --- | --- | --- | --- |
+| DeepSeek A1 | undefined | undefined | undefined | undefined |
+| DeepSeek A2 | undefined | undefined | undefined | undefined |
+| Kimi A1 | undefined | undefined | undefined | undefined |
+| Kimi A2 | undefined | undefined | undefined | undefined |
+
+All terra-v2 TPR/FPR entries have zero observed judge-label pairs under every API-timeout sensitivity above. They are unmeasured, not zero rates.

@@ -321,6 +321,8 @@ Exit criteria: one TB2 task completed end-to-end by the seed harness with an ora
 
 - 2026-09-11 (W9b done): R8b findings 2-12 fixed; Section 5 matrix six of seven rows demonstrated on a real terra-low-8k validation run (cache row a documented limitation); fail-closed pilot launcher with experiment manifest; A0/A1 validation retained the seed; USD 14.49; 451 tests. Launched W10 (P1.5 A3-native and A3-loop) and W8e (tau under evidence v2 on terra-low-8k seed trajectories).
 
+- 2026-09-11 (W8e): tau under evidence v2 for terra could not be measured: complete observations produce 52 MB A2 prompts for two path-tracing trajectories (backend limit 200 kB). Zero cost. AD15 proposes a per-observation head/tail cap (evidence contract v3); W8f launched to implement v3 and run the terra tau calibration. W10 (A3) in progress.
+
 ### 9.7 Proposed Amendments to Sections 1-8 (pending user approval)
 
 Sources: the literature digest `docs/background.md` (Part B deltas; independent review R2 pending) and the GDPevo assessment `docs/gdpevo_assessment.md` with its independent review R1 (`docs/reviews.md`). Sections 1-8 are unchanged until the user approves. Review R2 of the digest is complete; its dispositions are in `docs/reviews.md`.
