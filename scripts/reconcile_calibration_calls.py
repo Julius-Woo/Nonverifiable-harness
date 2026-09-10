@@ -7,18 +7,24 @@ from harness.backends import TOKEN_FIELDS
 from harness.ledger import append_jsonl
 from harness.openai_api import OpenAIAPIBackend
 from scripts.calibrate import ROOT
+from scripts.calibration_cohorts import load_manifest, scoped_calls
 from scripts.cost_report import read_ledger
 
 
 def main():
     ledger = ROOT / "costs/ledger.jsonl"
-    known = {row.get("call_id") for row in read_ledger(ledger)}
+    manifest = load_manifest()
+    scoped = scoped_calls(read_ledger(ledger), manifest, "original-six")
+    known = {row.get("call_id") for row in scoped}
     audit = []
     # Only the two stopped jobs: never reconcile requests from a live job.
     for run_id in (
         "calibration-mini-native-260910",
         "calibration-mini-native-260910-resume",
     ):
+        run = next(r for r in manifest["runs"] if r["job_name"] == run_id)
+        assert run["cohort"] == "original-six"
+        assert run["budget_guard"] == "costs/calibration_budget.json"
         job = ROOT / "logs/harbor" / run_id
         for request in sorted(job.glob("*/agent/calls/*/request.json")):
             if request.parent.name in known:
@@ -34,9 +40,9 @@ def main():
             )
             reservation = backend.projected_cost(json.dumps(payload))
             row = {
-                "phase": "P1.2",
+                "phase": run["phase"],
                 "run_id": run_id,
-                "arm": "mini-native",
+                "arm": run["configuration"],
                 "iteration": 0,
                 "task": request.parents[3].name.rsplit("__", 1)[0],
                 "role": "task",

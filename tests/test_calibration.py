@@ -95,7 +95,7 @@ def test_timeout_reward_one_is_failure_and_unstarted_stays_in_denominator(
     assert result["pass_rate"] == 0
     assert result["n_results"] == 1
     assert result["harbor_timeouts"] == 1
-    assert result["no_action_count"] == 0
+    assert result["no_action_count"] == 1
     assert len(result["task_rates"]) == 30
     assert result["trials"][0]["reward"] == 1
 

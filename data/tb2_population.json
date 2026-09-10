@@ -1,0 +1,453 @@
+{
+  "dataset_id": "terminal-bench@2.0",
+  "git_url": "https://github.com/laude-institute/terminal-bench-2.git",
+  "git_commit": "69671fbaac6d67a7ef0dfec016cc38a64ef7a77c",
+  "provenance": "Archived offline from 89 cached task.toml files; each cache path verified using the pinned GitTaskId. Hashes retain the original metadata bytes.",
+  "tasks": [
+    {
+      "name": "adaptive-rejection-sampler",
+      "difficulty": "medium",
+      "task_toml_sha256": "4b743f614201e2df2138f70c2b6ede2478b5646801c726393cad02892d039683"
+    },
+    {
+      "name": "bn-fit-modify",
+      "difficulty": "hard",
+      "task_toml_sha256": "3a464e6dbdf1fb5f20ca2ecfd0736cb06eb2a9164665cba51af70935352eb53d"
+    },
+    {
+      "name": "break-filter-js-from-html",
+      "difficulty": "medium",
+      "task_toml_sha256": "5c10a564179f73c001441dc9a56cb629efac72f5828be8655697c9d2fd2dbb96"
+    },
+    {
+      "name": "build-cython-ext",
+      "difficulty": "medium",
+      "task_toml_sha256": "eb6bfabb7b75243c3f4d127a10c4c349d44e7e5b7bffb428edebd467adc43843"
+    },
+    {
+      "name": "build-pmars",
+      "difficulty": "medium",
+      "task_toml_sha256": "02de864f98eaba9d3b9fe2b65e36ec32a824a1cd85b9b5246caf70de222d48ac"
+    },
+    {
+      "name": "build-pov-ray",
+      "difficulty": "medium",
+      "task_toml_sha256": "a753f99e0c7bcec14324bfb26919004c357d061caaaea1b480b9690a8b580760"
+    },
+    {
+      "name": "caffe-cifar-10",
+      "difficulty": "medium",
+      "task_toml_sha256": "bd3b974958ae52e3d3b399fa8b6c2fbc4e9e0e039f20c96851f1d1a0049084bc"
+    },
+    {
+      "name": "cancel-async-tasks",
+      "difficulty": "hard",
+      "task_toml_sha256": "4eb6fe419024e101c630f3ee7702df67049851ae13ebed00ea4138b62dec47b2"
+    },
+    {
+      "name": "chess-best-move",
+      "difficulty": "medium",
+      "task_toml_sha256": "d02acae26d6238e2c05d34424258a2053f076eb88d31703348d3ac3403f963ef"
+    },
+    {
+      "name": "circuit-fibsqrt",
+      "difficulty": "hard",
+      "task_toml_sha256": "8048b18763a15de16bceda741f3beca43b56c111eaaea48254e053ebb03dc851"
+    },
+    {
+      "name": "cobol-modernization",
+      "difficulty": "easy",
+      "task_toml_sha256": "a08e001d2547fe84f64452bb075d27603aed7abfc01799f80924f81e6f2af410"
+    },
+    {
+      "name": "code-from-image",
+      "difficulty": "medium",
+      "task_toml_sha256": "ccaeb57fa92193f2256f924b32d5c4281e573ae449ef29e44d5e9cba84ef6fca"
+    },
+    {
+      "name": "compile-compcert",
+      "difficulty": "medium",
+      "task_toml_sha256": "581a6b17e4aa16406379cfa7e005c7df4ddabbd80c9a65eeb95ea143754a0e7b"
+    },
+    {
+      "name": "configure-git-webserver",
+      "difficulty": "hard",
+      "task_toml_sha256": "ae983718634fb47c8280aa6aacd9b645e35f8e88a6d1deb8b8e676aec4ee87f3"
+    },
+    {
+      "name": "constraints-scheduling",
+      "difficulty": "medium",
+      "task_toml_sha256": "db3d457bcae683d1d0dab33f2a059da9ef30beaa08271d766fae09d1c0054c83"
+    },
+    {
+      "name": "count-dataset-tokens",
+      "difficulty": "medium",
+      "task_toml_sha256": "4b0ac21243a9a578810bc826dd8f0db9202b5ca98a39d718864375fd2c76b498"
+    },
+    {
+      "name": "crack-7z-hash",
+      "difficulty": "medium",
+      "task_toml_sha256": "431655d1681325e7a768d64f1425fdc3efa7a345cd69d265bcf1bd8811210906"
+    },
+    {
+      "name": "custom-memory-heap-crash",
+      "difficulty": "medium",
+      "task_toml_sha256": "7642b99bb9af870eeefa26e21681a7308b5b4fb9eb249a4255019a6da40cb6c1"
+    },
+    {
+      "name": "db-wal-recovery",
+      "difficulty": "medium",
+      "task_toml_sha256": "2ff8fa659f95fd16932114f50d16c44229ffeb05f116c6f9e0c7b6b376e087e2"
+    },
+    {
+      "name": "distribution-search",
+      "difficulty": "medium",
+      "task_toml_sha256": "0f88879d8f3067f8bf4b5361eca83ec454d7a95fd0224d7d014399a52674deff"
+    },
+    {
+      "name": "dna-assembly",
+      "difficulty": "hard",
+      "task_toml_sha256": "316bb430c1c09cd74bbe0c226f53377371317c4279e394dacf3edc7f5f096bc4"
+    },
+    {
+      "name": "dna-insert",
+      "difficulty": "medium",
+      "task_toml_sha256": "c3e47f205b39b34c9f71cd0f3ce62d810abaa591436c30c4fb3f03349a42dde5"
+    },
+    {
+      "name": "extract-elf",
+      "difficulty": "medium",
+      "task_toml_sha256": "72c2a3524622ab87d024b422e00174b6530b02e0d586ccd2f260820a486338a0"
+    },
+    {
+      "name": "extract-moves-from-video",
+      "difficulty": "hard",
+      "task_toml_sha256": "155a4378b4effd231bd8b4e13024a521fc2c38fba6e53036173641610060b5ed"
+    },
+    {
+      "name": "feal-differential-cryptanalysis",
+      "difficulty": "hard",
+      "task_toml_sha256": "ee8a09c98c52c5598f44a1aa8908ac2d8bdae1c3ce6a5672a599cf21fc1e5fc5"
+    },
+    {
+      "name": "feal-linear-cryptanalysis",
+      "difficulty": "hard",
+      "task_toml_sha256": "bc0732054a35a1153ea30fd75d2ed8c4684ac10dd4716f9253f62f2fc012746f"
+    },
+    {
+      "name": "filter-js-from-html",
+      "difficulty": "medium",
+      "task_toml_sha256": "44e7a7f84eb1c603b54abd948f5e72205aa51bbb3dbbecdaabefebb59803515b"
+    },
+    {
+      "name": "financial-document-processor",
+      "difficulty": "medium",
+      "task_toml_sha256": "f667f368cd55dc12cfbe69d3cf335458341e9f1ff4d9f191cd474eb37db5ab5d"
+    },
+    {
+      "name": "fix-code-vulnerability",
+      "difficulty": "hard",
+      "task_toml_sha256": "495ee049055867fb5e14a7fcab5c1488941825be2f84eac29851b886b9b8de93"
+    },
+    {
+      "name": "fix-git",
+      "difficulty": "easy",
+      "task_toml_sha256": "65ed15b71751a10df66cd1fba4658762156f34bacd9f7ba1688a13947d0999e6"
+    },
+    {
+      "name": "fix-ocaml-gc",
+      "difficulty": "hard",
+      "task_toml_sha256": "665a572ee3b3b4f22f5954df304ea8fde4d57e1e9dd24b717b030a7b0f1e9483"
+    },
+    {
+      "name": "gcode-to-text",
+      "difficulty": "medium",
+      "task_toml_sha256": "e816483601f36d4fa37324203d2e4716f524dd50d516e4e787ea993a7d9b68f2"
+    },
+    {
+      "name": "git-leak-recovery",
+      "difficulty": "medium",
+      "task_toml_sha256": "6c3d6204e561ae9d9757bbc6b7f5a4ed3f94db4a0ce82037d9084644e1cf0c7f"
+    },
+    {
+      "name": "git-multibranch",
+      "difficulty": "medium",
+      "task_toml_sha256": "6b4ebf49a9ece91b7c8161917a9ac6ec91d00aea9d01dc7695b7a4a5fb3eed5b"
+    },
+    {
+      "name": "gpt2-codegolf",
+      "difficulty": "hard",
+      "task_toml_sha256": "1271d2225fb3651d8e4e2c3d2c7c6d07d074970f1393233150730ac8199974c8"
+    },
+    {
+      "name": "headless-terminal",
+      "difficulty": "medium",
+      "task_toml_sha256": "4d1448e9d3d0ef2043b6b888361a55e609a9ab8b07f4aca44c0ee870b2049c7e"
+    },
+    {
+      "name": "hf-model-inference",
+      "difficulty": "medium",
+      "task_toml_sha256": "689b6d326e3cc884f5b406a25072e8dbb011d6bda566d222734ce2fa843244fa"
+    },
+    {
+      "name": "install-windows-3.11",
+      "difficulty": "hard",
+      "task_toml_sha256": "392a6966f24744ee949dfa0eb2b7058e76771ba6e955b20c5808c2d8287f7d90"
+    },
+    {
+      "name": "kv-store-grpc",
+      "difficulty": "medium",
+      "task_toml_sha256": "b93d343ae7dd483b15d3b846fd6c13f136a279143e840d83beb521772f4c208d"
+    },
+    {
+      "name": "large-scale-text-editing",
+      "difficulty": "medium",
+      "task_toml_sha256": "24ea9cfe0b365afb9d45b998f02102b53d9e021a4fbd8f64dad0c14596caacf1"
+    },
+    {
+      "name": "largest-eigenval",
+      "difficulty": "medium",
+      "task_toml_sha256": "878776ae4fc26e4f7ddc6313c9518e5e264abbadc1df90f09b5e199b176243db"
+    },
+    {
+      "name": "llm-inference-batching-scheduler",
+      "difficulty": "hard",
+      "task_toml_sha256": "bad604d2617cbaef8d184f69553263f2ee8a007180ee2e4f6af4ff495afb2e7e"
+    },
+    {
+      "name": "log-summary-date-ranges",
+      "difficulty": "medium",
+      "task_toml_sha256": "6d52ee3cd752b917e290d0cbbc99ae856ce7e851169b9cd9bb0c332404bc6873"
+    },
+    {
+      "name": "mailman",
+      "difficulty": "medium",
+      "task_toml_sha256": "36019339824f0617db57a999931e88cd1be29258f7fffa2f131b5a705531adb3"
+    },
+    {
+      "name": "make-doom-for-mips",
+      "difficulty": "hard",
+      "task_toml_sha256": "c9f3a979796e64c64f38606ac1168b2e31993e835c232c24840ad9b88bb24e16"
+    },
+    {
+      "name": "make-mips-interpreter",
+      "difficulty": "hard",
+      "task_toml_sha256": "4b3356a0e251ea92beb95710f5a972a3c1c1abc46d86eb7956d88b11076f9d33"
+    },
+    {
+      "name": "mcmc-sampling-stan",
+      "difficulty": "hard",
+      "task_toml_sha256": "383a03349193c47c7a2f233384cbf6c7ec9aeda3240bc455faaa1ae7d7ad4f52"
+    },
+    {
+      "name": "merge-diff-arc-agi-task",
+      "difficulty": "medium",
+      "task_toml_sha256": "32696fcfedf2df9a089b97a7fb4dcb6f757b7bb438e5bff5c8c0076ea622af3a"
+    },
+    {
+      "name": "model-extraction-relu-logits",
+      "difficulty": "hard",
+      "task_toml_sha256": "4d5c33f4172062d820a5444e9b104d9118ab6a7f12652c7b30e55e79a17e8596"
+    },
+    {
+      "name": "modernize-scientific-stack",
+      "difficulty": "medium",
+      "task_toml_sha256": "73e171f42ee5631d5e45ab48149934b98c9952ade191a0bf786047fd28ac7c52"
+    },
+    {
+      "name": "mteb-leaderboard",
+      "difficulty": "medium",
+      "task_toml_sha256": "030019d070f7bf1d3747685fa44cf6bfb4576e2ec52f8470221c3b152165ab44"
+    },
+    {
+      "name": "mteb-retrieve",
+      "difficulty": "medium",
+      "task_toml_sha256": "3030503ebf238612af70b6748d306d134ebe3089d0cf1defd5d8034d64789193"
+    },
+    {
+      "name": "multi-source-data-merger",
+      "difficulty": "medium",
+      "task_toml_sha256": "fc843176948791287d9d9cb0d31b1da0b4e5734d2c68b8d3746ceab5abdc559a"
+    },
+    {
+      "name": "nginx-request-logging",
+      "difficulty": "medium",
+      "task_toml_sha256": "f41393eea6490092669c0a6abcb3087b751e933d1182fb04471fc56495aeb377"
+    },
+    {
+      "name": "openssl-selfsigned-cert",
+      "difficulty": "medium",
+      "task_toml_sha256": "c3db93a3f924a942490f93b87e2bc9045a15a7a296f3de38ac795576ebe77947"
+    },
+    {
+      "name": "overfull-hbox",
+      "difficulty": "easy",
+      "task_toml_sha256": "d24390ba221061b27cd05ef37504614cb76a489956640a3a74a3d7e773c5518b"
+    },
+    {
+      "name": "password-recovery",
+      "difficulty": "hard",
+      "task_toml_sha256": "043b4b0dbd3849491c15a2d8bc2146ca8cabee34a69712f6c1f294f8b52689de"
+    },
+    {
+      "name": "path-tracing",
+      "difficulty": "hard",
+      "task_toml_sha256": "016873f8804418c8bd20bbba314c0ebdc304ad0beb621df07bb0ad6e5d721fdf"
+    },
+    {
+      "name": "path-tracing-reverse",
+      "difficulty": "hard",
+      "task_toml_sha256": "595d0926686b5aaa2242e197bc92fc115a82baa0eb3d0e60498453c87ea9eb3f"
+    },
+    {
+      "name": "polyglot-c-py",
+      "difficulty": "medium",
+      "task_toml_sha256": "02c98637eba6754d556594f679404ba5ac282436d089f53d1c839b17eff9c710"
+    },
+    {
+      "name": "polyglot-rust-c",
+      "difficulty": "hard",
+      "task_toml_sha256": "5f48e6114d1296eee5303a8ab5286b49a48df9e322147a9d939b8e60dd7b1343"
+    },
+    {
+      "name": "portfolio-optimization",
+      "difficulty": "medium",
+      "task_toml_sha256": "ec79b1c5712b30dc50c2739a7c19391014d160c270276c0fc6579d33d4d133ed"
+    },
+    {
+      "name": "protein-assembly",
+      "difficulty": "hard",
+      "task_toml_sha256": "6004ee49220b9b13c974edb062b7796adc7555e28e80f39937664b0d3e6de429"
+    },
+    {
+      "name": "prove-plus-comm",
+      "difficulty": "easy",
+      "task_toml_sha256": "172e580e56eb604d970a3f763d7cac86ce42047d270db970f7274eb9f64334bb"
+    },
+    {
+      "name": "pypi-server",
+      "difficulty": "medium",
+      "task_toml_sha256": "e82d539a1e56fa080f9a12bc723eef047220af4425c7f18d88e1ee9a3466c473"
+    },
+    {
+      "name": "pytorch-model-cli",
+      "difficulty": "medium",
+      "task_toml_sha256": "e4b97209362932ff621a40ec33fc82e9bbb1b4bb40b635fe1e476a6cb83354bd"
+    },
+    {
+      "name": "pytorch-model-recovery",
+      "difficulty": "medium",
+      "task_toml_sha256": "b963c8b3ca627ec38b6934dc9a93373678cd5b0e85800efa3d431f937c87b6e5"
+    },
+    {
+      "name": "qemu-alpine-ssh",
+      "difficulty": "medium",
+      "task_toml_sha256": "b11c5f50abfd204436edc0d9721c4a181a34e1f644550eaa22fd06ac8b9957f3"
+    },
+    {
+      "name": "qemu-startup",
+      "difficulty": "medium",
+      "task_toml_sha256": "d6e67042864b1438afd3e280f5114f3fa05a87aa64c549c7028e8a8d8c6ce305"
+    },
+    {
+      "name": "query-optimize",
+      "difficulty": "medium",
+      "task_toml_sha256": "f596916d1fc10769e1cc82e2df0957952ff82736f935c742b15f4daee7258f19"
+    },
+    {
+      "name": "raman-fitting",
+      "difficulty": "medium",
+      "task_toml_sha256": "6af8b47940032e643b9529c1d1d467e55efa1315981505cc1b0a1c1323e67e0a"
+    },
+    {
+      "name": "regex-chess",
+      "difficulty": "hard",
+      "task_toml_sha256": "faa8887ea3c3d516b16e066143be554d3d214b9a326462ac08f677568cbb25ce"
+    },
+    {
+      "name": "regex-log",
+      "difficulty": "medium",
+      "task_toml_sha256": "cbffabfe62b495480b06a8a34dfa3b11bd5a86ff20b0c82a1406491b6f50665c"
+    },
+    {
+      "name": "reshard-c4-data",
+      "difficulty": "medium",
+      "task_toml_sha256": "4b3076bfb05e29290ca07e260c08707d5bd22fbd4f867e845a9744b7b8bac8a2"
+    },
+    {
+      "name": "rstan-to-pystan",
+      "difficulty": "medium",
+      "task_toml_sha256": "a9af1f9dab8e3135e3745e47dd1d18362a929da486e298c58ff682415d179066"
+    },
+    {
+      "name": "sam-cell-seg",
+      "difficulty": "hard",
+      "task_toml_sha256": "0479c1bfb2230a6bd205b11209163a798a69bb47a6d7eb8f4ae21d4d72c3efee"
+    },
+    {
+      "name": "sanitize-git-repo",
+      "difficulty": "medium",
+      "task_toml_sha256": "2c0d32f42e8b534136a958f47e99c8e5097bec6d1f2a3edadb48c45f217a6306"
+    },
+    {
+      "name": "schemelike-metacircular-eval",
+      "difficulty": "medium",
+      "task_toml_sha256": "84b3ea218c02a0e57816fddf14b16ee83d7df8d39bc3bb3156eb3b1201c5033c"
+    },
+    {
+      "name": "sparql-university",
+      "difficulty": "hard",
+      "task_toml_sha256": "21a45de8a465d331d2bfbe2335c07315789f9b26f330bb74d768b223f34a494b"
+    },
+    {
+      "name": "sqlite-db-truncate",
+      "difficulty": "medium",
+      "task_toml_sha256": "8b4c4d2abfe7dc8b7a3bac4567f60c08f7a9219b2cc65df0de7c5ee3d37721d6"
+    },
+    {
+      "name": "sqlite-with-gcov",
+      "difficulty": "medium",
+      "task_toml_sha256": "c89c54063da95760d87ee251f0b4a8d9e6cf17f273e3b9da57d3c67780b63be4"
+    },
+    {
+      "name": "torch-pipeline-parallelism",
+      "difficulty": "hard",
+      "task_toml_sha256": "e88d3f1422a594c5fedac69ffde0be35019bf90f2c6aa1ee7cedec2403688b59"
+    },
+    {
+      "name": "torch-tensor-parallelism",
+      "difficulty": "hard",
+      "task_toml_sha256": "60720f55f91254706ff01852d20d579d564ae471204c9eaeb09294d4c322ae9f"
+    },
+    {
+      "name": "train-fasttext",
+      "difficulty": "hard",
+      "task_toml_sha256": "b1a39378c96e6971a5583a713a4f84782c3535fe889f0916198f971c9b844153"
+    },
+    {
+      "name": "tune-mjcf",
+      "difficulty": "medium",
+      "task_toml_sha256": "d4e30696370fdbbbc12f1f7a2d0e34a8cf215d5b6f42a0e6e3fa6338c2309bfc"
+    },
+    {
+      "name": "video-processing",
+      "difficulty": "hard",
+      "task_toml_sha256": "49e4a92b9b04a3dd12ac1f0818e75574128d2b981f7b7e4c3707f7781933b805"
+    },
+    {
+      "name": "vulnerable-secret",
+      "difficulty": "medium",
+      "task_toml_sha256": "f6859a220d8c5072b51f1b2e31d8b5b26f5c15ec53704f669c00b25be0c3f035"
+    },
+    {
+      "name": "winning-avg-corewars",
+      "difficulty": "medium",
+      "task_toml_sha256": "f63017781e8a02275be923b47069cdabc4e74ab6ffd63d33c57cb98f9620c99d"
+    },
+    {
+      "name": "write-compressor",
+      "difficulty": "hard",
+      "task_toml_sha256": "2882cad36270e4291b672620469a7619a9c80a624f8f85703b9a43eeca9fccb2"
+    }
+  ]
+}

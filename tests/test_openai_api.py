@@ -221,3 +221,114 @@ async def test_audited_repricing_is_idempotent(tmp_path):
     assert read_ledger(audit)[0]["original"] == original
     assert read_ledger(api.ledger)[0]["cost_usd"] == result.record["cost_usd"]
     assert repair(api.ledger, api.prices, audit) == (0, 0)
+
+
+@pytest.mark.parametrize("as_json", [True, False])
+async def test_http_error_body_is_sanitized_and_behavior_unchanged(
+    tmp_path, as_json
+):
+    requests = []
+
+    def handler(request):
+        requests.append(request)
+        if as_json:
+            return httpx.Response(
+                400,
+                json={
+                    "error": {
+                        "message": (
+                            "Function tools unsupported: secret-test-key"
+                        ),
+                        "param": "reasoning_effort",
+                    },
+                    "api_key": "different-credential",
+                    "nested": [{"authorization": "Bearer another-credential"}],
+                },
+            )
+        return httpx.Response(
+            400, text="unsupported secret-test-key Bearer other-key"
+        )
+
+    api = backend(tmp_path, handler, max_retries=0)
+    result = await api.complete("test", CallTags())
+    assert len(requests) == 1
+    assert json.loads(requests[0].content) == {
+        "model": "gpt-5-mini",
+        "messages": [{"role": "user", "content": "test"}],
+        "max_completion_tokens": 4096,
+        "reasoning_effort": "low",
+    }
+    assert result.record["note"] == "HTTP 400"
+    assert not result.record["ok"] and result.record["cost_usd"] is None
+    assert api.budget_used == api.projected_cost("test")
+    raw = Path(result.record["raw_dir"])
+    saved = json.loads((raw / "http_error_1.json").read_text())
+    assert saved["status_code"] == 400
+    assert saved["method"] == "POST"
+    assert (
+        saved["endpoint"] == "https://example.test/openai/v1/chat/completions"
+    )
+    assert not (raw / "response.json").exists()
+    archived = "".join(
+        p.read_text() for p in tmp_path.rglob("*") if p.is_file()
+    )
+    for secret in (
+        "secret-test-key",
+        "different-credential",
+        "another-credential",
+        "other-key",
+    ):
+        assert secret not in archived
+    assert "unsupported" in archived
+
+
+async def test_each_retry_error_body_archived_without_affecting_retry(
+    tmp_path, monkeypatch
+):
+    statuses = iter([429, 503, 200])
+    sleeps = []
+
+    async def sleep(delay):
+        sleeps.append(delay)
+
+    monkeypatch.setattr("harness.openai_api.asyncio.sleep", sleep)
+
+    def handler(request):
+        return httpx.Response(
+            next(statuses), json=response_data(), headers={"retry-after": "2"}
+        )
+
+    result = await backend(tmp_path, handler).complete("test", CallTags())
+    raw = Path(result.record["raw_dir"])
+    assert result.record["ok"] and sleeps == [2, 2]
+    assert (
+        json.loads((raw / "http_error_1.json").read_text())["status_code"]
+        == 429
+    )
+    assert (
+        json.loads((raw / "http_error_2.json").read_text())["status_code"]
+        == 503
+    )
+    assert not (raw / "http_error_3.json").exists()
+    assert (raw / "response.json").exists()
+
+
+async def test_error_archive_failure_does_not_change_http_outcome(
+    tmp_path, monkeypatch
+):
+    original = Path.write_text
+
+    def write(path, *args, **kwargs):
+        if path.name.startswith("http_error_"):
+            raise OSError("disk error")
+        return original(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "write_text", write)
+    result = await backend(
+        tmp_path,
+        lambda request: httpx.Response(400, text="bad"),
+        max_retries=0,
+    ).complete("test", CallTags())
+    assert result.record["note"] == "HTTP 400"
+    assert result.record["attempts"][0]["error_body_archive_failed"]
+    assert len(result.record["attempts"]) == 1

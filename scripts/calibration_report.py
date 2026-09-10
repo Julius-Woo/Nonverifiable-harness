@@ -9,9 +9,15 @@ from collections import Counter, defaultdict
 from datetime import datetime, timezone
 from pathlib import Path
 
-from harness.ledger import price_usage
-from scripts.calibrate import CONFIGS, ROOT
-from scripts.cost_report import read_ledger, render_report
+from scripts.calibrate import CONFIGS, MEDIUM_CONFIGS, ROOT
+from scripts.calibration_cohorts import (
+    account,
+    load_manifest,
+    render_costs,
+    scoped_calls,
+)
+from scripts.calibration_contracts import TERMINATIONS, classify_attempt
+from scripts.cost_report import read_ledger
 from scripts.smoke_report import elapsed
 
 
@@ -49,171 +55,24 @@ def paired_interval(first, second):
     return mean(differences), draws[250], draws[9750]
 
 
-def operational_notes(results):
-    """Document interruptions, memory, and unknown billing evidence."""
-    text = [
-        "## Interrupted runs, memory guard, and accounting",
-        "",
-        "Two earlier drivers were killed by a low-memory watchdog, not a "
-        "kernel OOM. The second interruption occurred with MemAvailable "
-        "above 20 GB (operator report); low MemFree reflected page cache. "
-        "Orphan containers had already been removed before this recovery. "
-        "Disk reconciliation found 51 finalized mini/native trial results "
-        "in the original job, plus two verifier-bearing results in "
-        "`calibration-mini-native-260910-resume`: "
-        "`adaptive-rejection-sampler` and `pypi-server`. "
-        "The job-level result.json is never counted as a trial.",
-        "",
-        "Exactly seven remaining slots were launched once in "
-        "`calibration-mini-native-260910-recovery2`: `query-optimize`, "
-        "`filter-js-from-html`, `gcode-to-text`, `headless-terminal`, "
-        "`protein-assembly`, `raman-fitting`, and "
-        "`torch-pipeline-parallelism`. Per-task links mark all nine "
-        "replacement results as resumed. Killed attempts and unfinished "
-        "verifier stdout never supply a reward. Existing finalized solver "
-        "errors were retained as operational failures, not retried. "
-        "Only a finalized trial with a verifier reward contributes to "
-        "the verifier count; command failures without a verifier remain "
-        "explicit failures in the fixed avg@2 denominator. See "
-        "[attempt reconciliation]"
-        "(../logs/calibration_attempt_reconciliation.json).",
-        "",
-        "The resumed batches ran in order: luna/native, luna/json, "
-        "terra/native, then budget-permitting terra/json, one job at a "
-        "time. Each invocation explicitly uses `--n-concurrent 4`. "
-        "Before Harbor starts, `free -g` is logged and MemAvailable from "
-        "`/proc/meminfo` must be at least 10 GiB. During each job, "
-        "`free -g` and `docker stats --no-stream` are sampled every "
-        "two minutes, with additional admission checks between trials. "
-        "Below 6 GiB, new trials pause while running trials finish; "
-        "admission resumes at 10 GiB. Memory evidence is linked below.",
-        "",
-        "| Job segment | Final results / verifier rewards | Wall s | "
-        "Min sampled available GiB | Samples below 6 GiB | Memory log |",
-        "| --- | ---: | ---: | ---: | ---: | --- |",
-    ]
-    for result in results:
-        base = result["run_id"]
-        for job in sorted((ROOT / "logs/harbor").glob(base + "*")):
-            paths = list(job.glob("*/result.json"))
-            trials = [json.loads(p.read_text()) for p in paths]
-            verified = sum(
-                ((t.get("verifier_result") or {}).get("rewards") or {}).get(
-                    "reward"
-                )
-                is not None
-                for t in trials
-            )
-            run_dir = ROOT / "logs" / job.name
-            memory = [
-                row for row in read_ledger(run_dir / "memory.jsonl")
-                if "available_gb" in row
-            ]
-            low = min((m["available_gb"] for m in memory), default=None)
-            pauses = sum(m["available_gb"] < 6 for m in memory)
-            summary_path = run_dir / "summary.json"
-            if summary_path.exists():
-                wall = f"{json.loads(summary_path.read_text())['wall_s']:.2f}"
-            else:
-                raw = json.loads((job / "result.json").read_text())
-                prefix = "" if raw.get("finished_at") else "≥"
-                wall = f"{prefix}{job_elapsed(raw):.2f}"
-            link = (
-                f"[samples](../logs/{job.name}/memory.jsonl)"
-                if memory
-                else "not recorded"
-            )
-            minimum = f"{low:.2f}" if low is not None else "unknown"
-            text.append(
-                f"| {job.name} | {len(trials)} / {verified} | {wall} | "
-                f"{minimum} | {pauses if memory else 'unknown'} | {link} |"
-            )
-    text += [
-        "",
-        "Interrupted segment wall times are lower bounds from the last "
-        "persisted Harbor update; exact watchdog kill timestamps were "
-        "not retained. Mini/native batch wall is the sum of those lower "
-        "bounds and the measured final recovery wall; driver downtime "
-        "is excluded. All other completed batch walls are measured by "
-        "the launcher. Historical mini/json used concurrency 8; this "
-        "limits causal latency comparisons with the later batches.",
-        "",
-    ]
-    budget_path = ROOT / "costs/calibration_budget.json"
-    if budget_path.exists():
-        used = json.loads(budget_path.read_text())["used_usd"]
-        all_calls = [
-            row
-            for row in read_ledger(ROOT / "costs/ledger.jsonl")
-            if row.get("phase") == "P1.2"
-        ]
-        known = sum(row.get("cost_usd") or 0 for row in all_calls)
-        interrupted = sum(r["interrupted_known_usd"] for r in results)
-        text += [
-            f"Experiment known API cost, including interrupted work: "
-            f"**${known:.6f}**. Shared guard used/reserved: "
-            f"**${used:.6f} / $40**. Interrupted mini/native work "
-            f"accounts for ${interrupted:.6f} "
-            "of known cost and is included in configuration totals, "
-            "but excluded from completed-rollout means. "
-            "`costs/summary.md` covers the entire project ledger; "
-            "experiment totals here filter phase P1.2.",
-            "",
-            "Two lost ledger writes were reconstructed from orphan "
-            "request artifacts, with unknown dispatch/status, response, "
-            "usage, cost, and latency explicitly preserved. Their "
-            "existing conservative reservations total **$0.023641**; "
-            "they were not released or charged twice. API error calls "
-            "also retain reservations when usage is unavailable. "
-            "[Recovery audit](../logs/calibration_ledger_recovery.jsonl). "
-            "Every saved calibration request now has a ledger record. "
-            "Reported HTTP status counts exclude these unknown statuses.",
-            "",
-        ]
-    diagnostic = ROOT / "logs/calibration-native-diagnostic/error-response.txt"
-    if diagnostic.exists():
-        text += [
-            "Luna/native returned HTTP 400 before model generation. One "
-            "separately ledgered diagnostic call captured the endpoint "
-            "error: function tools with reasoning_effort are unsupported "
-            "for gpt56luna on Chat Completions; the service suggests "
-            "Responses or reasoning `none`. The calibration retains "
-            "its common Chat Completions transport and low reasoning. "
-            "Thus this row measures an unsupported API configuration, "
-            "not Luna's task-solving ability. The diagnostic is excluded "
-            "from benchmark denominators and included in the $40 guard. "
-            "[Captured rejection](../logs/calibration-native-diagnostic/"
-            "error-response.txt). HTTP error calls provide no token "
-            "usage or invoice evidence, so their costs remain unknown; "
-            "zero known USD must not be read as zero billed USD.",
-            "",
-        ]
-    projection = ROOT / "logs/calibration_terra_json_projection.json"
-    if projection.exists():
-        estimate = json.loads(projection.read_text())
-        text += [
-            "The optional Terra/json budget check repriced Luna/json's "
-            "measured tokens at Terra rates, then added a 50% margin: "
-            f"${estimate['projected_usd']:.2f}, against "
-            f"${estimate['remaining_usd_at_check']:.2f} remaining at "
-            "the check. This is a projection, not an assumption of "
-            "identical token use; the shared $40 guard remains binding. "
-            "[Projection audit]"
-            "(../logs/calibration_terra_json_projection.json).",
-            "",
-        ]
-    return text
-
-
-def collect(label, ledger, split):
+def collect(label, ledger, split, manifest=None):
+    manifest = manifest or load_manifest()
     run_id = f"calibration-{label}-260910"
     job = ROOT / "logs/harbor" / run_id
     if not job.exists():
         return None
     by_task = {t["name"]: s for s, ts in split["splits"].items() for t in ts}
-    jobs = [job] + sorted(job.parent.glob(run_id + "-*"))
+    jobs = [
+        job.parent / r["job_name"]
+        for r in manifest["runs"]
+        if r["configuration"] == label
+        and r["kind"] == "benchmark"
+        and (job.parent / r["job_name"]).exists()
+    ]
     run_ids = {p.name for p in jobs}
-    calls = [r for r in ledger if r["run_id"] in run_ids]
+    calls = [
+        r for r in scoped_calls(ledger, manifest) if r["run_id"] in run_ids
+    ]
     by_trial = defaultdict(list)
     for row in calls:
         by_trial[Path(row["raw_dir"]).parents[2].name].append(row)
@@ -263,22 +122,27 @@ def collect(label, ledger, split):
         exception = data.get("exception_info") or {}
         error = exception.get("exception_type")
         timing = data.get("agent_execution")
-        no_action = any(r["kind"] == "finish" for r in trace) and not any(
-            r["kind"] == "observation" and "command" in r for r in trace
+        exception_path = path.parent / "exception.txt"
+        outcome = classify_attempt(
+            data,
+            trace,
+            rows,
+            exception_path.read_text() if exception_path.exists() else "",
         )
         trial = {
             "task": name,
             "split": by_task[name],
             "trial": path.parent.name,
             "reward": reward,
-            "pass": int(reward == 1 and not error),
+            "pass": outcome["pass_l1"],
+            "published_pass": int(reward == 1 and not error),
             "exception_type": error,
             "exception_message": exception.get("exception_message"),
             "environment_failed": bool(error and not timing),
             "harbor_timeout": "Timeout" in (error or "")
             and "Command" not in (error or ""),
             "resumed": path.parent.parent.name != run_id,
-            "no_action": no_action,
+            "no_action": outcome["no_action"],
             "finish_answer": next(
                 (r["answer"] for r in trace if r["kind"] == "finish"), None
             ),
@@ -309,6 +173,8 @@ def collect(label, ledger, split):
             "call_ids": sorted(ids),
             "ledger_without_trace": sorted(ids - trace_ids),
         }
+        trial.update(outcome)
+        trial["job_name"] = path.parent.parent.name
         assert trial["budget_used_usd"] <= 1 + 1e-8
         trials.append(trial)
     counts = Counter(t["task"] for t in trials)
@@ -348,8 +214,23 @@ def collect(label, ledger, split):
     rng = random.Random(260910)
     values = list(task_rates.values())
     boots = sorted(mean(rng.choices(values, k=30)) for _ in range(10000))
+    labels = {
+        key: label_metrics(trials, split, key)
+        for key in ("pass_l1", "pass_l2")
+    }
     return {
         "configuration": label,
+        "cohort": next(
+            r["cohort"]
+            for r in manifest["runs"]
+            if r["configuration"] == label
+        ),
+        "labels": labels,
+        "raw_reward_ones": sum(t["reward"] == 1 for t in trials),
+        "termination_counts": dict(Counter(t["termination"] for t in trials)),
+        "no_action_reasons": dict(
+            Counter(t["termination"] for t in trials if t["no_action"])
+        ),
         "run_id": run_id,
         "summary": summary,
         "concurrency": config.get("n_concurrent_trials", 4),
@@ -416,391 +297,830 @@ def collect(label, ledger, split):
     }
 
 
-def render(results, split):
+def label_metrics(trials, split, label):
+    names = sorted(t["name"] for ts in split["splits"].values() for t in ts)
+    rates = {
+        name: sum(t[label] for t in trials if t["task"] == name) / 2
+        for name in names
+    }
+    rng = random.Random(260910)
+    values = list(rates.values())
+    draws = sorted(
+        mean(rng.choices(values, k=len(values))) for _ in range(10000)
+    )
+    return {
+        "successes": sum(t[label] for t in trials),
+        "pass_rate": mean(values),
+        "pass_ci95": [draws[250], draws[9750]],
+        "task_rates": rates,
+        "split_rates": {
+            s: sum(t[label] for t in trials if t["split"] == s) / (2 * len(ts))
+            for s, ts in split["splits"].items()
+        },
+    }
+
+
+def eligible(row, label):
+    metrics = row["labels"][label]
+    return (
+        row["n_results"] == 60
+        and row["response_calls"] > 0
+        and 0.15 <= metrics["pass_rate"] <= 0.45
+        and row["no_action_rate"] < 0.05
+    )
+
+
+def table(headers, rows):
+    return [
+        "| " + " | ".join(headers) + " |",
+        "| " + " | ".join("---" for _ in headers) + " |",
+        *["| " + " | ".join(map(str, row)) + " |" for row in rows],
+        "",
+    ]
+
+
+def contrasts(results):
+    by_name = {r["configuration"]: r for r in results}
+    pairs = [
+        ("luna-json", "terra-json"),
+        ("terra-json", "mini-json"),
+        ("luna-json-medium", "terra-json"),
+        ("terra-json", "mini-json-medium"),
+        ("luna-json-medium", "mini-json-medium"),
+        ("mini-json-medium", "mini-json"),
+        ("luna-json-medium", "luna-json"),
+        ("mini-native", "mini-json"),
+        ("luna-json", "mini-json"),
+    ]
+    output = []
+    for first, second in pairs:
+        if first not in by_name or second not in by_name:
+            continue
+        for label in ("pass_l1", "pass_l2"):
+            for scope in ("overall", "search", "anchor", "sealed"):
+                a, b = (
+                    by_name[first]["labels"][label],
+                    by_name[second]["labels"][label],
+                )
+                if scope != "overall":
+                    names = {
+                        t["task"]
+                        for t in by_name[first]["trials"]
+                        if t["split"] == scope
+                    }
+                    a, b = (
+                        {"task_rates": {n: m["task_rates"][n] for n in names}}
+                        for m in (a, b)
+                    )
+                delta, low, high = paired_interval(a, b)
+                output.append(
+                    {
+                        "first": first,
+                        "second": second,
+                        "label": label,
+                        "scope": scope,
+                        "difference": delta,
+                        "ci95": [low, high],
+                    }
+                )
+    return output
+
+
+def render(results, split, manifest=None, accounting=None, comparisons=None):
+    manifest = manifest or load_manifest()
+    accounting = accounting or {}
+    comparisons = (
+        comparisons if comparisons is not None else contrasts(results)
+    )
     text = [
         "# Terminal-Bench 2 task-model and protocol calibration",
         "",
-        "Date: 2026-09-10. P1.1/P1.2. Rewards below come from "
-        "unmodified Harbor 0.22 Docker verifiers; model completion "
-        "claims never establish correctness.",
+        "Date: 2026-09-10. **R7 corrected offline re-analysis (P1.2, "
+        "including W5d). "
+        "No configuration is eligible under either A9 reading.** "
+        "No benchmark reruns, Docker commands, or model calls were made "
+        "for this re-analysis. "
+        "All rewards are from the saved, unmodified Harbor 0.22 verifier "
+        "evidence.",
         "",
         "## Setup and reproducibility",
         "",
-        f"Dataset `terminal-bench@2.0`, commit `{split['git_commit']}`. "
-        f"The cached `task.toml` field `metadata.difficulty` contains 4 "
-        f"easy, 55 medium, and 30 hard tasks (89 total). Fixed sampling "
-        f"seed **260910**; sorted task names, independent per-stratum "
-        f"shuffles from one seeded Python RNG, and Hamilton "
-        f"largest-remainder allocation with lexical tie-breaking. "
-        f"Search is allocated first, then anchor, then sealed. The six "
-        f"smoke tasks were eligible with no preference; only "
-        f"`cobol-modernization` was selected.",
+        f"Dataset `terminal-bench@2.0`, commit `{split['git_commit']}`; "
+        "89 tasks: 4 easy, 55 medium, 30 hard. The archived "
+        "[population metadata](../data/tb2_population.json) includes task "
+        "IDs, difficulties, "
+        "and task.toml SHA-256 hashes. Cache paths were checked against "
+        "the pinned GitTaskId. "
+        "The offline check reproduces the entire committed split, "
+        "including selected hashes: "
+        "`uv run python -m scripts.calibration_split_check`. It reads "
+        "local manifests only; "
+        "it does not resolve a registry, download tasks, or rewrite the "
+        "split.",
         "",
-        "| Split | Easy | Medium | Hard | Total |",
-        "| --- | ---: | ---: | ---: | ---: |",
+        "Sampling seed 260910; sorted tasks, one Python RNG with "
+        "per-stratum shuffles, "
+        "Hamilton largest remainders and lexical tie-breaking. Search is "
+        "allocated first, "
+        "then anchor, then sealed. Smoke tasks were eligible without "
+        "preference; only "
+        "`cobol-modernization` overlaps. One easy task cannot populate all "
+        "three splits.",
+        "",
     ]
-    for s, ts in split["splits"].items():
-        c = Counter(t["difficulty"] for t in ts)
-        text.append(
-            f"| {s} | {c['easy']} | {c['medium']} | {c['hard']} | {len(ts)} |"
-        )
+    text += table(
+        ["Split", "Easy", "Medium", "Hard", "Total"],
+        [
+            [
+                s,
+                *[
+                    Counter(t["difficulty"] for t in ts)[d]
+                    for d in ("easy", "medium", "hard")
+                ],
+                len(ts),
+            ]
+            for s, ts in split["splits"].items()
+        ],
+    )
     text += [
+        "Every configuration has 30 tasks × 2 finalized attempts. Shared "
+        "settings: "
+        "4,096 completion tokens (reasoning plus output), 24 model calls, "
+        "30 seconds per "
+        "command, 180 seconds per API call, $1 per-rollout guard, and "
+        "task-defined Harbor "
+        "timeouts. Temperature and generation seed were omitted. The "
+        "original six rows "
+        "use low reasoning; W5d adds Mini/JSON and Luna/JSON at medium. No "
+        "Terra/medium "
+        "row exists. Native means Chat Completions function tools, with "
+        "`parallel_tool_calls=false`, terminal/read_file/write_file, and a "
+        "plain final answer. "
+        "JSON uses the same common serialized history and prompt across "
+        "deployments. "
+        "There is no model-specific prompt, planning, self-verification, "
+        "or rescue.",
         "",
-        "The proportional 30-task allocation has only one easy task; "
-        "it is impossible to put an easy task in every split while "
-        "retaining that allocation. Metadata hashes are stored with "
-        "each selected task. Reproduce with `uv run python -m "
-        "scripts.make_tb2_split`.",
+        "Regenerate all corrected results, both cohorts, and costs with "
+        "`uv run python -m scripts.calibration_report`; validate with "
+        "`uv run python -m scripts.audit_calibration`. These are offline "
+        "reducers. "
+        "The earlier medium-only extension script is superseded; use this "
+        "unified entry point.",
         "",
-        "Each configuration uses all 30 tasks × 2 fresh attempts "
-        "(avg@2), low reasoning, 4,096 max completion tokens, 24 model "
-        "calls, 30 seconds per command, 180 seconds per API call, and "
-        "unchanged task-defined Harbor build/agent/verifier timeouts. "
-        "Temperature and generation seed are omitted (provider defaults); "
-        "260910 is the dataset-sampling and analysis seed. "
-        "Zero API retries and zero Harbor retries. No planning, "
-        "self-verification, model-specific text, or rescue logic was "
-        "added. The API JSON prompt only removes the CLI-residue "
-        "sentence. Native changes only protocol instructions and "
-        "message transport: exactly terminal/read_file/write_file "
-        "function tools, `parallel_tool_calls=false`, and a plain "
-        "final message to finish. Native actions normalize into the "
-        "same assistant/observation/finish JSONL records. Native here "
-        "means Chat Completions function tools; Responses API was "
-        "not measured.",
+        "## Corrected measurement contracts",
         "",
-        "Batches run sequentially on the same host. The initial mini/json "
-        "batch used concurrency 8. The recovery and all remaining batches "
-        "use concurrency 4, as required by the resume instruction. "
-        "These 30-second command "
-        "limits are part of the unchanged seed and do not by themselves "
-        "establish host overload. Image pulls and long verifiers affect "
-        "batch wall time, so compare agent seconds separately. The first "
-        "batch warms Docker images for later batches. Source hashes are "
-        "archived in [the manifest]"
-        "(../logs/calibration_source_manifest.json).",
+        "**No action:** every finalized completed or failed solver attempt "
+        "without an "
+        "executed container/file action, divided by 60 (36/12/12 by "
+        "split). No finalized "
+        "grader/infrastructure exclusions were recorded. Interrupted work "
+        "belongs in costs "
+        "and replacement lineage, not as extra scored attempts. An emitted "
+        "call or suggested "
+        "shell command is not execution. A command observation proves "
+        "execution regardless "
+        "of its exit code. Historical timeout tracebacks reaching "
+        "subprocess output collection "
+        "also prove execution; their missing observation is not counted as "
+        "no action.",
         "",
-        "Run a batch with `uv run python -m scripts.calibrate "
-        "luna-native --concurrency 4`; substitute any configuration "
-        "below. Each launch archives its full pinned Harbor config in "
-        "`logs/calibration-<configuration>-260910/config.json`. "
-        "Rebuild this report with `uv run python -m "
-        "scripts.calibration_report`.",
+        "**L1 (proposed AD10):** valid verifier reward exactly 1, no agent "
+        "timeout and no "
+        "executor-level tool failure. Executor-level failures include "
+        "command timeout, "
+        "execution exception, and **any action protocol/parse error, even "
+        "if recovered**. "
+        "**L2 (strict A9):** L1 plus no nonzero exit from any agent-issued "
+        "command, including "
+        "legitimate false predicates. Exhausted solvers fail under PREREG "
+        "Section 6. All remaining trial-exception rows here have raw "
+        "reward 0 or missing, and therefore fail both labels. A missing "
+        "finish record or no action alone does not override valid "
+        "verifier credit. Raw verifier reward is preserved; neither "
+        "completion claims "
+        "nor recovery claims replace it. AD10 remains pending, so neither "
+        "reading is silently ratified.",
         "",
-        "USD uses measured API token usage and `scripts/prices.json` "
-        "standard API proxy rates, not verified Azure invoice charges. "
-        "Terra is $2 input / $0.20 cached input / $2.50 cache write / "
-        "$12 output per million tokens in the unchanged "
-        "[recorded price table](../scripts/prices.json). "
-        "Reasoning is included in output. Every logical API call is "
-        "ledgered, with HTTP attempts and rate-limit headers nested "
-        "under it. A process-safe shared reservation guard caps this "
-        "experiment at $40; every rollout has a $1 projected cap. "
-        "Ambiguous request charges retain conservative reservations.",
+        "**Termination taxonomy:** one terminal category per attempt, plus "
+        "independent "
+        "failure flags. A later normal finish stays a normal terminal "
+        "event even if an earlier "
+        "parse error disqualifies its pass. Inability/no-tools claims "
+        "require no action and "
+        "an explicit inability statement in the final answer. Exhaustion "
+        "uses the final "
+        "failed response `finish_reason: length`, the 24-call-limit "
+        "exception, or the "
+        "rollout-budget stop (separately counted below). Execution "
+        "failures use traces and "
+        "exception stacks. Remaining unhandled failures, including HTTP "
+        "rejection, are trial "
+        "exceptions. Protocol-only terminal failures have their own "
+        "category; recovered errors "
+        "are reported independently. Precedence is final finish, "
+        "exhaustion, executor failure, "
+        "unrecovered parse failure, remaining trial exception. Agent "
+        "timeout is retained as a flag.",
         "",
-        "## Metrics and results",
+        "Derived per-attempt labels, terminal causes, action evidence with "
+        "source lines, "
+        "nonzero-command exits, call UUIDs, raw rewards, and result hashes "
+        "are in "
+        "[calibration_results.json](../costs/calibration_results.json). "
+        "The derived "
+        "[attempt "
+        "events](../logs/calibration-r7-reanalysis/attempts.jsonl) "
+        "preserve execution "
+        "evidence without inventing timestamps or changing historical "
+        "traces. Adding execution "
+        "start/outcome events to the live seed is outside this task’s "
+        "allowed harness changes; "
+        "future executor exceptions before output collection can therefore "
+        "remain ambiguous.",
         "",
-        "Primary pass = verifier reward 1 with no trial exception. "
-        "Solver failures/timeouts count as failures even if a raw "
-        "reward is 1. All scheduled attempts remain in the fixed "
-        "denominator (60 overall; 36/12/12 by split); "
-        "build/grader failures are explicitly listed and counted as zero. "
-        "Interrupted attempts are replaced by their recovery results; "
-        "killed attempts are not counted as failures or extra rollouts. "
-        "Any unfinished batch is provisional, not a completed estimate. "
-        "No-action means a finish record with zero executed-tool "
-        "observations; protocol-error feedback is not a tool "
-        "observation. Steps count logical API calls, including failed "
-        "calls and finish. "
-        "Cost/steps means use result-bearing trials; agent time "
-        "averages trials with recorded agent execution. Batch wall "
-        "includes setup, verification and cleanup. Confidence "
-        "intervals resample tasks (both attempts together), 10,000 "
-        "bootstrap draws, seed 260910.",
-        "Rows rejected by the API have zero operational success, "
-        "not a measured seed-accuracy estimate. Their agent seconds "
-        "measure rejection overhead; their no-action gate is unassessed.",
+        "## Corrected results",
         "",
-        "| Configuration | Results / verifier | Pass avg@2 | 95% task "
-        "CI | Search | Anchor | Sealed | No-action |",
-        "| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |",
+        "avg@2 averages the two binary labels per task, then tasks "
+        "equally. All rows contain "
+        "60 finalized attempts. Raw reward 1 is shown against all 60 "
+        "slots; missing rewards "
+        "are listed separately and never imputed as successes. Native "
+        "rejection rows have "
+        "zero operational pass; their capability and behavioral no-action "
+        "gate are unmeasured.",
+        "",
     ]
-    for r in results:
-        lo, hi = r["pass_ci95"]
-        s = r["split_rates"]
-        rejected = bool(r["http_400s"] and not r["response_calls"])
-        interval = "not applicable" if rejected else f"{lo:.1%}–{hi:.1%}"
-        no_action = (
-            "0 finishes; unassessed"
-            if rejected
-            else f"{r['no_action_count']}/60 ({r['no_action_rate']:.1%})"
-        )
-        text.append(
-            f"| {r['configuration']} | {r['n_results']}/60; "
-            f"{r['n_verifier']} | {r['pass_rate']:.1%} "
-            f"({r['successes']}/60)"
-            f"{'; API rejected' if rejected else ''} | {interval} | "
-            f"{s['search']:.1%} | {s['anchor']:.1%} | {s['sealed']:.1%} "
-            f"| {no_action} |"
-        )
+    text += table(
+        [
+            "Configuration",
+            "Verifier / missing",
+            "Raw reward 1",
+            "L1 passes / avg@2",
+            "L2 passes / avg@2",
+            "No action",
+        ],
+        [
+            [
+                r["configuration"],
+                f"{r['n_verifier']} / {60 - r['n_verifier']}",
+                f"{r['raw_reward_ones']}/60 ({r['raw_reward_ones'] / 60:.1%})",
+                *[
+                    f"{r['labels'][k]['successes']}/60 "
+                    f"({r['labels'][k]['pass_rate']:.1%})"
+                    for k in ("pass_l1", "pass_l2")
+                ],
+                f"{r['no_action_count']}/60 ({r['no_action_rate']:.1%})",
+            ]
+            for r in results
+        ],
+    )
     text += [
-        "",
-        "| Configuration | Mean steps | Mean known USD | Max known USD | "
-        "Known total USD "
-        "| Mean agent s | Batch wall s | Concurrency | 429 / 5xx | "
-        "Harbor timeouts | Command timeouts | HTTP 400 | Unknown-cost calls |",
-        "| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: "
-        "| ---: | ---: | ---: | ---: |",
-    ]
-    for r in results:
-        wall = r["summary"].get("wall_s")
-        text.append(
-            f"| {r['configuration']} | {r['mean_steps']:.2f} | "
-            f"{r['mean_usd']:.6f} | {r['max_usd']:.6f} | "
-            f"{r['known_usd']:.6f} | {r['mean_agent_s']:.2f} | "
-            f"{('≥' if r['summary'].get('wall_is_lower_bound') else '')}"
-            f"{f'{wall:.2f}' if wall is not None else 'running'} | "
-            f"{r['concurrency']} | {r['http_429s']} / {r['http_5xx']} | "
-            f"{r['harbor_timeouts']} | {r['command_timeouts']} | "
-            f"{r['http_400s']} | {r['unknown_cost_calls']} |"
-        )
-    text += [
-        "",
-        "Paired task-bootstrap contrasts (first minus second; "
-        "provisional if either batch is unfinished). API-rejected "
-        "configurations are omitted from capability contrasts:",
-        "",
-        "| Contrast | Difference (pp) | 95% CI (pp) |",
-        "| --- | ---: | ---: |",
-    ]
-    by_label = {r["configuration"]: r for r in results}
-    for first, second in (
-        ("mini-native", "mini-json"),
-        ("luna-native", "luna-json"),
-        ("luna-native", "mini-native"),
-        ("terra-native", "luna-native"),
-        ("terra-native", "terra-json"),
-        ("luna-json", "mini-json"),
-        ("terra-json", "luna-json"),
-    ):
-        if (
-            first in by_label
-            and second in by_label
-            and by_label[first]["response_calls"]
-            and by_label[second]["response_calls"]
-        ):
-            delta, low, high = paired_interval(
-                by_label[first], by_label[second]
-            )
-            text.append(
-                f"| {first} − {second} | {delta * 100:.1f} | "
-                f"{low * 100:.1f} to {high * 100:.1f} |"
-            )
-    text += [
-        "",
-        "## Decision rule",
-        "",
-        "Eligibility requires a completed 30-task avg@2 pass rate "
-        "inside 15–45% and no-action termination below 5%, with the "
-        "identical seed for every model.",
-        "",
-        "| Configuration | Pass-rate gate | No-action gate | "
-        "Common-prompt gate | Eligible |",
-        "| --- | --- | --- | --- | --- |",
-    ]
-    for r in results:
-        p = 0.15 <= r["pass_rate"] <= 0.45
-        n = r["no_action_rate"] < 0.05
-        complete = r["n_results"] == 60 and r["n_agent_started"] == 60
-        gate = (
-            "within range"
-            if p
-            else "below 15%"
-            if r["pass_rate"] < 0.15
-            else "above 45%"
-        )
-        eligible = (
-            "yes"
-            if p and n and complete
-            else "no"
-            if complete
-            else "incomplete/environment-limited"
-        )
-        no_action_gate = "pass" if n else "fail"
-        if r["calls"] and not r["response_calls"] and r["http_400s"]:
-            gate = "not measurable: API rejects configuration"
-            eligible = "no: unsupported as tested"
-            no_action_gate = "not assessed: no model response"
-        text.append(
-            f"| {r['configuration']} | "
-            f"{gate} "
-            f"| {no_action_gate} | "
-            "pass | "
-            f"{eligible} "
-            f"|"
-        )
-    text += [
-        "",
-        "<!-- RECOMMENDATION -->",
-        "Recommendation pending completion and evidence review.",
-        "<!-- END RECOMMENDATION -->",
-        "",
-        *operational_notes(results),
-        "## Per-task evidence and operational failures",
+        "Task-bootstrap percentile intervals use 10,000 draws, analysis "
+        "seed 260910 "
+        "(the original calibration convention). Each draw carries both "
+        "attempts "
+        "together. These describe task sampling, not independent rerun "
+        "variability.",
         "",
     ]
-    for r in results:
-        served = ", ".join(r["served_models"]) or "none recorded"
-        no_action_links = (
-            ", ".join(
-                f"[{t['trial']}](../"
-                f"{Path(t['result_path']).parent}/agent/trace.jsonl)"
-                for t in r["trials"]
-                if t["no_action"]
-            )
-            or "none"
-        )
-        text += [
-            f"### {r['configuration']}",
-            "",
-            f"Served models: {served}. "
-            "Calls: "
-            f"{r['calls']}; unknown-cost calls: "
-            f"{r['unknown_cost_calls']}. Agent started: "
-            f"{r['n_agent_started']}/60. No-action among started "
-            f"agents: {r['no_action_started_rate']:.1%}. Exceptions: "
-            f"`{json.dumps(r['exceptions'])}`.",
-            f"Calls with a served-model response: {r['response_calls']}; "
-            f"HTTP 400 rejections: {r['http_400s']}.",
-            "",
-            "Failure messages and counts: "
-            f"`{json.dumps(r['failure_reasons'])}`.",
-            "",
-            f"No-action traces: {no_action_links}.",
-            "",
-            "| Task | Split | Attempt raw reward (result links) | "
-            "avg@2 | Steps (mean) | USD (mean) | Agent s (mean) | "
-            "Exceptions |",
-            "| --- | --- | --- | ---: | ---: | ---: | ---: | --- |",
-        ]
-        for s, ts in split["splits"].items():
-            for t in ts:
-                rows = [v for v in r["trials"] if v["task"] == t["name"]]
-                links = (
-                    ", ".join(
-                        f"[{v['reward']}](../{v['result_path']})"
-                        + (" (resumed)" if v["resumed"] else "")
-                        for v in rows
-                    )
-                    or "pending"
-                )
-                errors = (
-                    ", ".join(
-                        v["exception_type"]
-                        for v in rows
-                        if v["exception_type"]
-                    )
-                    or "none"
-                )
-                agent_times = [
-                    v["agent_s"] for v in rows if v["agent_s"] is not None
+    for key, name in (("pass_l1", "L1"), ("pass_l2", "L2")):
+        text += [f"### {name}: overall and split rates", ""]
+        text += table(
+            [
+                "Configuration",
+                "Overall",
+                "95% task CI",
+                "Search (36)",
+                "Anchor (12)",
+                "Sealed (12)",
+            ],
+            [
+                [
+                    r["configuration"],
+                    f"{r['labels'][key]['pass_rate']:.1%}",
+                    (
+                        "not measurable"
+                        if not r["response_calls"]
+                        else "–".join(
+                            f"{v:.1%}" for v in r["labels"][key]["pass_ci95"]
+                        )
+                    ),
+                    *[
+                        f"{r['labels'][key]['split_rates'][s]:.1%}"
+                        for s in ("search", "anchor", "sealed")
+                    ],
                 ]
-                text.append(
-                    f"| {t['name']} | {s} | {links} | "
-                    f"{sum(v['pass'] for v in rows) / 2:.0%} | "
-                    f"{mean([v['steps'] for v in rows]):.1f} | "
-                    f"{mean([v['known_cost_usd'] for v in rows]):.6f} | "
-                    f"{mean(agent_times):.1f} "
-                    f"| {errors} |"
-                )
-        failures = [t for t in r["trials"] if t["environment_failed"]]
-        text += ["", "Environment build/setup failures:", ""]
-        if not failures:
-            text.append("None recorded.")
-        for trial in failures:
-            detail = (trial["exception_message"] or "").replace("\n", " ")
-            text.append(
-                f"- [{trial['trial']}](../{trial['result_path']}): "
-                f"{trial['exception_type']}: {detail[:500]}"
-            )
-        text += [
-            "",
-            "Observed rate-limit headers (all distinct strings or "
-            "numeric min/max; request IDs remain in the ledger):",
-            "",
-            "```json",
-            json.dumps(r["headers"], indent=2),
-            "```",
-            "",
-        ]
-    return "\n".join(text) + "\n"
+                for r in results
+            ],
+        )
+    text += [
+        "### Termination reason breakdown",
+        "",
+        "Each cell is **all finalized attempts (no-action subset)**. Rows "
+        "sum to 60; "
+        "the parenthesized counts sum to that row’s no-action numerator.",
+        "",
+    ]
+    text += table(
+        [
+            "Configuration",
+            "Normal finish",
+            "No-tools / inability",
+            "Token / step / budget exhaustion",
+            "Protocol / parse terminal",
+            "Executor failure",
+            "Trial exception",
+        ],
+        [
+            [
+                r["configuration"],
+                *[
+                    f"{r['termination_counts'].get(k, 0)} "
+                    f"({r['no_action_reasons'].get(k, 0)})"
+                    for k in TERMINATIONS
+                ],
+            ]
+            for r in results
+        ],
+    )
+    text += table(
+        [
+            "Configuration",
+            "Token limit (no action)",
+            "24-call cap",
+            "USD cap",
+            "Any protocol error attempts",
+            "Any nonzero command attempts",
+            "Command timeouts",
+            "Agent timeouts",
+        ],
+        [
+            [
+                r["configuration"],
+                "{} ({})".format(
+                    sum(t["token_exhaustion"] for t in r["trials"]),
+                    sum(
+                        t["no_action"]
+                        for t in r["trials"]
+                        if t["token_exhaustion"]
+                    ),
+                ),
+                sum(t["step_exhaustion"] for t in r["trials"]),
+                sum(t["budget_exhaustion"] for t in r["trials"]),
+                sum(bool(t["protocol_errors"]) for t in r["trials"]),
+                sum(bool(t["nonzero_commands"]) for t in r["trials"]),
+                r["command_timeouts"],
+                sum(t["agent_timeout"] for t in r["trials"]),
+            ]
+            for r in results
+        ],
+    )
+    text += [
+        "Luna/low’s seven no-action attempts comprise six inability claims "
+        "and one "
+        "instruction-only final answer (`configure-git-webserver`); all "
+        "seven contain "
+        "protocol errors. Terra/low’s nine comprise eight first-response "
+        "token exhaustions "
+        "and one unsupported ordinary completion claim "
+        "(`filter-js-from-html`). "
+        "Mini/native has two inability finals and one first-response token "
+        "exhaustion: "
+        "**3/60 = exactly 5%, which fails the strictly-below-5% gate**. "
+        "HTTP-rejected Luna/native and Terra/native are each 60/60 "
+        "operational no action, "
+        "without measuring generated model behavior. "
+        "Mini/native’s four remaining trial exceptions are empty API "
+        "answers with finish_reason stop, after earlier actions. They "
+        "are not token exhaustion, inability claims, or proven outages.",
+        "",
+        "### Paired contrasts under both labels",
+        "",
+        "Differences are first minus second, in percentage points, using "
+        "paired task "
+        "bootstrap with both attempts preserved. Low-to-medium comparisons "
+        "and contrasts "
+        "against Terra/low span separately timed cohorts and host loads; "
+        "they are descriptive. "
+        "Terra/medium comparisons are unavailable because it was not run. "
+        "Overall contrasts "
+        "appear below; corresponding search/anchor/sealed contrasts and "
+        "CIs are archived in "
+        "[contrasts.json](../logs/calibration-r7-reanalysis/contrasts.json).",
+        "",
+    ]
+    text += table(
+        ["Contrast", "Label", "Difference (pp)", "95% CI (pp)"],
+        [
+            [
+                r["first"] + " − " + r["second"],
+                r["label"].replace("pass_", "").upper(),
+                f"{100 * r['difference']:+.1f}",
+                " to ".join(f"{100 * v:+.1f}" for v in r["ci95"]),
+            ]
+            for r in comparisons
+            if r["scope"] == "overall"
+        ],
+    )
+    text += [
+        "## Eligibility and decision",
+        "",
+        "The screen requires complete avg@2 in **15–45% inclusive**, no "
+        "action "
+        "**strictly below 5%**, a common prompt and a usable tested API "
+        "configuration. "
+        "Prompt parity holds for every row; the two native rejection rows "
+        "fail API "
+        "usability. Neither table is a model freeze or approval of pending "
+        "AD1/AD10–AD12.",
+        "",
+    ]
+    for key, name in (("pass_l1", "L1"), ("pass_l2", "L2")):
+        text += [f"### Eligibility under {name}", ""]
+        text += table(
+            [
+                "Configuration",
+                "Pass avg@2 / band gate",
+                "No action / gate",
+                "Common prompt",
+                "Eligible",
+            ],
+            [
+                [
+                    r["configuration"],
+                    (
+                        f"{r['labels'][key]['pass_rate']:.1%} / "
+                        + (
+                            "pass"
+                            if 0.15 <= r["labels"][key]["pass_rate"] <= 0.45
+                            else "fail"
+                        )
+                    )
+                    if r["response_calls"]
+                    else "API rejected; unmeasured",
+                    f"{r['no_action_count']}/60 / "
+                    + (
+                        ("pass" if r["no_action_rate"] < 0.05 else "fail")
+                        if r["response_calls"]
+                        else "behavior unassessed"
+                    ),
+                    "pass",
+                    "yes" if eligible(r, key) else "no",
+                ]
+                for r in results
+            ],
+        )
+    text += [
+        "**No eligible configuration exists under L1 or L2, including both "
+        "medium rows.** "
+        "The published Terra recommendation is withdrawn. Under L1 the "
+        "Luna and Terra "
+        "pass-rate bands alone cannot overcome their no-action failures. "
+        "Under L2 all "
+        "operational configurations are also below 15%. Mini’s required "
+        "medium escalation "
+        "has been measured and does not establish eligibility. Luna/medium "
+        "does not resolve "
+        "the no-action concern. Selection remains unresolved: AD1 prefers "
+        "eligible Luna, "
+        "then cheapest eligible, whereas PREREG specifies cheapest "
+        "eligible and different "
+        "fallback/escalation rules. That conflict requires ratification; "
+        "this report does "
+        "not choose a favorable fallback or change strata, prompts, "
+        "budgets, or token limits.",
+        "",
+        "### Pilot cost projection and operating limits",
+        "",
+        "**Eligible configurations to project: none under L1; none under "
+        "L2.** "
+        "For review of the rejected alternatives, the following "
+        "descriptive projections "
+        "multiply mean known cost over all 60 finalized attempts by 2,800 "
+        "solver rollouts. "
+        "They exclude judges, evolution, cross-judges, interruptions, and "
+        "unresolved billing. "
+        "They are not projections conditional on success.",
+        "",
+    ]
+    text += table(
+        [
+            "Configuration (all ineligible)",
+            "Mean calls",
+            "USD / finalized rollout",
+            "USD / 2,800",
+            "All-work known USD",
+            "Agent s",
+            "Batch wall s",
+            "Nominal concurrency",
+        ],
+        [
+            [
+                r["configuration"],
+                f"{r['mean_steps']:.2f}",
+                f"{r['mean_usd']:.6f}"
+                if r["response_calls"]
+                else "unknown billing",
+                f"{2800 * r['mean_usd']:.2f}"
+                if r["response_calls"]
+                else "not estimable",
+                f"{r['known_usd']:.8f}",
+                f"{r['mean_agent_s']:.2f}",
+                ("≥" if r["summary"].get("wall_is_lower_bound") else "")
+                + f"{r['summary'].get('wall_s', 0):.2f}",
+                r["concurrency"],
+            ]
+            for r in results
+        ],
+    )
+    text += [
+        "Prices are standard API proxies from "
+        "[scripts/prices.json](../scripts/prices.json), "
+        "not verified Azure invoices. Terra’s $347.94 solver-only "
+        "projection already exceeds "
+        "the $300 whole-pilot guard. Low-cost early failures do not "
+        "establish useful capacity. "
+        "The USD 300/four-day pilot guards remain unchanged.",
+        "",
+        "Mini/JSON used nominal concurrency 8; other original jobs used 4; "
+        "medium jobs used "
+        "3 while W9 shared Docker with a six-container combined admission "
+        "limit. The "
+        "Mini/native resume log also shows four old containers alongside "
+        "four new containers. "
+        "Nominal launcher concurrency therefore does not fully describe "
+        "host load. Batches "
+        "were sequential, cache conditions differed, and agent/window "
+        "times are descriptive. "
+        "Only Mini supplies concurrency-eight evidence. All eight "
+        "configurations record "
+        "zero HTTP 429s, zero 5xx responses, and zero Harbor agent "
+        "timeouts; command timeouts "
+        "remain failures and do not by themselves prove a host outage. The "
+        "selected "
+        "configuration’s capacity gate is unresolved.",
+        "",
+        "Mini/native’s wall lower bound is 970.519741 + 61.280396 + "
+        "605.406588 "
+        "= 1,637.206725 seconds, excluding downtime and unknown tails. "
+        "Original memory "
+        "samples and W5d admission evidence remain under the respective "
+        "run directories; "
+        "W5d’s historical "
+        "[audit](../logs/calibration-medium-followup-260910/audit.json) "
+        "records the shared-host observations.",
+        "",
+        "## Cohort-scoped accounting manifest",
+        "",
+        "The explicit [run "
+        "manifest](../data/calibration_run_manifest.json) fixes job names, "
+        "phase tags, cohorts, budget guards, nominal concurrency, and "
+        "saved config hashes. "
+        "Reducers reject unmanifested P1.2 calls or ownership mismatches "
+        "instead of silently "
+        "absorbing later experiments. Diagnostic spending belongs to the "
+        "original $40 guard "
+        "but never to benchmark denominators.",
+        "",
+    ]
+    text += table(
+        ["Job name", "Phase", "Cohort", "Budget guard / USD"],
+        [
+            [
+                r["job_name"],
+                r["phase"],
+                r["cohort"],
+                f"{r['budget_guard']} / {r['budget_usd']}",
+            ]
+            for r in manifest["runs"]
+        ],
+    )
+    text += table(
+        [
+            "Cohort",
+            "Finalized / verifier rewards",
+            "Calls (final / interrupted / diagnostic)",
+            "Finalized known USD",
+            "Interrupted known USD",
+            "Total known USD",
+            "Retained reserve USD",
+            "Used/reserved / guard USD",
+            "Null-cost records",
+        ],
+        [
+            [
+                name,
+                f"{r['finalized_attempts']} / {r['verifier_rewards']}",
+                f"{r['ledger_calls']} ({r['finalized_calls']} / "
+                f"{r['interrupted_calls']} / {r['diagnostic_calls']})",
+                f"{r['finalized_known_usd']:.8f}",
+                f"{r['interrupted_known_usd']:.8f}",
+                f"{r['known_usd']:.8f}",
+                f"{r['retained_reservations_usd']:.8f}",
+                f"{r['guard_used_usd']:.8f} / {r['budget_usd']}",
+                r["null_cost_calls"],
+            ]
+            for name, r in accounting.items()
+        ],
+    )
+    text += [
+        "Original Mini/native resolves as **51 original + 2 resume + 7 "
+        "recovery2 = 60** "
+        "finalized slots. Eight interrupted directories contribute 29 "
+        "requests, not extra "
+        "failures. Nine replacement results fill missing slots (some "
+        "original slots had "
+        "not started). No finalized failures were retried. The 124 "
+        "original null-cost records "
+        "comprise 120 benchmark HTTP rejections, one diagnostic rejection, "
+        "two reconstructed "
+        "requests with unknown dispatch, and one local budget stop with "
+        "`attempts: []` "
+        "and zero API time. That local stop adds zero API usage and is not "
+        "an unresolved "
+        "dispatched charge. Its $0.828084 budget-used value is cumulative "
+        "previously incurred "
+        "cost. The two reconstructed reservations total $0.023641 and "
+        "remain retained.",
+        "",
+        "**Logged Phase-1 single-retry exception:** `query-optimize` and "
+        "`filter-js-from-html` each had an interrupted original attempt, "
+        "an interrupted "
+        "operator replacement, and a finalized second operator "
+        "replacement. The manifest "
+        "records their exact three-attempt lineage and the historical "
+        "recovery authorization "
+        "reported in R7. This is explicitly a deviation from PREREG "
+        "Section 6’s single "
+        "infrastructure retry, despite zero configured API/Harbor retries. "
+        "It is logged here "
+        "and in the manifest under this task’s authorization; the "
+        "prohibited PREREG file "
+        "was not edited, and formal policy reconciliation remains pending.",
+        "",
+        "The [cohort audit](../logs/calibration-r7-reanalysis/audit.json) "
+        "checks UUID "
+        "bijection, finalized slots, payload parity, response token usage, "
+        "prices, and both "
+        "budget guards. [costs/summary.md](../costs/summary.md) presents "
+        "the two cohorts "
+        "separately, with other project calls outside those guards.",
+        "",
+        "## Native rejection evidence",
+        "",
+        "The saved [Luna diagnostic]"
+        "(../logs/calibration-native-diagnostic/error-response.txt) "
+        "says exactly:",
+        "",
+        "> Function tools with reasoning_effort are not supported for "
+        "gpt56luna in "
+        "/v1/chat/completions. To use function tools, use /v1/responses or "
+        "set "
+        "reasoning_effort to 'none'.",
+        "",
+        "It is an `invalid_request_error` on `reasoning_effort`, with null "
+        "error code, "
+        "from the low-effort Chat Completions request. **Terra’s specific "
+        "cause is inferred**, "
+        "because no Terra HTTP error body was saved; its 60 HTTP 400s "
+        "establish rejection "
+        "of the tested configuration only. Neither row measures general "
+        "native-tool "
+        "capability. Responses is a suggested alternative for Luna, with "
+        "no adapter or "
+        "calibration evidence here. Changing only Luna to reasoning none "
+        "would create "
+        "another model-specific experimental difference.",
+        "",
+        "The only backend change in this task archives sanitized HTTP "
+        "error bodies and "
+        "endpoint metadata per HTTP attempt, including retried errors, "
+        "without changing "
+        "requests, retry decisions, or reservations. The original backend "
+        "bytes remain "
+        "in [the source "
+        "archive](../logs/calibration-r7-reanalysis/sources/openai_api.py); "
+        "the historical source manifest is preserved. AD11’s JSON-for-all "
+        "choice and "
+        "AD12’s completion-allowance choice remain pending. Compatibility "
+        "preflight is "
+        "still needed before any future benchmark dispatch.",
+        "",
+        "## What remains unknown",
+        "",
+        "- Which A9 reading is ratified (AD10), which selection/fallback "
+        "rule governs "
+        "(AD1 versus PREREG), and the formal reconciliation of the two "
+        "operator retry exceptions.",
+        "- Whether to ratify common JSON (AD11), or implement and "
+        "calibrate a common valid "
+        "native transport. Terra’s exact rejection body is unavailable.",
+        "- Whether raising the common 4,096-token allowance changes "
+        "eligibility (AD12); "
+        "no higher-allowance or Terra/medium runs exist.",
+        "- Repeat-run variability, effects of provider sampling defaults, "
+        "and a generation "
+        "seed. Task-bootstrap CIs do not estimate these sources of "
+        "variability.",
+        "- Selected-model concurrency-eight behavior, realized host-load "
+        "effects, and "
+        "whether a lower concurrency will be ratified.",
+        "- Azure invoice charges for rejected/interrupted requests and "
+        "full pilot costs "
+        "after model selection, including judge/evolver costs and runtime.",
+        "- Historical execution-start timestamps were not recorded; "
+        "subprocess traceback "
+        "evidence recovers action presence in these timeout cases, not "
+        "exact timing. "
+        "Live execution-start logging remains a follow-up outside this "
+        "change.",
+        "",
+        "## Appendix: superseded published tables",
+        "",
+        "**Superseded — retained verbatim for provenance, not current "
+        "results or decisions.** "
+        "These tables used finish-only no action and "
+        "reward-1-without-trial-exception pass. "
+        "They include the original six rows and W5d medium additions. "
+        "Their Terra eligibility "
+        "and associated recommendation are withdrawn. The complete "
+        "previous document is "
+        "[archived](../logs/calibration-r7-reanalysis/calibration-before.md).",
+        "",
+    ]
+    original = (
+        ROOT / "logs/calibration-r7-reanalysis/calibration-before.md"
+    ).read_text()
+    heading = ""
+    lines = original.splitlines()
+    for i, line in enumerate(lines):
+        if line.startswith("#"):
+            heading = line.lstrip("# ")
+        if line.startswith("|"):
+            if i == 0 or not lines[i - 1].startswith("|"):
+                text += [f"### Superseded: {heading}", ""]
+            text.append(line)
+            if i + 1 == len(lines) or not lines[i + 1].startswith("|"):
+                text.append("")
+    return "\n".join(text)
 
 
 def main():
-    # Preserve the completed follow-up when rebuilding through the old entry.
-    from scripts.calibrate import MEDIUM_CONFIGS
-
-    if all(
-        (ROOT / "logs" / f"calibration-{label}-260910" / "summary.json")
-        .exists()
-        for label in MEDIUM_CONFIGS
-    ):
-        from scripts.calibration_medium_report import main as medium_main
-
-        return medium_main()
+    manifest = load_manifest()
     ledger = read_ledger(ROOT / "costs/ledger.jsonl")
-    prices = json.loads((ROOT / "scripts/prices.json").read_text())
-    calibration_calls = [r for r in ledger if r.get("phase") == "P1.2"]
-    assert len({r["call_id"] for r in calibration_calls}) == len(
-        calibration_calls
-    )
-    for row in calibration_calls:
-        response = Path(row["raw_dir"]) / "response.json"
-        if response.exists():
-            data = json.loads(response.read_text())
-            assert data["usage"]["prompt_tokens"] == row["input_tokens"]
-            assert data["usage"]["completion_tokens"] == row["output_tokens"]
-            if row.get("cost_usd") is not None:
-                assert (
-                    abs(
-                        price_usage(row["pricing_model"], row, prices)
-                        - row["cost_usd"]
-                    )
-                    < 1e-10
-                )
     split = json.loads((ROOT / "data/tb2_split.json").read_text())
-    results = [r for label in CONFIGS if (r := collect(label, ledger, split))]
+    results = [
+        collect(label, ledger, split, manifest)
+        for label in CONFIGS | MEDIUM_CONFIGS
+    ]
+    assert all(r and r["n_results"] == 60 for r in results)
+    assert all(
+        set(Counter(t["task"] for t in r["trials"]).values()) == {2}
+        for r in results
+    )
+    accounting = account(ledger, manifest, results, ROOT)
+    comparisons = contrasts(results)
+    archive = ROOT / "logs/calibration-r7-reanalysis"
+    archive.mkdir(exist_ok=True)
+    for name, value in (
+        ("accounting.json", accounting),
+        ("contrasts.json", comparisons),
+    ):
+        (archive / name).write_text(json.dumps(value, indent=2) + "\n")
+    (archive / "attempts.jsonl").write_text(
+        "".join(
+            json.dumps(
+                {
+                    "configuration": r["configuration"],
+                    "cohort": r["cohort"],
+                    **t,
+                }
+            )
+            + "\n"
+            for r in results
+            for t in r["trials"]
+        )
+    )
     (ROOT / "costs/calibration_results.json").write_text(
         json.dumps(results, indent=2) + "\n"
     )
-    doc = ROOT / "docs/calibration.md"
-    rendered = render(results, split)
-    if doc.exists() and "<!-- RECOMMENDATION -->" in doc.read_text():
-        old = (
-            doc.read_text()
-            .split("<!-- RECOMMENDATION -->")[1]
-            .split("<!-- END RECOMMENDATION -->")[0]
-        )
-        rendered = rendered.replace(
-            "\nRecommendation pending completion and evidence review.\n", old
-        )
-    doc.write_text(rendered)
-    (ROOT / "costs/summary.md").write_text(render_report(ledger))
+    (ROOT / "docs/calibration.md").write_text(
+        render(results, split, manifest, accounting, comparisons)
+    )
+    (ROOT / "costs/summary.md").write_text(
+        render_costs(ledger, manifest, accounting)
+    )
     print(
         json.dumps(
             [
                 {
-                    k: r[k]
-                    for k in (
-                        "configuration",
-                        "n_results",
-                        "successes",
-                        "no_action_count",
-                        "known_usd",
-                        "http_429s",
-                        "harbor_timeouts",
-                        "exceptions",
-                    )
+                    "configuration": r["configuration"],
+                    "L1": r["labels"]["pass_l1"]["successes"],
+                    "L2": r["labels"]["pass_l2"]["successes"],
+                    "no_action": r["no_action_count"],
+                    "reasons": r["termination_counts"],
+                    "no_action_reasons": r["no_action_reasons"],
                 }
                 for r in results
             ],

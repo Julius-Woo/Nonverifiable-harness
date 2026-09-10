@@ -11,12 +11,61 @@ from dataclasses import asdict
 from datetime import datetime, timezone
 from email.utils import parsedate_to_datetime
 from pathlib import Path
+from urllib.parse import urlsplit, urlunsplit
 
 import httpx
 
 from harness.backends import TOKEN_FIELDS, Completion
 from harness.budget import adjust_budget
 from harness.ledger import CallTags, append_jsonl, price_usage, utc_now
+
+
+def sanitized_http_error(response, api_key):
+    """Archive diagnostics without credentials or URL secrets."""
+    sensitive = {
+        "authorization",
+        "api_key",
+        "api-key",
+        "apikey",
+        "access_token",
+        "refresh_token",
+        "password",
+        "secret",
+    }
+
+    def clean(value):
+        if isinstance(value, dict):
+            return {
+                key: "[REDACTED]" if key.lower() in sensitive else clean(item)
+                for key, item in value.items()
+            }
+        if isinstance(value, list):
+            return [clean(item) for item in value]
+        if isinstance(value, str):
+            value = value.replace(api_key, "[REDACTED]") if api_key else value
+            return re.sub(
+                r"(?i)Bearer\s+[^\s\"'<>]+", "Bearer [REDACTED]", value
+            )
+        return value
+
+    try:
+        body = response.json()
+    except ValueError:
+        body = response.text
+    url = urlsplit(str(response.request.url))
+    host = url.hostname or ""
+    if ":" in host:
+        host = f"[{host}]"
+    authority = f"{host}:{url.port}" if url.port else host
+    return clean(
+        {
+            "status_code": response.status_code,
+            "method": response.request.method,
+            "endpoint": urlunsplit((url.scheme, authority, url.path, "", "")),
+            "content_type": response.headers.get("content-type"),
+            "body": body,
+        }
+    )
 
 
 def pricing_model(model, prices):
@@ -222,6 +271,20 @@ class OpenAIAPIBackend:
                                 "x-ms-region",
                             )
                         }
+                        if response.status_code >= 400:
+                            # Archive before retry/raise; diagnostics must not
+                            # change request, retry, or reservation behavior.
+                            error_file = f"http_error_{attempt + 1}.json"
+                            try:
+                                save(
+                                    error_file,
+                                    sanitized_http_error(
+                                        response, self.api_key
+                                    ),
+                                )
+                                detail["error_body_path"] = error_file
+                            except (OSError, ValueError):
+                                detail["error_body_archive_failed"] = True
                         if response.status_code == 429:
                             self.budget_used -= reserve
                             if self.shared_budget_path:

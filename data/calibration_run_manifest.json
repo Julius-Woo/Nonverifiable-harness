@@ -1,0 +1,205 @@
+{
+  "schema_version": 1,
+  "cohorts": {
+    "original-six": {
+      "phase": "P1.2",
+      "budget_guard": "costs/calibration_budget.json",
+      "budget_usd": 40,
+      "expected_finalized_attempts": 360
+    },
+    "w5d-medium": {
+      "phase": "P1.2",
+      "budget_guard": "costs/calibration_medium_budget.json",
+      "budget_usd": 8,
+      "expected_finalized_attempts": 120
+    }
+  },
+  "runs": [
+    {
+      "job_name": "calibration-luna-json-260910",
+      "configuration": "luna-json",
+      "cohort": "original-six",
+      "phase": "P1.2",
+      "budget_guard": "costs/calibration_budget.json",
+      "budget_usd": 40,
+      "kind": "benchmark",
+      "reasoning_effort": "low",
+      "nominal_concurrency": 4,
+      "job_config_sha256": "bbbed9669eed95835f831ef24014e2891222014ed591e4406bae2a386fab1cbe"
+    },
+    {
+      "job_name": "calibration-luna-json-medium-260910",
+      "configuration": "luna-json-medium",
+      "cohort": "w5d-medium",
+      "phase": "P1.2",
+      "budget_guard": "costs/calibration_medium_budget.json",
+      "budget_usd": 8,
+      "kind": "benchmark",
+      "reasoning_effort": "medium",
+      "nominal_concurrency": 3,
+      "job_config_sha256": "bbd1d94ccc5669aef55236499b6d385dfda78842f4c042b7c5385144e06ad6c2"
+    },
+    {
+      "job_name": "calibration-luna-native-260910",
+      "configuration": "luna-native",
+      "cohort": "original-six",
+      "phase": "P1.2",
+      "budget_guard": "costs/calibration_budget.json",
+      "budget_usd": 40,
+      "kind": "benchmark",
+      "reasoning_effort": "low",
+      "nominal_concurrency": 4,
+      "job_config_sha256": "5d61d2b10273260d777c48e4a72c4415887ae13f6df31604ae093a9758cb1bf0"
+    },
+    {
+      "job_name": "calibration-mini-json-260910",
+      "configuration": "mini-json",
+      "cohort": "original-six",
+      "phase": "P1.2",
+      "budget_guard": "costs/calibration_budget.json",
+      "budget_usd": 40,
+      "kind": "benchmark",
+      "reasoning_effort": "low",
+      "nominal_concurrency": 8,
+      "job_config_sha256": "d13a726cb836f57f801e1965cbcc2dd5fe3e63fc28f2b3fdf917f7f7c8403bd2"
+    },
+    {
+      "job_name": "calibration-mini-json-medium-260910",
+      "configuration": "mini-json-medium",
+      "cohort": "w5d-medium",
+      "phase": "P1.2",
+      "budget_guard": "costs/calibration_medium_budget.json",
+      "budget_usd": 8,
+      "kind": "benchmark",
+      "reasoning_effort": "medium",
+      "nominal_concurrency": 3,
+      "job_config_sha256": "be82cfaf64e327f0d99594a67c4fe20256753aaa164dfc5b7b3c4c5ffcd4e96b"
+    },
+    {
+      "job_name": "calibration-mini-native-260910",
+      "configuration": "mini-native",
+      "cohort": "original-six",
+      "phase": "P1.2",
+      "budget_guard": "costs/calibration_budget.json",
+      "budget_usd": 40,
+      "kind": "benchmark",
+      "reasoning_effort": "low",
+      "nominal_concurrency": 4,
+      "job_config_sha256": "7941d47dd3136e0b0d5f1b1d144db6c891446d58541abdcc1a05c4e0387ca37e"
+    },
+    {
+      "job_name": "calibration-mini-native-260910-recovery2",
+      "configuration": "mini-native",
+      "cohort": "original-six",
+      "phase": "P1.2",
+      "budget_guard": "costs/calibration_budget.json",
+      "budget_usd": 40,
+      "kind": "benchmark",
+      "reasoning_effort": "low",
+      "nominal_concurrency": 4,
+      "job_config_sha256": "6ce30aca9db0327ca72f077f0b9bfd77044b11bea153cff27f02d10ae580fbff"
+    },
+    {
+      "job_name": "calibration-mini-native-260910-resume",
+      "configuration": "mini-native",
+      "cohort": "original-six",
+      "phase": "P1.2",
+      "budget_guard": "costs/calibration_budget.json",
+      "budget_usd": 40,
+      "kind": "benchmark",
+      "reasoning_effort": "low",
+      "nominal_concurrency": 4,
+      "job_config_sha256": "da8956b5ea0ca26c800c64c4e80bd820e0d4858dc41aec5768663c2a900aaf47"
+    },
+    {
+      "job_name": "calibration-terra-json-260910",
+      "configuration": "terra-json",
+      "cohort": "original-six",
+      "phase": "P1.2",
+      "budget_guard": "costs/calibration_budget.json",
+      "budget_usd": 40,
+      "kind": "benchmark",
+      "reasoning_effort": "low",
+      "nominal_concurrency": 4,
+      "job_config_sha256": "619fab9f1882b33d28f7c44c80b228b99c1653c9cd261b13330162f6a7ab7592"
+    },
+    {
+      "job_name": "calibration-terra-native-260910",
+      "configuration": "terra-native",
+      "cohort": "original-six",
+      "phase": "P1.2",
+      "budget_guard": "costs/calibration_budget.json",
+      "budget_usd": 40,
+      "kind": "benchmark",
+      "reasoning_effort": "low",
+      "nominal_concurrency": 4,
+      "job_config_sha256": "1d34390b4bd2707a53b0229408cf640225a3cb2512c1ff2510976a5ff2ae583d"
+    },
+    {
+      "job_name": "calibration-native-diagnostic",
+      "configuration": "protocol-diagnostic",
+      "cohort": "original-six",
+      "phase": "P1.2",
+      "budget_guard": "costs/calibration_budget.json",
+      "budget_usd": 40,
+      "kind": "diagnostic",
+      "reasoning_effort": "low"
+    }
+  ],
+  "operator_replacement_exceptions": [
+    {
+      "task": "query-optimize",
+      "operator_replacements": 2,
+      "single_retry_exception": true,
+      "lineage": [
+        {
+          "job_name": "calibration-mini-native-260910",
+          "trial": "query-optimize__qZUFQSR",
+          "status": "interrupted",
+          "evidence": "logs/harbor/calibration-mini-native-260910/query-optimize__qZUFQSR"
+        },
+        {
+          "job_name": "calibration-mini-native-260910-resume",
+          "trial": "query-optimize__KgQ44mb",
+          "status": "interrupted",
+          "evidence": "logs/harbor/calibration-mini-native-260910-resume/query-optimize__KgQ44mb"
+        },
+        {
+          "job_name": "calibration-mini-native-260910-recovery2",
+          "trial": "query-optimize__ud8uHb6",
+          "status": "finalized",
+          "evidence": "logs/harbor/calibration-mini-native-260910-recovery2/query-optimize__ud8uHb6"
+        }
+      ],
+      "authorization": "Historical Phase-1 operator recovery instruction as recorded in the published calibration report and R7; this task explicitly authorizes logging the exception. No new retry authorized.",
+      "policy_status": "Logged deviation from PREREG Section 6 single infrastructure retry; PREREG itself remains unchanged under this task boundary."
+    },
+    {
+      "task": "filter-js-from-html",
+      "operator_replacements": 2,
+      "single_retry_exception": true,
+      "lineage": [
+        {
+          "job_name": "calibration-mini-native-260910",
+          "trial": "filter-js-from-html__PFjDRJB",
+          "status": "interrupted",
+          "evidence": "logs/harbor/calibration-mini-native-260910/filter-js-from-html__PFjDRJB"
+        },
+        {
+          "job_name": "calibration-mini-native-260910-resume",
+          "trial": "filter-js-from-html__eetzeLq",
+          "status": "interrupted",
+          "evidence": "logs/harbor/calibration-mini-native-260910-resume/filter-js-from-html__eetzeLq"
+        },
+        {
+          "job_name": "calibration-mini-native-260910-recovery2",
+          "trial": "filter-js-from-html__47DkVix",
+          "status": "finalized",
+          "evidence": "logs/harbor/calibration-mini-native-260910-recovery2/filter-js-from-html__47DkVix"
+        }
+      ],
+      "authorization": "Historical Phase-1 operator recovery instruction as recorded in the published calibration report and R7; this task explicitly authorizes logging the exception. No new retry authorized.",
+      "policy_status": "Logged deviation from PREREG Section 6 single infrastructure retry; PREREG itself remains unchanged under this task boundary."
+    }
+  ]
+}

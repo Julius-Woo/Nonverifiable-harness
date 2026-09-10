@@ -1,10 +1,236 @@
 # Terminal-Bench 2 task-model and protocol calibration
 
-Date: 2026-09-10. P1.1/P1.2. Rewards below come from unmodified Harbor 0.22 Docker verifiers; model completion claims never establish correctness.
+Date: 2026-09-10. **R7 corrected offline re-analysis (P1.2, including W5d). No configuration is eligible under either A9 reading.** No benchmark reruns, Docker commands, or model calls were made for this re-analysis. All rewards are from the saved, unmodified Harbor 0.22 verifier evidence.
 
 ## Setup and reproducibility
 
-Dataset `terminal-bench@2.0`, commit `69671fbaac6d67a7ef0dfec016cc38a64ef7a77c`. The cached `task.toml` field `metadata.difficulty` contains 4 easy, 55 medium, and 30 hard tasks (89 total). Fixed sampling seed **260910**; sorted task names, independent per-stratum shuffles from one seeded Python RNG, and Hamilton largest-remainder allocation with lexical tie-breaking. Search is allocated first, then anchor, then sealed. The six smoke tasks were eligible with no preference; only `cobol-modernization` was selected.
+Dataset `terminal-bench@2.0`, commit `69671fbaac6d67a7ef0dfec016cc38a64ef7a77c`; 89 tasks: 4 easy, 55 medium, 30 hard. The archived [population metadata](../data/tb2_population.json) includes task IDs, difficulties, and task.toml SHA-256 hashes. Cache paths were checked against the pinned GitTaskId. The offline check reproduces the entire committed split, including selected hashes: `uv run python -m scripts.calibration_split_check`. It reads local manifests only; it does not resolve a registry, download tasks, or rewrite the split.
+
+Sampling seed 260910; sorted tasks, one Python RNG with per-stratum shuffles, Hamilton largest remainders and lexical tie-breaking. Search is allocated first, then anchor, then sealed. Smoke tasks were eligible without preference; only `cobol-modernization` overlaps. One easy task cannot populate all three splits.
+
+| Split | Easy | Medium | Hard | Total |
+| --- | --- | --- | --- | --- |
+| search | 1 | 11 | 6 | 18 |
+| anchor | 0 | 4 | 2 | 6 |
+| sealed | 0 | 4 | 2 | 6 |
+
+Every configuration has 30 tasks × 2 finalized attempts. Shared settings: 4,096 completion tokens (reasoning plus output), 24 model calls, 30 seconds per command, 180 seconds per API call, $1 per-rollout guard, and task-defined Harbor timeouts. Temperature and generation seed were omitted. The original six rows use low reasoning; W5d adds Mini/JSON and Luna/JSON at medium. No Terra/medium row exists. Native means Chat Completions function tools, with `parallel_tool_calls=false`, terminal/read_file/write_file, and a plain final answer. JSON uses the same common serialized history and prompt across deployments. There is no model-specific prompt, planning, self-verification, or rescue.
+
+Regenerate all corrected results, both cohorts, and costs with `uv run python -m scripts.calibration_report`; validate with `uv run python -m scripts.audit_calibration`. These are offline reducers. The earlier medium-only extension script is superseded; use this unified entry point.
+
+## Corrected measurement contracts
+
+**No action:** every finalized completed or failed solver attempt without an executed container/file action, divided by 60 (36/12/12 by split). No finalized grader/infrastructure exclusions were recorded. Interrupted work belongs in costs and replacement lineage, not as extra scored attempts. An emitted call or suggested shell command is not execution. A command observation proves execution regardless of its exit code. Historical timeout tracebacks reaching subprocess output collection also prove execution; their missing observation is not counted as no action.
+
+**L1 (proposed AD10):** valid verifier reward exactly 1, no agent timeout and no executor-level tool failure. Executor-level failures include command timeout, execution exception, and **any action protocol/parse error, even if recovered**. **L2 (strict A9):** L1 plus no nonzero exit from any agent-issued command, including legitimate false predicates. Exhausted solvers fail under PREREG Section 6. All remaining trial-exception rows here have raw reward 0 or missing, and therefore fail both labels. A missing finish record or no action alone does not override valid verifier credit. Raw verifier reward is preserved; neither completion claims nor recovery claims replace it. AD10 remains pending, so neither reading is silently ratified.
+
+**Termination taxonomy:** one terminal category per attempt, plus independent failure flags. A later normal finish stays a normal terminal event even if an earlier parse error disqualifies its pass. Inability/no-tools claims require no action and an explicit inability statement in the final answer. Exhaustion uses the final failed response `finish_reason: length`, the 24-call-limit exception, or the rollout-budget stop (separately counted below). Execution failures use traces and exception stacks. Remaining unhandled failures, including HTTP rejection, are trial exceptions. Protocol-only terminal failures have their own category; recovered errors are reported independently. Precedence is final finish, exhaustion, executor failure, unrecovered parse failure, remaining trial exception. Agent timeout is retained as a flag.
+
+Derived per-attempt labels, terminal causes, action evidence with source lines, nonzero-command exits, call UUIDs, raw rewards, and result hashes are in [calibration_results.json](../costs/calibration_results.json). The derived [attempt events](../logs/calibration-r7-reanalysis/attempts.jsonl) preserve execution evidence without inventing timestamps or changing historical traces. Adding execution start/outcome events to the live seed is outside this task’s allowed harness changes; future executor exceptions before output collection can therefore remain ambiguous.
+
+## Corrected results
+
+avg@2 averages the two binary labels per task, then tasks equally. All rows contain 60 finalized attempts. Raw reward 1 is shown against all 60 slots; missing rewards are listed separately and never imputed as successes. Native rejection rows have zero operational pass; their capability and behavioral no-action gate are unmeasured.
+
+| Configuration | Verifier / missing | Raw reward 1 | L1 passes / avg@2 | L2 passes / avg@2 | No action |
+| --- | --- | --- | --- | --- | --- |
+| mini-json | 53 / 7 | 5/60 (8.3%) | 5/60 (8.3%) | 3/60 (5.0%) | 1/60 (1.7%) |
+| mini-native | 54 / 6 | 5/60 (8.3%) | 5/60 (8.3%) | 4/60 (6.7%) | 3/60 (5.0%) |
+| luna-json | 52 / 8 | 14/60 (23.3%) | 9/60 (15.0%) | 4/60 (6.7%) | 7/60 (11.7%) |
+| luna-native | 60 / 0 | 0/60 (0.0%) | 0/60 (0.0%) | 0/60 (0.0%) | 60/60 (100.0%) |
+| terra-native | 60 / 0 | 0/60 (0.0%) | 0/60 (0.0%) | 0/60 (0.0%) | 60/60 (100.0%) |
+| terra-json | 49 / 11 | 17/60 (28.3%) | 17/60 (28.3%) | 7/60 (11.7%) | 9/60 (15.0%) |
+| mini-json-medium | 55 / 5 | 8/60 (13.3%) | 8/60 (13.3%) | 6/60 (10.0%) | 5/60 (8.3%) |
+| luna-json-medium | 50 / 10 | 20/60 (33.3%) | 9/60 (15.0%) | 4/60 (6.7%) | 7/60 (11.7%) |
+
+Task-bootstrap percentile intervals use 10,000 draws, analysis seed 260910 (the original calibration convention). Each draw carries both attempts together. These describe task sampling, not independent rerun variability.
+
+### L1: overall and split rates
+
+| Configuration | Overall | 95% task CI | Search (36) | Anchor (12) | Sealed (12) |
+| --- | --- | --- | --- | --- | --- |
+| mini-json | 8.3% | 1.7%–16.7% | 8.3% | 16.7% | 0.0% |
+| mini-native | 8.3% | 1.7%–16.7% | 5.6% | 8.3% | 16.7% |
+| luna-json | 15.0% | 6.7%–25.0% | 16.7% | 25.0% | 0.0% |
+| luna-native | 0.0% | not measurable | 0.0% | 0.0% | 0.0% |
+| terra-native | 0.0% | not measurable | 0.0% | 0.0% | 0.0% |
+| terra-json | 28.3% | 13.3%–43.3% | 38.9% | 16.7% | 8.3% |
+| mini-json-medium | 13.3% | 5.0%–23.3% | 16.7% | 8.3% | 8.3% |
+| luna-json-medium | 15.0% | 5.0%–26.7% | 13.9% | 25.0% | 8.3% |
+
+### L2: overall and split rates
+
+| Configuration | Overall | 95% task CI | Search (36) | Anchor (12) | Sealed (12) |
+| --- | --- | --- | --- | --- | --- |
+| mini-json | 5.0% | 0.0%–10.0% | 5.6% | 8.3% | 0.0% |
+| mini-native | 6.7% | 1.7%–13.3% | 5.6% | 8.3% | 8.3% |
+| luna-json | 6.7% | 1.7%–13.3% | 8.3% | 8.3% | 0.0% |
+| luna-native | 0.0% | not measurable | 0.0% | 0.0% | 0.0% |
+| terra-native | 0.0% | not measurable | 0.0% | 0.0% | 0.0% |
+| terra-json | 11.7% | 1.7%–23.3% | 11.1% | 16.7% | 8.3% |
+| mini-json-medium | 10.0% | 3.3%–20.0% | 13.9% | 8.3% | 0.0% |
+| luna-json-medium | 6.7% | 1.7%–13.3% | 5.6% | 8.3% | 8.3% |
+
+### Termination reason breakdown
+
+Each cell is **all finalized attempts (no-action subset)**. Rows sum to 60; the parenthesized counts sum to that row’s no-action numerator.
+
+| Configuration | Normal finish | No-tools / inability | Token / step / budget exhaustion | Protocol / parse terminal | Executor failure | Trial exception |
+| --- | --- | --- | --- | --- | --- | --- |
+| mini-json | 51 (0) | 0 (0) | 2 (1) | 0 (0) | 7 (0) | 0 (0) |
+| mini-native | 46 (0) | 2 (2) | 2 (1) | 0 (0) | 6 (0) | 4 (0) |
+| luna-json | 44 (1) | 6 (6) | 2 (0) | 0 (0) | 8 (0) | 0 (0) |
+| luna-native | 0 (0) | 0 (0) | 0 (0) | 0 (0) | 0 (0) | 60 (60) |
+| terra-native | 0 (0) | 0 (0) | 0 (0) | 0 (0) | 0 (0) | 60 (60) |
+| terra-json | 35 (1) | 0 (0) | 14 (8) | 0 (0) | 11 (0) | 0 (0) |
+| mini-json-medium | 37 (0) | 0 (0) | 18 (5) | 0 (0) | 5 (0) | 0 (0) |
+| luna-json-medium | 37 (0) | 7 (7) | 6 (0) | 0 (0) | 10 (0) | 0 (0) |
+
+| Configuration | Token limit (no action) | 24-call cap | USD cap | Any protocol error attempts | Any nonzero command attempts | Command timeouts | Agent timeouts |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| mini-json | 1 (1) | 1 | 0 | 7 | 26 | 7 | 0 |
+| mini-native | 2 (1) | 0 | 0 | 1 | 25 | 6 | 0 |
+| luna-json | 0 (0) | 2 | 0 | 16 | 31 | 8 | 0 |
+| luna-native | 0 (0) | 0 | 0 | 0 | 0 | 0 | 0 |
+| terra-native | 0 (0) | 0 | 0 | 0 | 0 | 0 | 0 |
+| terra-json | 12 (8) | 1 | 1 | 1 | 29 | 11 | 0 |
+| mini-json-medium | 18 (5) | 0 | 0 | 4 | 27 | 5 | 0 |
+| luna-json-medium | 4 (0) | 2 | 0 | 27 | 33 | 10 | 0 |
+
+Luna/low’s seven no-action attempts comprise six inability claims and one instruction-only final answer (`configure-git-webserver`); all seven contain protocol errors. Terra/low’s nine comprise eight first-response token exhaustions and one unsupported ordinary completion claim (`filter-js-from-html`). Mini/native has two inability finals and one first-response token exhaustion: **3/60 = exactly 5%, which fails the strictly-below-5% gate**. HTTP-rejected Luna/native and Terra/native are each 60/60 operational no action, without measuring generated model behavior. Mini/native’s four remaining trial exceptions are empty API answers with finish_reason stop, after earlier actions. They are not token exhaustion, inability claims, or proven outages.
+
+### Paired contrasts under both labels
+
+Differences are first minus second, in percentage points, using paired task bootstrap with both attempts preserved. Low-to-medium comparisons and contrasts against Terra/low span separately timed cohorts and host loads; they are descriptive. Terra/medium comparisons are unavailable because it was not run. Overall contrasts appear below; corresponding search/anchor/sealed contrasts and CIs are archived in [contrasts.json](../logs/calibration-r7-reanalysis/contrasts.json).
+
+| Contrast | Label | Difference (pp) | 95% CI (pp) |
+| --- | --- | --- | --- |
+| luna-json − terra-json | L1 | -13.3 | -25.0 to -1.7 |
+| luna-json − terra-json | L2 | -5.0 | -11.7 to +1.7 |
+| terra-json − mini-json | L1 | +20.0 | +8.3 to +33.3 |
+| terra-json − mini-json | L2 | +6.7 | +1.7 to +13.3 |
+| luna-json-medium − terra-json | L1 | -13.3 | -30.0 to +3.3 |
+| luna-json-medium − terra-json | L2 | -5.0 | -16.7 to +5.0 |
+| terra-json − mini-json-medium | L1 | +15.0 | +3.3 to +26.7 |
+| terra-json − mini-json-medium | L2 | +1.7 | -5.0 to +8.3 |
+| luna-json-medium − mini-json-medium | L1 | +1.7 | -6.7 to +11.7 |
+| luna-json-medium − mini-json-medium | L2 | -3.3 | -11.7 to +5.0 |
+| mini-json-medium − mini-json | L1 | +5.0 | -1.7 to +11.7 |
+| mini-json-medium − mini-json | L2 | +5.0 | +0.0 to +11.7 |
+| luna-json-medium − luna-json | L1 | +0.0 | -11.7 to +11.7 |
+| luna-json-medium − luna-json | L2 | +0.0 | -6.7 to +6.7 |
+| mini-native − mini-json | L1 | +0.0 | -6.7 to +8.3 |
+| mini-native − mini-json | L2 | +1.7 | -3.3 to +8.3 |
+| luna-json − mini-json | L1 | +6.7 | +0.0 to +15.0 |
+| luna-json − mini-json | L2 | +1.7 | +0.0 to +5.0 |
+
+## Eligibility and decision
+
+The screen requires complete avg@2 in **15–45% inclusive**, no action **strictly below 5%**, a common prompt and a usable tested API configuration. Prompt parity holds for every row; the two native rejection rows fail API usability. Neither table is a model freeze or approval of pending AD1/AD10–AD12.
+
+### Eligibility under L1
+
+| Configuration | Pass avg@2 / band gate | No action / gate | Common prompt | Eligible |
+| --- | --- | --- | --- | --- |
+| mini-json | 8.3% / fail | 1/60 / pass | pass | no |
+| mini-native | 8.3% / fail | 3/60 / fail | pass | no |
+| luna-json | 15.0% / pass | 7/60 / fail | pass | no |
+| luna-native | API rejected; unmeasured | 60/60 / behavior unassessed | pass | no |
+| terra-native | API rejected; unmeasured | 60/60 / behavior unassessed | pass | no |
+| terra-json | 28.3% / pass | 9/60 / fail | pass | no |
+| mini-json-medium | 13.3% / fail | 5/60 / fail | pass | no |
+| luna-json-medium | 15.0% / pass | 7/60 / fail | pass | no |
+
+### Eligibility under L2
+
+| Configuration | Pass avg@2 / band gate | No action / gate | Common prompt | Eligible |
+| --- | --- | --- | --- | --- |
+| mini-json | 5.0% / fail | 1/60 / pass | pass | no |
+| mini-native | 6.7% / fail | 3/60 / fail | pass | no |
+| luna-json | 6.7% / fail | 7/60 / fail | pass | no |
+| luna-native | API rejected; unmeasured | 60/60 / behavior unassessed | pass | no |
+| terra-native | API rejected; unmeasured | 60/60 / behavior unassessed | pass | no |
+| terra-json | 11.7% / fail | 9/60 / fail | pass | no |
+| mini-json-medium | 10.0% / fail | 5/60 / fail | pass | no |
+| luna-json-medium | 6.7% / fail | 7/60 / fail | pass | no |
+
+**No eligible configuration exists under L1 or L2, including both medium rows.** The published Terra recommendation is withdrawn. Under L1 the Luna and Terra pass-rate bands alone cannot overcome their no-action failures. Under L2 all operational configurations are also below 15%. Mini’s required medium escalation has been measured and does not establish eligibility. Luna/medium does not resolve the no-action concern. Selection remains unresolved: AD1 prefers eligible Luna, then cheapest eligible, whereas PREREG specifies cheapest eligible and different fallback/escalation rules. That conflict requires ratification; this report does not choose a favorable fallback or change strata, prompts, budgets, or token limits.
+
+### Pilot cost projection and operating limits
+
+**Eligible configurations to project: none under L1; none under L2.** For review of the rejected alternatives, the following descriptive projections multiply mean known cost over all 60 finalized attempts by 2,800 solver rollouts. They exclude judges, evolution, cross-judges, interruptions, and unresolved billing. They are not projections conditional on success.
+
+| Configuration (all ineligible) | Mean calls | USD / finalized rollout | USD / 2,800 | All-work known USD | Agent s | Batch wall s | Nominal concurrency |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| mini-json | 4.47 | 0.005871 | 16.44 | 0.35227860 | 30.05 | 1323.48 | 8 |
+| mini-native | 4.53 | 0.005833 | 16.33 | 0.38758290 | 27.12 | ≥1637.21 | 4 |
+| luna-json | 6.63 | 0.010849 | 30.38 | 0.65096713 | 47.08 | 1635.12 | 4 |
+| luna-native | 1.00 | unknown billing | not estimable | 0.00000000 | 0.44 | 972.23 | 4 |
+| terra-native | 1.00 | unknown billing | not estimable | 0.00000000 | 0.40 | 981.57 | 4 |
+| terra-json | 6.10 | 0.124265 | 347.94 | 7.45591680 | 68.23 | 1495.78 | 4 |
+| mini-json-medium | 4.63 | 0.012434 | 34.81 | 0.74603555 | 54.38 | 2151.86 | 3 |
+| luna-json-medium | 7.55 | 0.015929 | 44.60 | 0.95572755 | 77.41 | 2639.47 | 3 |
+
+Prices are standard API proxies from [scripts/prices.json](../scripts/prices.json), not verified Azure invoices. Terra’s $347.94 solver-only projection already exceeds the $300 whole-pilot guard. Low-cost early failures do not establish useful capacity. The USD 300/four-day pilot guards remain unchanged.
+
+Mini/JSON used nominal concurrency 8; other original jobs used 4; medium jobs used 3 while W9 shared Docker with a six-container combined admission limit. The Mini/native resume log also shows four old containers alongside four new containers. Nominal launcher concurrency therefore does not fully describe host load. Batches were sequential, cache conditions differed, and agent/window times are descriptive. Only Mini supplies concurrency-eight evidence. All eight configurations record zero HTTP 429s, zero 5xx responses, and zero Harbor agent timeouts; command timeouts remain failures and do not by themselves prove a host outage. The selected configuration’s capacity gate is unresolved.
+
+Mini/native’s wall lower bound is 970.519741 + 61.280396 + 605.406588 = 1,637.206725 seconds, excluding downtime and unknown tails. Original memory samples and W5d admission evidence remain under the respective run directories; W5d’s historical [audit](../logs/calibration-medium-followup-260910/audit.json) records the shared-host observations.
+
+## Cohort-scoped accounting manifest
+
+The explicit [run manifest](../data/calibration_run_manifest.json) fixes job names, phase tags, cohorts, budget guards, nominal concurrency, and saved config hashes. Reducers reject unmanifested P1.2 calls or ownership mismatches instead of silently absorbing later experiments. Diagnostic spending belongs to the original $40 guard but never to benchmark denominators.
+
+| Job name | Phase | Cohort | Budget guard / USD |
+| --- | --- | --- | --- |
+| calibration-luna-json-260910 | P1.2 | original-six | costs/calibration_budget.json / 40 |
+| calibration-luna-json-medium-260910 | P1.2 | w5d-medium | costs/calibration_medium_budget.json / 8 |
+| calibration-luna-native-260910 | P1.2 | original-six | costs/calibration_budget.json / 40 |
+| calibration-mini-json-260910 | P1.2 | original-six | costs/calibration_budget.json / 40 |
+| calibration-mini-json-medium-260910 | P1.2 | w5d-medium | costs/calibration_medium_budget.json / 8 |
+| calibration-mini-native-260910 | P1.2 | original-six | costs/calibration_budget.json / 40 |
+| calibration-mini-native-260910-recovery2 | P1.2 | original-six | costs/calibration_budget.json / 40 |
+| calibration-mini-native-260910-resume | P1.2 | original-six | costs/calibration_budget.json / 40 |
+| calibration-terra-json-260910 | P1.2 | original-six | costs/calibration_budget.json / 40 |
+| calibration-terra-native-260910 | P1.2 | original-six | costs/calibration_budget.json / 40 |
+| calibration-native-diagnostic | P1.2 | original-six | costs/calibration_budget.json / 40 |
+
+| Cohort | Finalized / verifier rewards | Calls (final / interrupted / diagnostic) | Finalized known USD | Interrupted known USD | Total known USD | Retained reserve USD | Used/reserved / guard USD | Null-cost records |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| original-six | 360 / 328 | 1454 (1424 / 29 / 1) | 8.80912498 | 0.03762045 | 8.84674543 | 3.66274995 | 12.50949538 / 40 | 124 |
+| w5d-medium | 120 / 105 | 731 (731 / 0 / 0) | 1.70176310 | 0.00000000 | 1.70176310 | 0.00000000 | 1.70176310 / 8 | 0 |
+
+Original Mini/native resolves as **51 original + 2 resume + 7 recovery2 = 60** finalized slots. Eight interrupted directories contribute 29 requests, not extra failures. Nine replacement results fill missing slots (some original slots had not started). No finalized failures were retried. The 124 original null-cost records comprise 120 benchmark HTTP rejections, one diagnostic rejection, two reconstructed requests with unknown dispatch, and one local budget stop with `attempts: []` and zero API time. That local stop adds zero API usage and is not an unresolved dispatched charge. Its $0.828084 budget-used value is cumulative previously incurred cost. The two reconstructed reservations total $0.023641 and remain retained.
+
+**Logged Phase-1 single-retry exception:** `query-optimize` and `filter-js-from-html` each had an interrupted original attempt, an interrupted operator replacement, and a finalized second operator replacement. The manifest records their exact three-attempt lineage and the historical recovery authorization reported in R7. This is explicitly a deviation from PREREG Section 6’s single infrastructure retry, despite zero configured API/Harbor retries. It is logged here and in the manifest under this task’s authorization; the prohibited PREREG file was not edited, and formal policy reconciliation remains pending.
+
+The [cohort audit](../logs/calibration-r7-reanalysis/audit.json) checks UUID bijection, finalized slots, payload parity, response token usage, prices, and both budget guards. [costs/summary.md](../costs/summary.md) presents the two cohorts separately, with other project calls outside those guards.
+
+## Native rejection evidence
+
+The saved [Luna diagnostic](../logs/calibration-native-diagnostic/error-response.txt) says exactly:
+
+> Function tools with reasoning_effort are not supported for gpt56luna in /v1/chat/completions. To use function tools, use /v1/responses or set reasoning_effort to 'none'.
+
+It is an `invalid_request_error` on `reasoning_effort`, with null error code, from the low-effort Chat Completions request. **Terra’s specific cause is inferred**, because no Terra HTTP error body was saved; its 60 HTTP 400s establish rejection of the tested configuration only. Neither row measures general native-tool capability. Responses is a suggested alternative for Luna, with no adapter or calibration evidence here. Changing only Luna to reasoning none would create another model-specific experimental difference.
+
+The only backend change in this task archives sanitized HTTP error bodies and endpoint metadata per HTTP attempt, including retried errors, without changing requests, retry decisions, or reservations. The original backend bytes remain in [the source archive](../logs/calibration-r7-reanalysis/sources/openai_api.py); the historical source manifest is preserved. AD11’s JSON-for-all choice and AD12’s completion-allowance choice remain pending. Compatibility preflight is still needed before any future benchmark dispatch.
+
+## What remains unknown
+
+- Which A9 reading is ratified (AD10), which selection/fallback rule governs (AD1 versus PREREG), and the formal reconciliation of the two operator retry exceptions.
+- Whether to ratify common JSON (AD11), or implement and calibrate a common valid native transport. Terra’s exact rejection body is unavailable.
+- Whether raising the common 4,096-token allowance changes eligibility (AD12); no higher-allowance or Terra/medium runs exist.
+- Repeat-run variability, effects of provider sampling defaults, and a generation seed. Task-bootstrap CIs do not estimate these sources of variability.
+- Selected-model concurrency-eight behavior, realized host-load effects, and whether a lower concurrency will be ratified.
+- Azure invoice charges for rejected/interrupted requests and full pilot costs after model selection, including judge/evolver costs and runtime.
+- Historical execution-start timestamps were not recorded; subprocess traceback evidence recovers action presence in these timeout cases, not exact timing. Live execution-start logging remains a follow-up outside this change.
+
+## Appendix: superseded published tables
+
+**Superseded — retained verbatim for provenance, not current results or decisions.** These tables used finish-only no action and reward-1-without-trial-exception pass. They include the original six rows and W5d medium additions. Their Terra eligibility and associated recommendation are withdrawn. The complete previous document is [archived](../logs/calibration-r7-reanalysis/calibration-before.md).
+
+### Superseded: Setup and reproducibility
 
 | Split | Easy | Medium | Hard | Total |
 | --- | ---: | ---: | ---: | ---: |
@@ -12,22 +238,7 @@ Dataset `terminal-bench@2.0`, commit `69671fbaac6d67a7ef0dfec016cc38a64ef7a77c`.
 | anchor | 0 | 4 | 2 | 6 |
 | sealed | 0 | 4 | 2 | 6 |
 
-The proportional 30-task allocation has only one easy task; it is impossible to put an easy task in every split while retaining that allocation. Metadata hashes are stored with each selected task. Reproduce with `uv run python -m scripts.make_tb2_split`.
-
-Each original configuration uses all 30 tasks × 2 fresh attempts (avg@2), low reasoning, 4,096 max completion tokens, 24 model calls, 30 seconds per command, 180 seconds per API call, and unchanged task-defined Harbor build/agent/verifier timeouts. Temperature and generation seed are omitted (provider defaults); 260910 is the dataset-sampling and analysis seed. Zero API retries and zero Harbor retries. No planning, self-verification, model-specific text, or rescue logic was added. The API JSON prompt only removes the CLI-residue sentence. Native changes only protocol instructions and message transport: exactly terminal/read_file/write_file function tools, `parallel_tool_calls=false`, and a plain final message to finish. Native actions normalize into the same assistant/observation/finish JSONL records. Native here means Chat Completions function tools; Responses API was not measured.
-
-Batches run sequentially on the same host. The initial mini/json batch used concurrency 8. The recovery and all remaining original batches use concurrency 4, as required by the resume instruction. These 30-second command limits are part of the unchanged seed and do not by themselves establish host overload. Image pulls and long verifiers affect batch wall time, so compare agent seconds separately. The first batch warms Docker images for later batches. Source hashes are archived in [the manifest](../logs/calibration_source_manifest.json).
-
-Run a batch with `uv run python -m scripts.calibrate luna-native --concurrency 4`; substitute any configuration below. Each launch archives its full pinned Harbor config in `logs/calibration-<configuration>-260910/config.json`. Rebuild this report with `uv run python -m scripts.calibration_report`.
-
-USD uses measured API token usage and `scripts/prices.json` standard API proxy rates, not verified Azure invoice charges. Terra is $2 input / $0.20 cached input / $2.50 cache write / $12 output per million tokens in the unchanged [recorded price table](../scripts/prices.json). Reasoning is included in output. Every logical API call is ledgered, with HTTP attempts and rate-limit headers nested under it. A process-safe shared reservation guard caps the original experiment at $40; every rollout has a $1 projected cap. Ambiguous request charges retain conservative reservations.
-
-The two `-medium` follow-up rows use the identical 30-task split, seed, JSON prompt, 24-call cap, 4,096 completion tokens, command/API timeouts, and zero retries; only `reasoning_effort=medium` changes model behavior. Both follow-up batches run sequentially at `--n-concurrent 3` while W9 shares Docker, with at most six combined `alexgshaw` containers. They share a separate **$8** guard in `costs/calibration_medium_budget.json` and retain the **$1** per-rollout guard. Reproduce with `sg docker -c 'uv run python -m scripts.calibrate mini-json-medium --concurrency 3'` (substitute `luna-json-medium`); regenerate this extension with `uv run python -m scripts.calibration_medium_report`. The original six rows and their accounting below are retained.
-
-## Metrics and results
-
-Primary pass = verifier reward 1 with no trial exception. Solver failures/timeouts count as failures even if a raw reward is 1. All scheduled attempts remain in the fixed denominator (60 overall; 36/12/12 by split); build/grader failures are explicitly listed and counted as zero. Interrupted attempts are replaced by their recovery results; killed attempts are not counted as failures or extra rollouts. Any unfinished batch is provisional, not a completed estimate. No-action means a finish record with zero executed-tool observations; protocol-error feedback is not a tool observation. Steps count logical API calls, including failed calls and finish. Cost/steps means use result-bearing trials; agent time averages trials with recorded agent execution. Batch wall includes setup, verification and cleanup. Confidence intervals resample tasks (both attempts together), 10,000 bootstrap draws, seed 260910.
-Rows rejected by the API have zero operational success, not a measured seed-accuracy estimate. Their agent seconds measure rejection overhead; their no-action gate is unassessed.
+### Superseded: Metrics and results
 
 | Configuration | Results / verifier | Pass avg@2 | 95% task CI | Search | Anchor | Sealed | No-action |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
@@ -40,6 +251,8 @@ Rows rejected by the API have zero operational success, not a measured seed-accu
 | mini-json-medium | 60/60; 55 | 13.3% (8/60) | 5.0%–23.3% | 16.7% | 8.3% | 8.3% | 0/60 (0.0%) |
 | luna-json-medium | 60/60; 50 | 33.3% (20/60) | 18.3%–50.0% | 38.9% | 33.3% | 16.7% | 7/60 (11.7%) |
 
+### Superseded: Metrics and results
+
 | Configuration | Mean steps | Mean known USD | Max known USD | Known total USD | Mean agent s | Batch wall s | Concurrency | 429 / 5xx | Harbor timeouts | Command timeouts | HTTP 400 | Unknown-cost calls |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
 | mini-json | 4.47 | 0.005871 | 0.022926 | 0.352279 | 30.05 | 1323.48 | 8 | 0 / 0 | 0 | 7 | 0 | 0 |
@@ -51,7 +264,7 @@ Rows rejected by the API have zero operational success, not a measured seed-accu
 | mini-json-medium | 4.63 | 0.012434 | 0.042391 | 0.746036 | 54.38 | 2151.86 | 3 | 0 / 0 | 0 | 5 | 0 | 0 |
 | luna-json-medium | 7.55 | 0.015929 | 0.133919 | 0.955728 | 77.41 | 2639.47 | 3 | 0 / 0 | 0 | 10 | 0 | 0 |
 
-Paired task-bootstrap contrasts (first minus second; provisional if either batch is unfinished). API-rejected configurations are omitted from capability contrasts:
+### Superseded: Metrics and results
 
 | Contrast | Difference (pp) | 95% CI (pp) |
 | --- | ---: | ---: |
@@ -59,9 +272,7 @@ Paired task-bootstrap contrasts (first minus second; provisional if either batch
 | luna-json − mini-json | 15.0 | 6.7 to 25.0 |
 | terra-json − luna-json | 5.0 | -5.0 to 16.7 |
 
-## Decision rule
-
-Eligibility requires a completed 30-task avg@2 pass rate inside 15–45% and no-action termination below 5%, with the identical seed for every model.
+### Superseded: Decision rule
 
 | Configuration | Pass-rate gate | No-action gate | Common-prompt gate | Eligible |
 | --- | --- | --- | --- | --- |
@@ -74,53 +285,27 @@ Eligibility requires a completed 30-task avg@2 pass rate inside 15–45% and no-
 | mini-json-medium | below 15% | pass | pass | no |
 | luna-json-medium | within range | fail | pass | no |
 
-<!-- RECOMMENDATION -->
-**Eligibility re-applied after both medium-reasoning batches.** Every eligible configuration is listed below so the user can choose. Costs use measured known USD per completed rollout; the 2,800-rollout projection covers task-model API calls only and excludes judges, evolvers, and cross-judges.
+### Superseded: Decision rule
 
 | Eligible configuration | Reasoning | Pass avg@2 | No-action | USD / rollout | Projected USD / 2,800 rollouts |
 | --- | --- | ---: | ---: | ---: | ---: |
 | terra-json | low | 28.3% | 1.7% | 0.124265 | 347.94 |
 
-The lowest-cost eligible option is **terra-json** at **$0.124265/rollout** (**$347.94** for 2,800). This is a cost-based recommendation within the predefined gates, not a claim of a statistically established capability advantage. No pilot configuration is changed by this report.
-
-Even the lowest-cost eligible option's task-only projection exceeds the **$300 whole-pilot guard** in `docs/decisions-260910.md` Section 3, before other model roles. The current eligibility gates and 2,800-rollout pilot therefore have no measured eligible option that fits that guard. This report does not change the guard or authorize a pilot run.
-
-### Medium versus low reasoning
+### Superseded: Medium versus low reasoning
 
 | Configuration | Pass change (pp; paired 95% CI) | No-action, low → medium | USD / rollout, low → medium | Cost ratio | Agent s, low → medium | Agent-time ratio |
 | --- | --- | --- | --- | ---: | --- | ---: |
 | mini-json-medium | +5.0 (-1.7 to +11.7) | 0/60 → 0/60 | 0.005871 → 0.012434 | 2.12× | 30.05 → 54.38 | 1.81× |
 | luna-json-medium | +10.0 (-1.7 to +21.7) | 7/60 → 7/60 | 0.010849 → 0.015929 | 1.47× | 47.08 → 77.41 | 1.64× |
 
-Mini's escalation rule is now measured: medium yields 8/60 passes (13.3%) and 0/60 no-action finishes; it is ineligible.
-
-Luna at medium records 7/60 (11.7%) no-action finishes versus 7/60 (11.7%) at low. The no-action gate still fails; medium reasoning does not resolve the seed concern on this sample.
-
-No-action measures explicit finish records with zero executed tools. Empty API answers remain separate operational failures, even when no tool ran. Mini/medium recorded 18 empty-answer failures; Luna/medium recorded 4. A lower no-action finish rate therefore does not by itself establish that every form of failing before tool use was resolved.
-
-Agent latency is reported separately from batch wall time. The medium jobs use concurrency 3 and share Docker with W9; the original Mini/JSON and Luna/JSON rows used 8 and 4. Batch-time and latency differences therefore include host effects. All solver failures remain in the fixed denominator; the measured 30-task confidence intervals remain wide.
-
-### Follow-up accounting and verification
-
-Both jobs completed **120 attempt slots** with **105 verifier rewards**. All **731 request artifacts** reconcile to the ledger. Known follow-up cost is **$1.701763**; guard used/reserved is **$1.701763 / $8**, including **$0.000000** retained reservations and 0 unknown-cost calls. All rollout guards stayed at or below $1. [Follow-up audit](../logs/calibration-medium-followup-260910/audit.json).
+### Superseded: Follow-up accounting and verification
 
 | Job | Min MemAvailable GiB | Samples below 6 GiB | Max alexgshaw at admission | Max periodic task containers | Docker admission pauses |
 | --- | ---: | ---: | ---: | ---: | ---: |
 | [calibration-mini-json-medium-260910](../logs/calibration-mini-json-medium-260910/memory.jsonl) | 22.88 | 0 | 4 | 5 | 0 |
 | [calibration-luna-json-medium-260910](../logs/calibration-luna-json-medium-260910/memory.jsonl) | 21.04 | 0 | 4 | 5 | 0 |
 
-MemAvailable admission starts at 10 GiB, pauses new trials below 6 GiB, and resumes at 10 GiB; running trials finish. Memory and Docker statistics are sampled every two minutes, with admission checks between trials. Source hashes verify unchanged harness, prompts, split, and prices. The original report and recommendation are archived [here](../logs/calibration-medium-followup-260910/calibration-before.md). Focused test and lint results are recorded in [verification](../logs/calibration-medium-followup-260910/verification.txt). No commit, push, or model CLI call was made.
-
-Admission counts come from `docker ps` image names; periodic counts cover task service names ending in `__env-main-1` in Docker stats. Mini admission events are in its memory log; Luna admission events are in [docker_admission.jsonl](../logs/calibration-luna-json-medium-260910/docker_admission.jsonl). The completed follow-up left no containers of its own running.
-<!-- END RECOMMENDATION -->
-
-## Interrupted runs, memory guard, and accounting
-
-Two earlier drivers were killed by a low-memory watchdog, not a kernel OOM. The second interruption occurred with MemAvailable above 20 GB (operator report); low MemFree reflected page cache. Orphan containers had already been removed before this recovery. Disk reconciliation found 51 finalized mini/native trial results in the original job, plus two verifier-bearing results in `calibration-mini-native-260910-resume`: `adaptive-rejection-sampler` and `pypi-server`. The job-level result.json is never counted as a trial.
-
-Exactly seven remaining slots were launched once in `calibration-mini-native-260910-recovery2`: `query-optimize`, `filter-js-from-html`, `gcode-to-text`, `headless-terminal`, `protein-assembly`, `raman-fitting`, and `torch-pipeline-parallelism`. Per-task links mark all nine replacement results as resumed. Killed attempts and unfinished verifier stdout never supply a reward. Existing finalized solver errors were retained as operational failures, not retried. Only a finalized trial with a verifier reward contributes to the verifier count; command failures without a verifier remain explicit failures in the fixed avg@2 denominator. See [attempt reconciliation](../logs/calibration_attempt_reconciliation.json).
-
-The resumed batches ran in order: luna/native, luna/json, terra/native, then budget-permitting terra/json, one job at a time. Each invocation explicitly uses `--n-concurrent 4`. Before Harbor starts, `free -g` is logged and MemAvailable from `/proc/meminfo` must be at least 10 GiB. During each job, `free -g` and `docker stats --no-stream` are sampled every two minutes, with additional admission checks between trials. Below 6 GiB, new trials pause while running trials finish; admission resumes at 10 GiB. Memory evidence is linked below.
+### Superseded: Interrupted runs, memory guard, and accounting
 
 | Job segment | Final results / verifier rewards | Wall s | Min sampled available GiB | Samples below 6 GiB | Memory log |
 | --- | ---: | ---: | ---: | ---: | --- |
@@ -133,26 +318,7 @@ The resumed batches ran in order: luna/native, luna/json, terra/native, then bud
 | calibration-terra-native-260910 | 60 / 60 | 981.57 | 24.70 | 0 | [samples](../logs/calibration-terra-native-260910/memory.jsonl) |
 | calibration-terra-json-260910 | 60 / 49 | 1495.78 | 23.68 | 0 | [samples](../logs/calibration-terra-json-260910/memory.jsonl) |
 
-Interrupted segment wall times are lower bounds from the last persisted Harbor update; exact watchdog kill timestamps were not retained. Mini/native batch wall is the sum of those lower bounds and the measured final recovery wall; driver downtime is excluded. All other completed batch walls are measured by the launcher. Historical mini/json used concurrency 8; this limits causal latency comparisons with the later batches.
-
-Experiment known API cost, including interrupted work: **$8.846745**. Shared guard used/reserved: **$12.509495 / $40**. Interrupted mini/native work accounts for $0.037620 of known cost and is included in configuration totals, but excluded from completed-rollout means. `costs/summary.md` covers the entire project ledger; these historical totals cover the original six configurations and diagnostic; the medium follow-up is accounted separately above.
-
-Two lost ledger writes were reconstructed from orphan request artifacts, with unknown dispatch/status, response, usage, cost, and latency explicitly preserved. Their existing conservative reservations total **$0.023641**; they were not released or charged twice. API error calls also retain reservations when usage is unavailable. [Recovery audit](../logs/calibration_ledger_recovery.jsonl). Every saved calibration request now has a ledger record. Reported HTTP status counts exclude these unknown statuses.
-
-Luna/native returned HTTP 400 before model generation. One separately ledgered diagnostic call captured the endpoint error: function tools with reasoning_effort are unsupported for gpt56luna on Chat Completions; the service suggests Responses or reasoning `none`. The calibration retains its common Chat Completions transport and low reasoning. Thus this row measures an unsupported API configuration, not Luna's task-solving ability. The diagnostic is excluded from benchmark denominators and included in the $40 guard. [Captured rejection](../logs/calibration-native-diagnostic/error-response.txt). HTTP error calls provide no token usage or invoice evidence, so their costs remain unknown; zero known USD must not be read as zero billed USD.
-
-The optional Terra/json budget check repriced Luna/json's measured tokens at Terra rates, then added a 50% margin: $9.76, against $35.34 remaining at the check. This is a projection, not an assumption of identical token use; the shared $40 guard remains binding. [Projection audit](../logs/calibration_terra_json_projection.json).
-
-## Per-task evidence and operational failures
-
-### mini-json
-
-Served models: gpt-5-mini-2025-08-07. Calls: 268; unknown-cost calls: 0. Agent started: 60/60. No-action among started agents: 0.0%. Exceptions: `{"NonZeroAgentExitCodeError": 2, "RuntimeError": 7}`.
-Calls with a served-model response: 268; HTTP 400 rejections: 0.
-
-Failure messages and counts: `{"Backend failed: API returned no answer": 1, "Command timed out after 30 seconds": 7, "Seed exhausted its 24-call limit": 1}`.
-
-No-action traces: none.
+### Superseded: mini-json
 
 | Task | Split | Attempt raw reward (result links) | avg@2 | Steps (mean) | USD (mean) | Agent s (mean) | Exceptions |
 | --- | --- | --- | ---: | ---: | ---: | ---: | --- |
@@ -187,63 +353,7 @@ No-action traces: none.
 | raman-fitting | sealed | [0.0](../logs/harbor/calibration-mini-json-260910/raman-fitting__S8obqN4/result.json), [0.0](../logs/harbor/calibration-mini-json-260910/raman-fitting__XLZ3ZrY/result.json) | 0% | 6.5 | 0.008719 | 34.4 | none |
 | torch-pipeline-parallelism | sealed | [0.0](../logs/harbor/calibration-mini-json-260910/torch-pipeline-parallelism__BSznJtT/result.json), [0.0](../logs/harbor/calibration-mini-json-260910/torch-pipeline-parallelism__eNqCaCa/result.json) | 0% | 2.5 | 0.007977 | 27.4 | none |
 
-Environment build/setup failures:
-
-None recorded.
-
-Observed rate-limit headers (all distinct strings or numeric min/max; request IDs remain in the ledger):
-
-```json
-{
-  "x-ratelimit-abusepenalty-active": [
-    "False"
-  ],
-  "x-ratelimit-key": [
-    "gpt-5-mini"
-  ],
-  "x-ratelimit-limit-requests": {
-    "min": 1000.0,
-    "max": 1000.0
-  },
-  "x-ratelimit-limit-tokens": {
-    "min": 1000000.0,
-    "max": 1000000.0
-  },
-  "x-ratelimit-remaining-requests": {
-    "min": 998.0,
-    "max": 999.0
-  },
-  "x-ratelimit-remaining-tokens": {
-    "min": 966036.0,
-    "max": 999811.0
-  },
-  "x-ratelimit-renewalperiod-requests": {
-    "min": 60.0,
-    "max": 60.0
-  },
-  "x-ratelimit-renewalperiod-tokens": {
-    "min": 60.0,
-    "max": 60.0
-  },
-  "x-ratelimit-reset-requests": {
-    "min": 0.0,
-    "max": 0.0
-  },
-  "x-ratelimit-reset-tokens": {
-    "min": 0.0,
-    "max": 2.0
-  }
-}
-```
-
-### mini-native
-
-Served models: gpt-5-mini-2025-08-07. Calls: 301; unknown-cost calls: 2. Agent started: 60/60. No-action among started agents: 3.3%. Exceptions: `{"RuntimeError": 6, "NonZeroAgentExitCodeError": 6}`.
-Calls with a served-model response: 299; HTTP 400 rejections: 0.
-
-Failure messages and counts: `{"Command timed out after 30 seconds": 6, "Backend failed: API returned no answer": 6}`.
-
-No-action traces: [polyglot-rust-c__ZxSUiDw](../logs/harbor/calibration-mini-native-260910/polyglot-rust-c__ZxSUiDw/agent/trace.jsonl), [polyglot-rust-c__q6uA3Rt](../logs/harbor/calibration-mini-native-260910/polyglot-rust-c__q6uA3Rt/agent/trace.jsonl).
+### Superseded: mini-native
 
 | Task | Split | Attempt raw reward (result links) | avg@2 | Steps (mean) | USD (mean) | Agent s (mean) | Exceptions |
 | --- | --- | --- | ---: | ---: | ---: | ---: | --- |
@@ -278,63 +388,7 @@ No-action traces: [polyglot-rust-c__ZxSUiDw](../logs/harbor/calibration-mini-nat
 | raman-fitting | sealed | [0.0](../logs/harbor/calibration-mini-native-260910/raman-fitting__D3zMTqq/result.json), [0.0](../logs/harbor/calibration-mini-native-260910-recovery2/raman-fitting__U8xK4cQ/result.json) (resumed) | 0% | 7.0 | 0.008965 | 27.6 | none |
 | torch-pipeline-parallelism | sealed | [0.0](../logs/harbor/calibration-mini-native-260910/torch-pipeline-parallelism__uMdWZ64/result.json), [0.0](../logs/harbor/calibration-mini-native-260910-recovery2/torch-pipeline-parallelism__J6rL6KP/result.json) (resumed) | 0% | 1.5 | 0.008394 | 32.7 | NonZeroAgentExitCodeError |
 
-Environment build/setup failures:
-
-None recorded.
-
-Observed rate-limit headers (all distinct strings or numeric min/max; request IDs remain in the ledger):
-
-```json
-{
-  "x-ratelimit-abusepenalty-active": [
-    "False"
-  ],
-  "x-ratelimit-key": [
-    "gpt-5-mini"
-  ],
-  "x-ratelimit-limit-requests": {
-    "min": 1000.0,
-    "max": 1000.0
-  },
-  "x-ratelimit-limit-tokens": {
-    "min": 1000000.0,
-    "max": 1000000.0
-  },
-  "x-ratelimit-remaining-requests": {
-    "min": 997.0,
-    "max": 999.0
-  },
-  "x-ratelimit-remaining-tokens": {
-    "min": 962479.0,
-    "max": 999705.0
-  },
-  "x-ratelimit-renewalperiod-requests": {
-    "min": 60.0,
-    "max": 60.0
-  },
-  "x-ratelimit-renewalperiod-tokens": {
-    "min": 60.0,
-    "max": 60.0
-  },
-  "x-ratelimit-reset-requests": {
-    "min": 0.0,
-    "max": 0.0
-  },
-  "x-ratelimit-reset-tokens": {
-    "min": 0.0,
-    "max": 2.0
-  }
-}
-```
-
-### luna-json
-
-Served models: gpt-5.6-luna-2026-07-09. Calls: 398; unknown-cost calls: 0. Agent started: 60/60. No-action among started agents: 11.7%. Exceptions: `{"RuntimeError": 8, "NonZeroAgentExitCodeError": 2}`.
-Calls with a served-model response: 398; HTTP 400 rejections: 0.
-
-Failure messages and counts: `{"Command timed out after 30 seconds": 8, "Seed exhausted its 24-call limit": 2}`.
-
-No-action traces: [chess-best-move__22sDkeg](../logs/harbor/calibration-luna-json-260910/chess-best-move__22sDkeg/agent/trace.jsonl), [configure-git-webserver__W6jVdTb](../logs/harbor/calibration-luna-json-260910/configure-git-webserver__W6jVdTb/agent/trace.jsonl), [count-dataset-tokens__8eWUAAw](../logs/harbor/calibration-luna-json-260910/count-dataset-tokens__8eWUAAw/agent/trace.jsonl), [headless-terminal__YupsCyg](../logs/harbor/calibration-luna-json-260910/headless-terminal__YupsCyg/agent/trace.jsonl), [mteb-leaderboard__ugH9FvM](../logs/harbor/calibration-luna-json-260910/mteb-leaderboard__ugH9FvM/agent/trace.jsonl), [query-optimize__75radBF](../logs/harbor/calibration-luna-json-260910/query-optimize__75radBF/agent/trace.jsonl), [sqlite-db-truncate__SAvNX4q](../logs/harbor/calibration-luna-json-260910/sqlite-db-truncate__SAvNX4q/agent/trace.jsonl).
+### Superseded: luna-json
 
 | Task | Split | Attempt raw reward (result links) | avg@2 | Steps (mean) | USD (mean) | Agent s (mean) | Exceptions |
 | --- | --- | --- | ---: | ---: | ---: | ---: | --- |
@@ -369,63 +423,7 @@ No-action traces: [chess-best-move__22sDkeg](../logs/harbor/calibration-luna-jso
 | raman-fitting | sealed | [0.0](../logs/harbor/calibration-luna-json-260910/raman-fitting__RrcXUu4/result.json), [0.0](../logs/harbor/calibration-luna-json-260910/raman-fitting__ZjtKdTr/result.json) | 0% | 10.5 | 0.009444 | 44.0 | none |
 | torch-pipeline-parallelism | sealed | [0.0](../logs/harbor/calibration-luna-json-260910/torch-pipeline-parallelism__9rgxADd/result.json), [0.0](../logs/harbor/calibration-luna-json-260910/torch-pipeline-parallelism__TcYDkKC/result.json) | 0% | 3.5 | 0.007566 | 28.9 | none |
 
-Environment build/setup failures:
-
-None recorded.
-
-Observed rate-limit headers (all distinct strings or numeric min/max; request IDs remain in the ledger):
-
-```json
-{
-  "x-ratelimit-abusepenalty-active": [
-    "False"
-  ],
-  "x-ratelimit-key": [
-    "gpt56luna"
-  ],
-  "x-ratelimit-limit-requests": {
-    "min": 500.0,
-    "max": 500.0
-  },
-  "x-ratelimit-limit-tokens": {
-    "min": 500000.0,
-    "max": 500000.0
-  },
-  "x-ratelimit-remaining-requests": {
-    "min": 497.0,
-    "max": 499.0
-  },
-  "x-ratelimit-remaining-tokens": {
-    "min": 455709.0,
-    "max": 499811.0
-  },
-  "x-ratelimit-renewalperiod-requests": {
-    "min": 60.0,
-    "max": 60.0
-  },
-  "x-ratelimit-renewalperiod-tokens": {
-    "min": 60.0,
-    "max": 60.0
-  },
-  "x-ratelimit-reset-requests": {
-    "min": 0.0,
-    "max": 0.0
-  },
-  "x-ratelimit-reset-tokens": {
-    "min": 0.0,
-    "max": 5.0
-  }
-}
-```
-
-### luna-native
-
-Served models: none recorded. Calls: 60; unknown-cost calls: 60. Agent started: 60/60. No-action among started agents: 0.0%. Exceptions: `{"NonZeroAgentExitCodeError": 60}`.
-Calls with a served-model response: 0; HTTP 400 rejections: 60.
-
-Failure messages and counts: `{"Backend failed: HTTP 400": 60}`.
-
-No-action traces: none.
+### Superseded: luna-native
 
 | Task | Split | Attempt raw reward (result links) | avg@2 | Steps (mean) | USD (mean) | Agent s (mean) | Exceptions |
 | --- | --- | --- | ---: | ---: | ---: | ---: | --- |
@@ -460,24 +458,7 @@ No-action traces: none.
 | raman-fitting | sealed | [0.0](../logs/harbor/calibration-luna-native-260910/raman-fitting__jcxkf2A/result.json), [0.0](../logs/harbor/calibration-luna-native-260910/raman-fitting__kWKiDTu/result.json) | 0% | 1.0 | 0.000000 | 0.4 | NonZeroAgentExitCodeError, NonZeroAgentExitCodeError |
 | torch-pipeline-parallelism | sealed | [0.0](../logs/harbor/calibration-luna-native-260910/torch-pipeline-parallelism__bsHdq8o/result.json), [0.0](../logs/harbor/calibration-luna-native-260910/torch-pipeline-parallelism__wckzGfr/result.json) | 0% | 1.0 | 0.000000 | 0.4 | NonZeroAgentExitCodeError, NonZeroAgentExitCodeError |
 
-Environment build/setup failures:
-
-None recorded.
-
-Observed rate-limit headers (all distinct strings or numeric min/max; request IDs remain in the ledger):
-
-```json
-{}
-```
-
-### terra-native
-
-Served models: none recorded. Calls: 60; unknown-cost calls: 60. Agent started: 60/60. No-action among started agents: 0.0%. Exceptions: `{"NonZeroAgentExitCodeError": 60}`.
-Calls with a served-model response: 0; HTTP 400 rejections: 60.
-
-Failure messages and counts: `{"Backend failed: HTTP 400": 60}`.
-
-No-action traces: none.
+### Superseded: terra-native
 
 | Task | Split | Attempt raw reward (result links) | avg@2 | Steps (mean) | USD (mean) | Agent s (mean) | Exceptions |
 | --- | --- | --- | ---: | ---: | ---: | ---: | --- |
@@ -512,24 +493,7 @@ No-action traces: none.
 | raman-fitting | sealed | [0.0](../logs/harbor/calibration-terra-native-260910/raman-fitting__DjVc2mD/result.json), [0.0](../logs/harbor/calibration-terra-native-260910/raman-fitting__aZtqxdv/result.json) | 0% | 1.0 | 0.000000 | 0.3 | NonZeroAgentExitCodeError, NonZeroAgentExitCodeError |
 | torch-pipeline-parallelism | sealed | [0.0](../logs/harbor/calibration-terra-native-260910/torch-pipeline-parallelism__3kncQvY/result.json), [0.0](../logs/harbor/calibration-terra-native-260910/torch-pipeline-parallelism__mEtBV8L/result.json) | 0% | 1.0 | 0.000000 | 0.3 | NonZeroAgentExitCodeError, NonZeroAgentExitCodeError |
 
-Environment build/setup failures:
-
-None recorded.
-
-Observed rate-limit headers (all distinct strings or numeric min/max; request IDs remain in the ledger):
-
-```json
-{}
-```
-
-### terra-json
-
-Served models: gpt-5.6-terra-2026-07-09. Calls: 366; unknown-cost calls: 1. Agent started: 60/60. No-action among started agents: 1.7%. Exceptions: `{"RuntimeError": 11, "NonZeroAgentExitCodeError": 14}`.
-Calls with a served-model response: 365; HTTP 400 rejections: 0.
-
-Failure messages and counts: `{"Command timed out after 30 seconds": 11, "Backend failed: API returned no answer": 12, "Backend failed: Projected rollout budget exceeded": 1, "Seed exhausted its 24-call limit": 1}`.
-
-No-action traces: [filter-js-from-html__jtTxh4k](../logs/harbor/calibration-terra-json-260910/filter-js-from-html__jtTxh4k/agent/trace.jsonl).
+### Superseded: terra-json
 
 | Task | Split | Attempt raw reward (result links) | avg@2 | Steps (mean) | USD (mean) | Agent s (mean) | Exceptions |
 | --- | --- | --- | ---: | ---: | ---: | ---: | --- |
@@ -564,64 +528,7 @@ No-action traces: [filter-js-from-html__jtTxh4k](../logs/harbor/calibration-terr
 | raman-fitting | sealed | [0.0](../logs/harbor/calibration-terra-json-260910/raman-fitting__98PzuSL/result.json), [0.0](../logs/harbor/calibration-terra-json-260910/raman-fitting__c24M3FK/result.json) | 0% | 7.5 | 0.094752 | 71.0 | none |
 | torch-pipeline-parallelism | sealed | [0.0](../logs/harbor/calibration-terra-json-260910/torch-pipeline-parallelism__EeTaxPG/result.json), [0.0](../logs/harbor/calibration-terra-json-260910/torch-pipeline-parallelism__m3XnbPe/result.json) | 0% | 4.0 | 0.091107 | 37.9 | none |
 
-Environment build/setup failures:
-
-None recorded.
-
-Observed rate-limit headers (all distinct strings or numeric min/max; request IDs remain in the ledger):
-
-```json
-{
-  "x-ratelimit-abusepenalty-active": [
-    "False"
-  ],
-  "x-ratelimit-key": [
-    "gpt56terra"
-  ],
-  "x-ratelimit-limit-requests": {
-    "min": 1000.0,
-    "max": 1000.0
-  },
-  "x-ratelimit-limit-tokens": {
-    "min": 1000000.0,
-    "max": 1000000.0
-  },
-  "x-ratelimit-remaining-requests": {
-    "min": 997.0,
-    "max": 999.0
-  },
-  "x-ratelimit-remaining-tokens": {
-    "min": 966022.0,
-    "max": 999811.0
-  },
-  "x-ratelimit-renewalperiod-requests": {
-    "min": 60.0,
-    "max": 60.0
-  },
-  "x-ratelimit-renewalperiod-tokens": {
-    "min": 60.0,
-    "max": 60.0
-  },
-  "x-ratelimit-reset-requests": {
-    "min": 0.0,
-    "max": 0.0
-  },
-  "x-ratelimit-reset-tokens": {
-    "min": 0.0,
-    "max": 2.0
-  }
-}
-```
-
-
-### mini-json-medium
-
-Served models: gpt-5-mini-2025-08-07. Calls: 278; unknown-cost calls: 0. Agent started: 60/60. No-action among started agents: 0.0%. Exceptions: `{"NonZeroAgentExitCodeError": 18, "RuntimeError": 5}`.
-Calls with a served-model response: 278; HTTP 400 rejections: 0.
-
-Failure messages and counts: `{"Backend failed: API returned no answer": 18, "Command timed out after 30 seconds": 5}`.
-
-No-action traces: none.
+### Superseded: mini-json-medium
 
 | Task | Split | Attempt raw reward (result links) | avg@2 | Steps (mean) | USD (mean) | Agent s (mean) | Exceptions |
 | --- | --- | --- | ---: | ---: | ---: | ---: | --- |
@@ -656,63 +563,7 @@ No-action traces: none.
 | raman-fitting | sealed | [0.0](../logs/harbor/calibration-mini-json-medium-260910/raman-fitting__BQo7riC/result.json), [0.0](../logs/harbor/calibration-mini-json-medium-260910/raman-fitting__HJiCRdE/result.json) | 0% | 7.5 | 0.014972 | 58.0 | none |
 | torch-pipeline-parallelism | sealed | [0.0](../logs/harbor/calibration-mini-json-medium-260910/torch-pipeline-parallelism__2ooaefd/result.json), [0.0](../logs/harbor/calibration-mini-json-medium-260910/torch-pipeline-parallelism__yUhynwm/result.json) | 0% | 2.0 | 0.009494 | 42.8 | NonZeroAgentExitCodeError, NonZeroAgentExitCodeError |
 
-Environment build/setup failures:
-
-None recorded.
-
-Observed rate-limit headers (all distinct strings or numeric min/max; request IDs remain in the ledger):
-
-```json
-{
-  "x-ratelimit-abusepenalty-active": [
-    "False"
-  ],
-  "x-ratelimit-key": [
-    "gpt-5-mini"
-  ],
-  "x-ratelimit-limit-requests": {
-    "min": 1000.0,
-    "max": 1000.0
-  },
-  "x-ratelimit-limit-tokens": {
-    "min": 1000000.0,
-    "max": 1000000.0
-  },
-  "x-ratelimit-remaining-requests": {
-    "min": 999.0,
-    "max": 999.0
-  },
-  "x-ratelimit-remaining-tokens": {
-    "min": 954309.0,
-    "max": 999811.0
-  },
-  "x-ratelimit-renewalperiod-requests": {
-    "min": 60.0,
-    "max": 60.0
-  },
-  "x-ratelimit-renewalperiod-tokens": {
-    "min": 60.0,
-    "max": 60.0
-  },
-  "x-ratelimit-reset-requests": {
-    "min": 0.0,
-    "max": 0.0
-  },
-  "x-ratelimit-reset-tokens": {
-    "min": 0.0,
-    "max": 2.0
-  }
-}
-```
-
-### luna-json-medium
-
-Served models: gpt-5.6-luna-2026-07-09. Calls: 453; unknown-cost calls: 0. Agent started: 60/60. No-action among started agents: 11.7%. Exceptions: `{"RuntimeError": 10, "NonZeroAgentExitCodeError": 6}`.
-Calls with a served-model response: 453; HTTP 400 rejections: 0.
-
-Failure messages and counts: `{"Command timed out after 30 seconds": 10, "Backend failed: API returned no answer": 4, "Seed exhausted its 24-call limit": 2}`.
-
-No-action traces: [chess-best-move__qCP95LZ](../logs/harbor/calibration-luna-json-medium-260910/chess-best-move__qCP95LZ/agent/trace.jsonl), [cobol-modernization__VYo8FF2](../logs/harbor/calibration-luna-json-medium-260910/cobol-modernization__VYo8FF2/agent/trace.jsonl), [count-dataset-tokens__pQ4iQpo](../logs/harbor/calibration-luna-json-medium-260910/count-dataset-tokens__pQ4iQpo/agent/trace.jsonl), [dna-assembly__LZNL8iV](../logs/harbor/calibration-luna-json-medium-260910/dna-assembly__LZNL8iV/agent/trace.jsonl), [make-doom-for-mips__RytdnR7](../logs/harbor/calibration-luna-json-medium-260910/make-doom-for-mips__RytdnR7/agent/trace.jsonl), [query-optimize__WzVfU6Y](../logs/harbor/calibration-luna-json-medium-260910/query-optimize__WzVfU6Y/agent/trace.jsonl), [write-compressor__UgXaWcP](../logs/harbor/calibration-luna-json-medium-260910/write-compressor__UgXaWcP/agent/trace.jsonl).
+### Superseded: luna-json-medium
 
 | Task | Split | Attempt raw reward (result links) | avg@2 | Steps (mean) | USD (mean) | Agent s (mean) | Exceptions |
 | --- | --- | --- | ---: | ---: | ---: | ---: | --- |
@@ -746,53 +597,3 @@ No-action traces: [chess-best-move__qCP95LZ](../logs/harbor/calibration-luna-jso
 | protein-assembly | sealed | [0.0](../logs/harbor/calibration-luna-json-medium-260910/protein-assembly__8wXcGcE/result.json), [0.0](../logs/harbor/calibration-luna-json-medium-260910/protein-assembly__b8hFCv5/result.json) | 0% | 14.5 | 0.068585 | 184.7 | NonZeroAgentExitCodeError |
 | raman-fitting | sealed | [0.0](../logs/harbor/calibration-luna-json-medium-260910/raman-fitting__jReoUok/result.json), [None](../logs/harbor/calibration-luna-json-medium-260910/raman-fitting__mcgTpin/result.json) | 0% | 13.5 | 0.025804 | 130.4 | RuntimeError |
 | torch-pipeline-parallelism | sealed | [0.0](../logs/harbor/calibration-luna-json-medium-260910/torch-pipeline-parallelism__KuRdabt/result.json), [0.0](../logs/harbor/calibration-luna-json-medium-260910/torch-pipeline-parallelism__i8Z7DwT/result.json) | 0% | 4.0 | 0.011473 | 55.7 | none |
-
-Environment build/setup failures:
-
-None recorded.
-
-Observed rate-limit headers (all distinct strings or numeric min/max; request IDs remain in the ledger):
-
-```json
-{
-  "x-ratelimit-abusepenalty-active": [
-    "False"
-  ],
-  "x-ratelimit-key": [
-    "gpt56luna"
-  ],
-  "x-ratelimit-limit-requests": {
-    "min": 500.0,
-    "max": 500.0
-  },
-  "x-ratelimit-limit-tokens": {
-    "min": 500000.0,
-    "max": 500000.0
-  },
-  "x-ratelimit-remaining-requests": {
-    "min": 497.0,
-    "max": 499.0
-  },
-  "x-ratelimit-remaining-tokens": {
-    "min": 461927.0,
-    "max": 499811.0
-  },
-  "x-ratelimit-renewalperiod-requests": {
-    "min": 60.0,
-    "max": 60.0
-  },
-  "x-ratelimit-renewalperiod-tokens": {
-    "min": 60.0,
-    "max": 60.0
-  },
-  "x-ratelimit-reset-requests": {
-    "min": 0.0,
-    "max": 0.0
-  },
-  "x-ratelimit-reset-tokens": {
-    "min": 0.0,
-    "max": 4.0
-  }
-}
-```
-
