@@ -8,14 +8,19 @@ from pathlib import Path
 from harbor.models.job.config import JobConfig
 
 from harness.seed import API_SYSTEM, NATIVE_SYSTEM, NATIVE_TOOLS
-from scripts.calibrate import CONFIGS, ROOT
+from scripts.calibrate import CONFIGS, MEDIUM_CONFIGS, ROOT
 from scripts.calibration_report import collect
 from scripts.cost_report import read_ledger
 
 
 def main():
     ledger = read_ledger(ROOT / "costs/ledger.jsonl")
-    calls = [row for row in ledger if row.get("phase") == "P1.2"]
+    # The medium follow-up has an independent $8 guard and audit artifact.
+    calls = [
+        row
+        for row in ledger
+        if row.get("phase") == "P1.2" and row.get("arm") not in MEDIUM_CONFIGS
+    ]
     ids = {row["call_id"] for row in calls}
     assert len(ids) == len(calls), "Duplicate calibration ledger records"
     for row in calls:

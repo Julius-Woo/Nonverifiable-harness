@@ -16,8 +16,10 @@ Previously unpriced calls resolved with the same-date price table: 1. Original l
 | P0.3 | A0 | task | gpt-5.6-luna-2026-07-09 | 22 | 0 | 64846 | 0 | 6464 | 1951 | 0.023800 | 0 | 0 | 72.996 |
 | P0.4 | assessment | review | gpt-6-astra | 1 | 1 | 24554 | 0 | 2103 | 1808 | 0.412067 | 0 | 1 | 60.301 |
 | P1.2 | luna-json | task | gpt-5.6-luna-2026-07-09 | 398 | 0 | 1813298 | 1654 | 167445 | 100220 | 0.650967 | 0 | 0 | 2210.928 |
+| P1.2 | luna-json-medium | task | gpt-5.6-luna-2026-07-09 | 453 | 4 | 2684904 | 0 | 239444 | 141020 | 0.955728 | 0 | 0 | 3745.828 |
 | P1.2 | luna-native | task | gpt56luna | 60 | 60 | 0 (+60 unknown) | 0 (+60 unknown) | 0 (+60 unknown) | 0 (+60 unknown) | 0.000000 | 60 | 0 | 22.064 |
 | P1.2 | mini-json | task | gpt-5-mini-2025-08-07 | 268 | 1 | 1056468 | 553344 | 106332 | 46016 | 0.352279 | 0 | 0 | 1372.366 |
+| P1.2 | mini-json-medium | task | gpt-5-mini-2025-08-07 | 278 | 18 | 1341531 | 750592 | 289768 | 220864 | 0.746036 | 0 | 0 | 2993.627 |
 | P1.2 | mini-native | task | gpt-5-mini | 2 | 2 | 0 (+2 unknown) | 0 (+2 unknown) | 0 (+2 unknown) | 0 (+2 unknown) | 0.000000 | 2 | 0 | 0.000 |
 | P1.2 | mini-native | task | gpt-5-mini-2025-08-07 | 299 | 6 | 1120018 | 452736 | 104722 | 39744 | 0.387583 | 0 | 0 | 1408.069 |
 | P1.2 | protocol-diagnostic | task | gpt56luna | 1 | 1 | 0 (+1 unknown) | 0 (+1 unknown) | 0 (+1 unknown) | 0 (+1 unknown) | 0.000000 | 1 | 0 | 0.325 |
@@ -25,7 +27,7 @@ Previously unpriced calls resolved with the same-date price table: 1. Original l
 | P1.2 | terra-json | task | gpt56terra | 1 | 1 | 0 (+1 unknown) | 0 (+1 unknown) | 0 (+1 unknown) | 0 (+1 unknown) | 0.000000 | 1 | 0 | 0.007 |
 | P1.2 | terra-native | task | gpt56terra | 60 | 60 | 0 (+60 unknown) | 0 (+60 unknown) | 0 (+60 unknown) | 0 (+60 unknown) | 0.000000 | 60 | 0 | 22.649 |
 
-Recorded calls: 1578. Known USD subtotal: $10.129604. Unknown USD calls: 125.
+Recorded calls: 2309. Known USD subtotal: $11.831367. Unknown USD calls: 125.
 
 Source rates and verification date: `scripts/prices.json`.
 Raw evidence: each ledger record's `raw_dir`. Rollout timings: `logs/<run_id>/timing.jsonl`.

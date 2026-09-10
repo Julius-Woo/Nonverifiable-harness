@@ -105,7 +105,10 @@ def operational_notes(results):
                 for t in trials
             )
             run_dir = ROOT / "logs" / job.name
-            memory = read_ledger(run_dir / "memory.jsonl")
+            memory = [
+                row for row in read_ledger(run_dir / "memory.jsonl")
+                if "available_gb" in row
+            ]
             low = min((m["available_gb"] for m in memory), default=None)
             pauses = sum(m["available_gb"] < 6 for m in memory)
             summary_path = run_dir / "summary.json"
@@ -734,6 +737,17 @@ def render(results, split):
 
 
 def main():
+    # Preserve the completed follow-up when rebuilding through the old entry.
+    from scripts.calibrate import MEDIUM_CONFIGS
+
+    if all(
+        (ROOT / "logs" / f"calibration-{label}-260910" / "summary.json")
+        .exists()
+        for label in MEDIUM_CONFIGS
+    ):
+        from scripts.calibration_medium_report import main as medium_main
+
+        return medium_main()
     ledger = read_ledger(ROOT / "costs/ledger.jsonl")
     prices = json.loads((ROOT / "scripts/prices.json").read_text())
     calibration_calls = [r for r in ledger if r.get("phase") == "P1.2"]

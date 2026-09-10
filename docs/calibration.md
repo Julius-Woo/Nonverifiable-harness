@@ -14,13 +14,15 @@ Dataset `terminal-bench@2.0`, commit `69671fbaac6d67a7ef0dfec016cc38a64ef7a77c`.
 
 The proportional 30-task allocation has only one easy task; it is impossible to put an easy task in every split while retaining that allocation. Metadata hashes are stored with each selected task. Reproduce with `uv run python -m scripts.make_tb2_split`.
 
-Each configuration uses all 30 tasks × 2 fresh attempts (avg@2), low reasoning, 4,096 max completion tokens, 24 model calls, 30 seconds per command, 180 seconds per API call, and unchanged task-defined Harbor build/agent/verifier timeouts. Temperature and generation seed are omitted (provider defaults); 260910 is the dataset-sampling and analysis seed. Zero API retries and zero Harbor retries. No planning, self-verification, model-specific text, or rescue logic was added. The API JSON prompt only removes the CLI-residue sentence. Native changes only protocol instructions and message transport: exactly terminal/read_file/write_file function tools, `parallel_tool_calls=false`, and a plain final message to finish. Native actions normalize into the same assistant/observation/finish JSONL records. Native here means Chat Completions function tools; Responses API was not measured.
+Each original configuration uses all 30 tasks × 2 fresh attempts (avg@2), low reasoning, 4,096 max completion tokens, 24 model calls, 30 seconds per command, 180 seconds per API call, and unchanged task-defined Harbor build/agent/verifier timeouts. Temperature and generation seed are omitted (provider defaults); 260910 is the dataset-sampling and analysis seed. Zero API retries and zero Harbor retries. No planning, self-verification, model-specific text, or rescue logic was added. The API JSON prompt only removes the CLI-residue sentence. Native changes only protocol instructions and message transport: exactly terminal/read_file/write_file function tools, `parallel_tool_calls=false`, and a plain final message to finish. Native actions normalize into the same assistant/observation/finish JSONL records. Native here means Chat Completions function tools; Responses API was not measured.
 
-Batches run sequentially on the same host. The initial mini/json batch used concurrency 8. The recovery and all remaining batches use concurrency 4, as required by the resume instruction. These 30-second command limits are part of the unchanged seed and do not by themselves establish host overload. Image pulls and long verifiers affect batch wall time, so compare agent seconds separately. The first batch warms Docker images for later batches. Source hashes are archived in [the manifest](../logs/calibration_source_manifest.json).
+Batches run sequentially on the same host. The initial mini/json batch used concurrency 8. The recovery and all remaining original batches use concurrency 4, as required by the resume instruction. These 30-second command limits are part of the unchanged seed and do not by themselves establish host overload. Image pulls and long verifiers affect batch wall time, so compare agent seconds separately. The first batch warms Docker images for later batches. Source hashes are archived in [the manifest](../logs/calibration_source_manifest.json).
 
 Run a batch with `uv run python -m scripts.calibrate luna-native --concurrency 4`; substitute any configuration below. Each launch archives its full pinned Harbor config in `logs/calibration-<configuration>-260910/config.json`. Rebuild this report with `uv run python -m scripts.calibration_report`.
 
-USD uses measured API token usage and `scripts/prices.json` standard API proxy rates, not verified Azure invoice charges. Terra is $2 input / $0.20 cached input / $2.50 cache write / $12 output per million tokens in the unchanged [recorded price table](../scripts/prices.json). Reasoning is included in output. Every logical API call is ledgered, with HTTP attempts and rate-limit headers nested under it. A process-safe shared reservation guard caps this experiment at $40; every rollout has a $1 projected cap. Ambiguous request charges retain conservative reservations.
+USD uses measured API token usage and `scripts/prices.json` standard API proxy rates, not verified Azure invoice charges. Terra is $2 input / $0.20 cached input / $2.50 cache write / $12 output per million tokens in the unchanged [recorded price table](../scripts/prices.json). Reasoning is included in output. Every logical API call is ledgered, with HTTP attempts and rate-limit headers nested under it. A process-safe shared reservation guard caps the original experiment at $40; every rollout has a $1 projected cap. Ambiguous request charges retain conservative reservations.
+
+The two `-medium` follow-up rows use the identical 30-task split, seed, JSON prompt, 24-call cap, 4,096 completion tokens, command/API timeouts, and zero retries; only `reasoning_effort=medium` changes model behavior. Both follow-up batches run sequentially at `--n-concurrent 3` while W9 shares Docker, with at most six combined `alexgshaw` containers. They share a separate **$8** guard in `costs/calibration_medium_budget.json` and retain the **$1** per-rollout guard. Reproduce with `sg docker -c 'uv run python -m scripts.calibrate mini-json-medium --concurrency 3'` (substitute `luna-json-medium`); regenerate this extension with `uv run python -m scripts.calibration_medium_report`. The original six rows and their accounting below are retained.
 
 ## Metrics and results
 
@@ -35,6 +37,8 @@ Rows rejected by the API have zero operational success, not a measured seed-accu
 | luna-native | 60/60; 60 | 0.0% (0/60); API rejected | not applicable | 0.0% | 0.0% | 0.0% | 0 finishes; unassessed |
 | terra-native | 60/60; 60 | 0.0% (0/60); API rejected | not applicable | 0.0% | 0.0% | 0.0% | 0 finishes; unassessed |
 | terra-json | 60/60; 49 | 28.3% (17/60) | 13.3%–43.3% | 38.9% | 16.7% | 8.3% | 1/60 (1.7%) |
+| mini-json-medium | 60/60; 55 | 13.3% (8/60) | 5.0%–23.3% | 16.7% | 8.3% | 8.3% | 0/60 (0.0%) |
+| luna-json-medium | 60/60; 50 | 33.3% (20/60) | 18.3%–50.0% | 38.9% | 33.3% | 16.7% | 7/60 (11.7%) |
 
 | Configuration | Mean steps | Mean known USD | Max known USD | Known total USD | Mean agent s | Batch wall s | Concurrency | 429 / 5xx | Harbor timeouts | Command timeouts | HTTP 400 | Unknown-cost calls |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
@@ -44,6 +48,8 @@ Rows rejected by the API have zero operational success, not a measured seed-accu
 | luna-native | 1.00 | 0.000000 | 0.000000 | 0.000000 | 0.44 | 972.23 | 4 | 0 / 0 | 0 | 0 | 60 | 60 |
 | terra-native | 1.00 | 0.000000 | 0.000000 | 0.000000 | 0.40 | 981.57 | 4 | 0 / 0 | 0 | 0 | 60 | 60 |
 | terra-json | 6.10 | 0.124265 | 0.855366 | 7.455917 | 68.23 | 1495.78 | 4 | 0 / 0 | 0 | 11 | 0 | 1 |
+| mini-json-medium | 4.63 | 0.012434 | 0.042391 | 0.746036 | 54.38 | 2151.86 | 3 | 0 / 0 | 0 | 5 | 0 | 0 |
+| luna-json-medium | 7.55 | 0.015929 | 0.133919 | 0.955728 | 77.41 | 2639.47 | 3 | 0 / 0 | 0 | 10 | 0 | 0 |
 
 Paired task-bootstrap contrasts (first minus second; provisional if either batch is unfinished). API-rejected configurations are omitted from capability contrasts:
 
@@ -65,59 +71,47 @@ Eligibility requires a completed 30-task avg@2 pass rate inside 15–45% and no-
 | luna-native | not measurable: API rejects configuration | not assessed: no model response | pass | no: unsupported as tested |
 | terra-native | not measurable: API rejects configuration | not assessed: no model response | pass | no: unsupported as tested |
 | terra-json | within range | pass | pass | yes |
+| mini-json-medium | below 15% | pass | pass | no |
+| luna-json-medium | within range | fail | pass | no |
 
 <!-- RECOMMENDATION -->
-**Recommend GPT-5.6 Terra + JSON**, deployment `gpt56terra` on `TASK_ALT2`,
-with low reasoning, 4,096 completion tokens, 24 calls, the existing 30-second
-command limit, and concurrency 4. Select `tool_protocol=json` explicitly in
-future experiment configurations. Terra/json is the **only tested configuration
-meeting all three gates**: 28.3% avg@2 (17/60), 1.7% no-action finishes (1/60),
-and the same model-agnostic protocol prompt used for the other JSON models.
-Its search/anchor/sealed pass rates are 38.9% / 16.7% / 8.3%.
+**Eligibility re-applied after both medium-reasoning batches.** Every eligible configuration is listed below so the user can choose. Costs use measured known USD per completed rollout; the 2,800-rollout projection covers task-model API calls only and excludes judges, evolvers, and cross-judges.
 
-Both Mini configurations fall below the 15% pass-rate floor (8.3%). Luna/json
-meets the pass-rate target (23.3%) but fails the no-action gate (11.7%): the
-smoke-run problem persists on this fixed sample. Luna/native and Terra/native
-each produced 60 HTTP 400 rejections and no model responses under the tested
-Chat Completions/low-reasoning configuration. They are unsupported as tested;
-this experiment does not measure native tools through the Responses API.
+| Eligible configuration | Reasoning | Pass avg@2 | No-action | USD / rollout | Projected USD / 2,800 rollouts |
+| --- | --- | ---: | ---: | ---: | ---: |
+| terra-json | low | 28.3% | 1.7% | 0.124265 | 347.94 |
 
-The recommendation carries a substantial measured cost premium: Terra/json
-averaged **$0.124265 per rollout**, maximum **$0.855366**, and **68.23 agent
-seconds**, versus Luna/json's $0.010849 and 47.08 seconds. That is 11.45× the
-mean cost and 1.45× the agent time. Terra's 5.0 percentage-point pass advantage
-over Luna has a paired task-bootstrap 95% interval of **−5.0 to +16.7 pp**;
-the choice follows the predefined eligibility gates, without establishing a
-statistically clear capability advantage. The 30-task estimate has a wide
-95% interval (13.3–43.3% for Terra/json), so this supports a pilot baseline,
-not a precise full-dataset accuracy estimate.
+The lowest-cost eligible option is **terra-json** at **$0.124265/rollout** (**$347.94** for 2,800). This is a cost-based recommendation within the predefined gates, not a claim of a statistically established capability advantage. No pilot configuration is changed by this report.
 
-Terra/json also recorded 11 command timeouts, 12 empty-answer API responses,
-one 24-call exhaustion, and one projected rollout-budget stop. All remain in
-the results. The budget stop occurred on `gcode-to-text__e636jJW` at $0.828084
-already used; the next request was rejected locally before HTTP dispatch.
-Its ledger USD remains null, but its incremental API usage is zero. All actual
-Terra/json HTTP responses have priced usage. The cost-summary footnote
-separates this local stop from requests with unknown charges.
+Even the lowest-cost eligible option's task-only projection exceeds the **$300 whole-pilot guard** in `docs/decisions-260910.md` Section 3, before other model roles. The current eligibility gates and 2,800-rollout pilot therefore have no measured eligible option that fits that guard. This report does not change the guard or authorize a pilot run.
 
-The completed experiment contains **360 finalized attempt slots and 328
-verifier rewards**; the other 32 slots are the explicitly listed command
-failures. Nine mini/native slots use marked recovery results. The ledger has
-**1,454 logical calls/request artifacts**, including the separate diagnostic
-and two reconstructed interrupted requests. Known API cost is **$8.846745**;
-retained conservative reservations are **$3.662750**, for **$12.509495 / $40**
-used or reserved. The 124 null-cost ledger records comprise 120 benchmark
-HTTP 400 rejections, one diagnostic rejection, two interrupted requests,
-and the one local budget stop. The per-rollout $1 guard was respected.
+### Medium versus low reasoning
 
-Verification: **67 focused harness/calibration tests passed**, scoped Ruff
-checks passed, the split reproduced exactly from all 89 cached metadata files,
-and [the final audit](../logs/calibration_final_audit.json) verified two
-finalized slots per task/configuration, all 1,453 benchmark request artifacts
-plus the diagnostic ledger entry, common prompts and fixed settings, pinned
-task revisions, unchanged seed/API/price/split hashes, and budget reconciliation.
-No calibration containers remain. No commit, push, model CLI call, or change
-to the protected planning documents or `.env` was made.
+| Configuration | Pass change (pp; paired 95% CI) | No-action, low → medium | USD / rollout, low → medium | Cost ratio | Agent s, low → medium | Agent-time ratio |
+| --- | --- | --- | --- | ---: | --- | ---: |
+| mini-json-medium | +5.0 (-1.7 to +11.7) | 0/60 → 0/60 | 0.005871 → 0.012434 | 2.12× | 30.05 → 54.38 | 1.81× |
+| luna-json-medium | +10.0 (-1.7 to +21.7) | 7/60 → 7/60 | 0.010849 → 0.015929 | 1.47× | 47.08 → 77.41 | 1.64× |
+
+Mini's escalation rule is now measured: medium yields 8/60 passes (13.3%) and 0/60 no-action finishes; it is ineligible.
+
+Luna at medium records 7/60 (11.7%) no-action finishes versus 7/60 (11.7%) at low. The no-action gate still fails; medium reasoning does not resolve the seed concern on this sample.
+
+No-action measures explicit finish records with zero executed tools. Empty API answers remain separate operational failures, even when no tool ran. Mini/medium recorded 18 empty-answer failures; Luna/medium recorded 4. A lower no-action finish rate therefore does not by itself establish that every form of failing before tool use was resolved.
+
+Agent latency is reported separately from batch wall time. The medium jobs use concurrency 3 and share Docker with W9; the original Mini/JSON and Luna/JSON rows used 8 and 4. Batch-time and latency differences therefore include host effects. All solver failures remain in the fixed denominator; the measured 30-task confidence intervals remain wide.
+
+### Follow-up accounting and verification
+
+Both jobs completed **120 attempt slots** with **105 verifier rewards**. All **731 request artifacts** reconcile to the ledger. Known follow-up cost is **$1.701763**; guard used/reserved is **$1.701763 / $8**, including **$0.000000** retained reservations and 0 unknown-cost calls. All rollout guards stayed at or below $1. [Follow-up audit](../logs/calibration-medium-followup-260910/audit.json).
+
+| Job | Min MemAvailable GiB | Samples below 6 GiB | Max alexgshaw at admission | Max periodic task containers | Docker admission pauses |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| [calibration-mini-json-medium-260910](../logs/calibration-mini-json-medium-260910/memory.jsonl) | 22.88 | 0 | 4 | 5 | 0 |
+| [calibration-luna-json-medium-260910](../logs/calibration-luna-json-medium-260910/memory.jsonl) | 21.04 | 0 | 4 | 5 | 0 |
+
+MemAvailable admission starts at 10 GiB, pauses new trials below 6 GiB, and resumes at 10 GiB; running trials finish. Memory and Docker statistics are sampled every two minutes, with admission checks between trials. Source hashes verify unchanged harness, prompts, split, and prices. The original report and recommendation are archived [here](../logs/calibration-medium-followup-260910/calibration-before.md). Focused test and lint results are recorded in [verification](../logs/calibration-medium-followup-260910/verification.txt). No commit, push, or model CLI call was made.
+
+Admission counts come from `docker ps` image names; periodic counts cover task service names ending in `__env-main-1` in Docker stats. Mini admission events are in its memory log; Luna admission events are in [docker_admission.jsonl](../logs/calibration-luna-json-medium-260910/docker_admission.jsonl). The completed follow-up left no containers of its own running.
 <!-- END RECOMMENDATION -->
 
 ## Interrupted runs, memory guard, and accounting
@@ -141,7 +135,7 @@ The resumed batches ran in order: luna/native, luna/json, terra/native, then bud
 
 Interrupted segment wall times are lower bounds from the last persisted Harbor update; exact watchdog kill timestamps were not retained. Mini/native batch wall is the sum of those lower bounds and the measured final recovery wall; driver downtime is excluded. All other completed batch walls are measured by the launcher. Historical mini/json used concurrency 8; this limits causal latency comparisons with the later batches.
 
-Experiment known API cost, including interrupted work: **$8.846745**. Shared guard used/reserved: **$12.509495 / $40**. Interrupted mini/native work accounts for $0.037620 of known cost and is included in configuration totals, but excluded from completed-rollout means. `costs/summary.md` covers the entire project ledger; experiment totals here filter phase P1.2.
+Experiment known API cost, including interrupted work: **$8.846745**. Shared guard used/reserved: **$12.509495 / $40**. Interrupted mini/native work accounts for $0.037620 of known cost and is included in configuration totals, but excluded from completed-rollout means. `costs/summary.md` covers the entire project ledger; these historical totals cover the original six configurations and diagnostic; the medium follow-up is accounted separately above.
 
 Two lost ledger writes were reconstructed from orphan request artifacts, with unknown dispatch/status, response, usage, cost, and latency explicitly preserved. Their existing conservative reservations total **$0.023641**; they were not released or charged twice. API error calls also retain reservations when usage is unavailable. [Recovery audit](../logs/calibration_ledger_recovery.jsonl). Every saved calibration request now has a ledger record. Reported HTTP status counts exclude these unknown statuses.
 
@@ -615,6 +609,189 @@ Observed rate-limit headers (all distinct strings or numeric min/max; request ID
   "x-ratelimit-reset-tokens": {
     "min": 0.0,
     "max": 2.0
+  }
+}
+```
+
+
+### mini-json-medium
+
+Served models: gpt-5-mini-2025-08-07. Calls: 278; unknown-cost calls: 0. Agent started: 60/60. No-action among started agents: 0.0%. Exceptions: `{"NonZeroAgentExitCodeError": 18, "RuntimeError": 5}`.
+Calls with a served-model response: 278; HTTP 400 rejections: 0.
+
+Failure messages and counts: `{"Backend failed: API returned no answer": 18, "Command timed out after 30 seconds": 5}`.
+
+No-action traces: none.
+
+| Task | Split | Attempt raw reward (result links) | avg@2 | Steps (mean) | USD (mean) | Agent s (mean) | Exceptions |
+| --- | --- | --- | ---: | ---: | ---: | ---: | --- |
+| bn-fit-modify | search | [0.0](../logs/harbor/calibration-mini-json-medium-260910/bn-fit-modify__AxveZUP/result.json), [1.0](../logs/harbor/calibration-mini-json-medium-260910/bn-fit-modify__wKbzax7/result.json) | 50% | 4.0 | 0.015859 | 66.4 | NonZeroAgentExitCodeError |
+| break-filter-js-from-html | search | [0.0](../logs/harbor/calibration-mini-json-medium-260910/break-filter-js-from-html__4TXSBqd/result.json), [0.0](../logs/harbor/calibration-mini-json-medium-260910/break-filter-js-from-html__a6PPeM7/result.json) | 0% | 5.0 | 0.007137 | 35.2 | none |
+| build-pmars | search | [None](../logs/harbor/calibration-mini-json-medium-260910/build-pmars__ES2Cgmf/result.json), [None](../logs/harbor/calibration-mini-json-medium-260910/build-pmars__RTWEJ6o/result.json) | 0% | 1.0 | 0.000728 | 35.1 | RuntimeError, RuntimeError |
+| caffe-cifar-10 | search | [0.0](../logs/harbor/calibration-mini-json-medium-260910/caffe-cifar-10__2QpN4Ri/result.json), [0.0](../logs/harbor/calibration-mini-json-medium-260910/caffe-cifar-10__aSQvRG2/result.json) | 0% | 7.0 | 0.024279 | 98.7 | NonZeroAgentExitCodeError |
+| cancel-async-tasks | search | [0.0](../logs/harbor/calibration-mini-json-medium-260910/cancel-async-tasks__WgnAbdK/result.json), [1.0](../logs/harbor/calibration-mini-json-medium-260910/cancel-async-tasks__Yh7gNCX/result.json) | 50% | 2.5 | 0.006329 | 28.2 | none |
+| cobol-modernization | search | [1.0](../logs/harbor/calibration-mini-json-medium-260910/cobol-modernization__e8A429z/result.json), [1.0](../logs/harbor/calibration-mini-json-medium-260910/cobol-modernization__xKydLXc/result.json) | 100% | 8.0 | 0.013546 | 54.8 | none |
+| count-dataset-tokens | search | [None](../logs/harbor/calibration-mini-json-medium-260910/count-dataset-tokens__ZCGCrNv/result.json), [None](../logs/harbor/calibration-mini-json-medium-260910/count-dataset-tokens__uT66cDz/result.json) | 0% | 4.0 | 0.009084 | 68.0 | RuntimeError, RuntimeError |
+| dna-assembly | search | [0.0](../logs/harbor/calibration-mini-json-medium-260910/dna-assembly__Cg3uQRM/result.json), [0.0](../logs/harbor/calibration-mini-json-medium-260910/dna-assembly__nFKkmab/result.json) | 0% | 4.5 | 0.008894 | 39.0 | NonZeroAgentExitCodeError |
+| hf-model-inference | search | [0.0](../logs/harbor/calibration-mini-json-medium-260910/hf-model-inference__Latia9o/result.json), [1.0](../logs/harbor/calibration-mini-json-medium-260910/hf-model-inference__d4AfvmD/result.json) | 50% | 3.5 | 0.011238 | 63.1 | none |
+| make-doom-for-mips | search | [0.0](../logs/harbor/calibration-mini-json-medium-260910/make-doom-for-mips__j3kKRqr/result.json), [0.0](../logs/harbor/calibration-mini-json-medium-260910/make-doom-for-mips__s8Eups6/result.json) | 0% | 11.0 | 0.026319 | 76.4 | NonZeroAgentExitCodeError |
+| mteb-leaderboard | search | [0.0](../logs/harbor/calibration-mini-json-medium-260910/mteb-leaderboard__9SgTbJh/result.json), [0.0](../logs/harbor/calibration-mini-json-medium-260910/mteb-leaderboard__pFbNvQM/result.json) | 0% | 4.0 | 0.003575 | 21.1 | none |
+| mteb-retrieve | search | [0.0](../logs/harbor/calibration-mini-json-medium-260910/mteb-retrieve__9wsvxGe/result.json), [0.0](../logs/harbor/calibration-mini-json-medium-260910/mteb-retrieve__zT4bjqh/result.json) | 0% | 3.0 | 0.005413 | 34.4 | none |
+| path-tracing | search | [0.0](../logs/harbor/calibration-mini-json-medium-260910/path-tracing__uU9AfQi/result.json), [0.0](../logs/harbor/calibration-mini-json-medium-260910/path-tracing__z8L89gJ/result.json) | 0% | 4.0 | 0.009222 | 34.0 | none |
+| pytorch-model-cli | search | [0.0](../logs/harbor/calibration-mini-json-medium-260910/pytorch-model-cli__osUEYyV/result.json), [0.0](../logs/harbor/calibration-mini-json-medium-260910/pytorch-model-cli__pWNMgxu/result.json) | 0% | 4.0 | 0.010493 | 46.5 | none |
+| qemu-alpine-ssh | search | [0.0](../logs/harbor/calibration-mini-json-medium-260910/qemu-alpine-ssh__H5CUM4q/result.json), [0.0](../logs/harbor/calibration-mini-json-medium-260910/qemu-alpine-ssh__bSMWmLk/result.json) | 0% | 5.0 | 0.019065 | 78.4 | NonZeroAgentExitCodeError |
+| query-optimize | search | [0.0](../logs/harbor/calibration-mini-json-medium-260910/query-optimize__DyZyTZb/result.json), [1.0](../logs/harbor/calibration-mini-json-medium-260910/query-optimize__QyQq9dL/result.json) | 50% | 4.5 | 0.006423 | 30.1 | none |
+| sqlite-db-truncate | search | [0.0](../logs/harbor/calibration-mini-json-medium-260910/sqlite-db-truncate__XjeEPWr/result.json), [0.0](../logs/harbor/calibration-mini-json-medium-260910/sqlite-db-truncate__eor8JqY/result.json) | 0% | 6.0 | 0.016117 | 60.0 | none |
+| write-compressor | search | [0.0](../logs/harbor/calibration-mini-json-medium-260910/write-compressor__rSkEfja/result.json), [0.0](../logs/harbor/calibration-mini-json-medium-260910/write-compressor__yvFWhpa/result.json) | 0% | 4.0 | 0.009828 | 44.3 | NonZeroAgentExitCodeError, NonZeroAgentExitCodeError |
+| chess-best-move | anchor | [0.0](../logs/harbor/calibration-mini-json-medium-260910/chess-best-move__hfsyAPe/result.json), [0.0](../logs/harbor/calibration-mini-json-medium-260910/chess-best-move__zuvTCoy/result.json) | 0% | 11.5 | 0.034123 | 117.2 | none |
+| compile-compcert | anchor | [None](../logs/harbor/calibration-mini-json-medium-260910/compile-compcert__HjuRkgX/result.json), [0.0](../logs/harbor/calibration-mini-json-medium-260910/compile-compcert__KtLWNqa/result.json) | 0% | 5.5 | 0.014087 | 76.1 | RuntimeError |
+| configure-git-webserver | anchor | [0.0](../logs/harbor/calibration-mini-json-medium-260910/configure-git-webserver__3bp88Bh/result.json), [0.0](../logs/harbor/calibration-mini-json-medium-260910/configure-git-webserver__CH4obta/result.json) | 0% | 4.5 | 0.019755 | 96.9 | NonZeroAgentExitCodeError |
+| filter-js-from-html | anchor | [0.0](../logs/harbor/calibration-mini-json-medium-260910/filter-js-from-html__PobKuZs/result.json), [0.0](../logs/harbor/calibration-mini-json-medium-260910/filter-js-from-html__ySYgTuX/result.json) | 0% | 2.0 | 0.011856 | 54.6 | NonZeroAgentExitCodeError |
+| polyglot-rust-c | anchor | [0.0](../logs/harbor/calibration-mini-json-medium-260910/polyglot-rust-c__8BC3rWq/result.json), [0.0](../logs/harbor/calibration-mini-json-medium-260910/polyglot-rust-c__rEtBBX9/result.json) | 0% | 1.0 | 0.008262 | 34.0 | NonZeroAgentExitCodeError, NonZeroAgentExitCodeError |
+| pypi-server | anchor | [1.0](../logs/harbor/calibration-mini-json-medium-260910/pypi-server__dgAyJoa/result.json), [0.0](../logs/harbor/calibration-mini-json-medium-260910/pypi-server__jfjSDQa/result.json) | 50% | 3.0 | 0.014369 | 72.5 | NonZeroAgentExitCodeError |
+| adaptive-rejection-sampler | sealed | [0.0](../logs/harbor/calibration-mini-json-medium-260910/adaptive-rejection-sampler__MUvrpB4/result.json), [0.0](../logs/harbor/calibration-mini-json-medium-260910/adaptive-rejection-sampler__dKr6RrR/result.json) | 0% | 1.0 | 0.008372 | 33.9 | NonZeroAgentExitCodeError, NonZeroAgentExitCodeError |
+| gcode-to-text | sealed | [0.0](../logs/harbor/calibration-mini-json-medium-260910/gcode-to-text__BGcSn8j/result.json), [0.0](../logs/harbor/calibration-mini-json-medium-260910/gcode-to-text__Qq7iFJ6/result.json) | 0% | 7.0 | 0.013448 | 37.9 | none |
+| headless-terminal | sealed | [1.0](../logs/harbor/calibration-mini-json-medium-260910/headless-terminal__XuayyfU/result.json), [0.0](../logs/harbor/calibration-mini-json-medium-260910/headless-terminal__qyxJBtZ/result.json) | 50% | 4.5 | 0.008658 | 38.5 | none |
+| protein-assembly | sealed | [0.0](../logs/harbor/calibration-mini-json-medium-260910/protein-assembly__Z63VSrA/result.json), [0.0](../logs/harbor/calibration-mini-json-medium-260910/protein-assembly__nuvdhXa/result.json) | 0% | 4.5 | 0.012074 | 55.4 | NonZeroAgentExitCodeError, NonZeroAgentExitCodeError |
+| raman-fitting | sealed | [0.0](../logs/harbor/calibration-mini-json-medium-260910/raman-fitting__BQo7riC/result.json), [0.0](../logs/harbor/calibration-mini-json-medium-260910/raman-fitting__HJiCRdE/result.json) | 0% | 7.5 | 0.014972 | 58.0 | none |
+| torch-pipeline-parallelism | sealed | [0.0](../logs/harbor/calibration-mini-json-medium-260910/torch-pipeline-parallelism__2ooaefd/result.json), [0.0](../logs/harbor/calibration-mini-json-medium-260910/torch-pipeline-parallelism__yUhynwm/result.json) | 0% | 2.0 | 0.009494 | 42.8 | NonZeroAgentExitCodeError, NonZeroAgentExitCodeError |
+
+Environment build/setup failures:
+
+None recorded.
+
+Observed rate-limit headers (all distinct strings or numeric min/max; request IDs remain in the ledger):
+
+```json
+{
+  "x-ratelimit-abusepenalty-active": [
+    "False"
+  ],
+  "x-ratelimit-key": [
+    "gpt-5-mini"
+  ],
+  "x-ratelimit-limit-requests": {
+    "min": 1000.0,
+    "max": 1000.0
+  },
+  "x-ratelimit-limit-tokens": {
+    "min": 1000000.0,
+    "max": 1000000.0
+  },
+  "x-ratelimit-remaining-requests": {
+    "min": 999.0,
+    "max": 999.0
+  },
+  "x-ratelimit-remaining-tokens": {
+    "min": 954309.0,
+    "max": 999811.0
+  },
+  "x-ratelimit-renewalperiod-requests": {
+    "min": 60.0,
+    "max": 60.0
+  },
+  "x-ratelimit-renewalperiod-tokens": {
+    "min": 60.0,
+    "max": 60.0
+  },
+  "x-ratelimit-reset-requests": {
+    "min": 0.0,
+    "max": 0.0
+  },
+  "x-ratelimit-reset-tokens": {
+    "min": 0.0,
+    "max": 2.0
+  }
+}
+```
+
+### luna-json-medium
+
+Served models: gpt-5.6-luna-2026-07-09. Calls: 453; unknown-cost calls: 0. Agent started: 60/60. No-action among started agents: 11.7%. Exceptions: `{"RuntimeError": 10, "NonZeroAgentExitCodeError": 6}`.
+Calls with a served-model response: 453; HTTP 400 rejections: 0.
+
+Failure messages and counts: `{"Command timed out after 30 seconds": 10, "Backend failed: API returned no answer": 4, "Seed exhausted its 24-call limit": 2}`.
+
+No-action traces: [chess-best-move__qCP95LZ](../logs/harbor/calibration-luna-json-medium-260910/chess-best-move__qCP95LZ/agent/trace.jsonl), [cobol-modernization__VYo8FF2](../logs/harbor/calibration-luna-json-medium-260910/cobol-modernization__VYo8FF2/agent/trace.jsonl), [count-dataset-tokens__pQ4iQpo](../logs/harbor/calibration-luna-json-medium-260910/count-dataset-tokens__pQ4iQpo/agent/trace.jsonl), [dna-assembly__LZNL8iV](../logs/harbor/calibration-luna-json-medium-260910/dna-assembly__LZNL8iV/agent/trace.jsonl), [make-doom-for-mips__RytdnR7](../logs/harbor/calibration-luna-json-medium-260910/make-doom-for-mips__RytdnR7/agent/trace.jsonl), [query-optimize__WzVfU6Y](../logs/harbor/calibration-luna-json-medium-260910/query-optimize__WzVfU6Y/agent/trace.jsonl), [write-compressor__UgXaWcP](../logs/harbor/calibration-luna-json-medium-260910/write-compressor__UgXaWcP/agent/trace.jsonl).
+
+| Task | Split | Attempt raw reward (result links) | avg@2 | Steps (mean) | USD (mean) | Agent s (mean) | Exceptions |
+| --- | --- | --- | ---: | ---: | ---: | ---: | --- |
+| bn-fit-modify | search | [1.0](../logs/harbor/calibration-luna-json-medium-260910/bn-fit-modify__APqheqc/result.json), [1.0](../logs/harbor/calibration-luna-json-medium-260910/bn-fit-modify__dL6HEJp/result.json) | 100% | 9.0 | 0.011651 | 58.5 | none |
+| break-filter-js-from-html | search | [0.0](../logs/harbor/calibration-luna-json-medium-260910/break-filter-js-from-html__HbHbs8T/result.json), [0.0](../logs/harbor/calibration-luna-json-medium-260910/break-filter-js-from-html__YqAdjVr/result.json) | 0% | 4.0 | 0.003367 | 31.7 | none |
+| build-pmars | search | [1.0](../logs/harbor/calibration-luna-json-medium-260910/build-pmars__UJsbhZS/result.json), [1.0](../logs/harbor/calibration-luna-json-medium-260910/build-pmars__tsaES6f/result.json) | 100% | 14.5 | 0.041307 | 77.8 | none |
+| caffe-cifar-10 | search | [None](../logs/harbor/calibration-luna-json-medium-260910/caffe-cifar-10__VfbuHSD/result.json), [None](../logs/harbor/calibration-luna-json-medium-260910/caffe-cifar-10__f7yXsBV/result.json) | 0% | 2.0 | 0.000340 | 35.4 | RuntimeError, RuntimeError |
+| cancel-async-tasks | search | [0.0](../logs/harbor/calibration-luna-json-medium-260910/cancel-async-tasks__5Haye9g/result.json), [0.0](../logs/harbor/calibration-luna-json-medium-260910/cancel-async-tasks__kGyyi2B/result.json) | 0% | 2.5 | 0.002811 | 29.8 | none |
+| cobol-modernization | search | [1.0](../logs/harbor/calibration-luna-json-medium-260910/cobol-modernization__7iu9TBx/result.json), [0.0](../logs/harbor/calibration-luna-json-medium-260910/cobol-modernization__VYo8FF2/result.json) | 50% | 3.0 | 0.003562 | 23.2 | none |
+| count-dataset-tokens | search | [1.0](../logs/harbor/calibration-luna-json-medium-260910/count-dataset-tokens__AFEn7n6/result.json), [0.0](../logs/harbor/calibration-luna-json-medium-260910/count-dataset-tokens__pQ4iQpo/result.json) | 50% | 7.0 | 0.010794 | 44.7 | none |
+| dna-assembly | search | [0.0](../logs/harbor/calibration-luna-json-medium-260910/dna-assembly__LZNL8iV/result.json), [0.0](../logs/harbor/calibration-luna-json-medium-260910/dna-assembly__owKKtkh/result.json) | 0% | 7.0 | 0.016395 | 71.3 | NonZeroAgentExitCodeError |
+| hf-model-inference | search | [1.0](../logs/harbor/calibration-luna-json-medium-260910/hf-model-inference__WmoGdaY/result.json), [1.0](../logs/harbor/calibration-luna-json-medium-260910/hf-model-inference__XVtcMUe/result.json) | 100% | 7.0 | 0.006349 | 42.4 | none |
+| make-doom-for-mips | search | [0.0](../logs/harbor/calibration-luna-json-medium-260910/make-doom-for-mips__RytdnR7/result.json), [None](../logs/harbor/calibration-luna-json-medium-260910/make-doom-for-mips__WceWNKL/result.json) | 0% | 4.5 | 0.008391 | 30.3 | RuntimeError |
+| mteb-leaderboard | search | [1.0](../logs/harbor/calibration-luna-json-medium-260910/mteb-leaderboard__ENtPpnN/result.json), [1.0](../logs/harbor/calibration-luna-json-medium-260910/mteb-leaderboard__qrcny77/result.json) | 100% | 12.5 | 0.024435 | 57.7 | none |
+| mteb-retrieve | search | [0.0](../logs/harbor/calibration-luna-json-medium-260910/mteb-retrieve__WxA7dLC/result.json), [0.0](../logs/harbor/calibration-luna-json-medium-260910/mteb-retrieve__tqeKQUA/result.json) | 0% | 5.5 | 0.002351 | 32.8 | none |
+| path-tracing | search | [0.0](../logs/harbor/calibration-luna-json-medium-260910/path-tracing__3KnATyD/result.json), [0.0](../logs/harbor/calibration-luna-json-medium-260910/path-tracing__ugpauz7/result.json) | 0% | 9.5 | 0.014301 | 65.8 | none |
+| pytorch-model-cli | search | [1.0](../logs/harbor/calibration-luna-json-medium-260910/pytorch-model-cli__2uPeH4A/result.json), [0.0](../logs/harbor/calibration-luna-json-medium-260910/pytorch-model-cli__nTpFczk/result.json) | 50% | 9.5 | 0.013678 | 77.0 | none |
+| qemu-alpine-ssh | search | [None](../logs/harbor/calibration-luna-json-medium-260910/qemu-alpine-ssh__LydQSYZ/result.json), [None](../logs/harbor/calibration-luna-json-medium-260910/qemu-alpine-ssh__ZaURSBo/result.json) | 0% | 22.0 | 0.033927 | 294.2 | RuntimeError, RuntimeError |
+| query-optimize | search | [1.0](../logs/harbor/calibration-luna-json-medium-260910/query-optimize__K43fGwD/result.json), [0.0](../logs/harbor/calibration-luna-json-medium-260910/query-optimize__WzVfU6Y/result.json) | 50% | 2.5 | 0.002379 | 14.4 | none |
+| sqlite-db-truncate | search | [1.0](../logs/harbor/calibration-luna-json-medium-260910/sqlite-db-truncate__hRA9SHT/result.json), [1.0](../logs/harbor/calibration-luna-json-medium-260910/sqlite-db-truncate__xg9rUtk/result.json) | 100% | 8.5 | 0.016368 | 66.5 | none |
+| write-compressor | search | [0.0](../logs/harbor/calibration-luna-json-medium-260910/write-compressor__UMDoizD/result.json), [0.0](../logs/harbor/calibration-luna-json-medium-260910/write-compressor__UgXaWcP/result.json) | 0% | 12.5 | 0.041645 | 190.6 | NonZeroAgentExitCodeError |
+| chess-best-move | anchor | [0.0](../logs/harbor/calibration-luna-json-medium-260910/chess-best-move__inNHNUK/result.json), [0.0](../logs/harbor/calibration-luna-json-medium-260910/chess-best-move__qCP95LZ/result.json) | 0% | 2.0 | 0.002737 | 34.2 | NonZeroAgentExitCodeError |
+| compile-compcert | anchor | [None](../logs/harbor/calibration-luna-json-medium-260910/compile-compcert__5N6CVAK/result.json), [None](../logs/harbor/calibration-luna-json-medium-260910/compile-compcert__tJgoydj/result.json) | 0% | 4.0 | 0.001174 | 42.4 | RuntimeError, RuntimeError |
+| configure-git-webserver | anchor | [1.0](../logs/harbor/calibration-luna-json-medium-260910/configure-git-webserver__63ZmFbi/result.json), [1.0](../logs/harbor/calibration-luna-json-medium-260910/configure-git-webserver__7d55HoZ/result.json) | 100% | 6.5 | 0.005554 | 46.3 | none |
+| filter-js-from-html | anchor | [0.0](../logs/harbor/calibration-luna-json-medium-260910/filter-js-from-html__szmf6vA/result.json), [0.0](../logs/harbor/calibration-luna-json-medium-260910/filter-js-from-html__vHZ8HaK/result.json) | 0% | 2.5 | 0.006603 | 44.4 | none |
+| polyglot-rust-c | anchor | [0.0](../logs/harbor/calibration-luna-json-medium-260910/polyglot-rust-c__APr4cm5/result.json), [0.0](../logs/harbor/calibration-luna-json-medium-260910/polyglot-rust-c__f3vwWxw/result.json) | 0% | 9.5 | 0.038747 | 304.5 | NonZeroAgentExitCodeError, NonZeroAgentExitCodeError |
+| pypi-server | anchor | [1.0](../logs/harbor/calibration-luna-json-medium-260910/pypi-server__CcpnBBQ/result.json), [1.0](../logs/harbor/calibration-luna-json-medium-260910/pypi-server__WdCt6SE/result.json) | 100% | 4.5 | 0.003020 | 25.8 | none |
+| adaptive-rejection-sampler | sealed | [None](../logs/harbor/calibration-luna-json-medium-260910/adaptive-rejection-sampler__Lhc38iz/result.json), [None](../logs/harbor/calibration-luna-json-medium-260910/adaptive-rejection-sampler__gdMcSX9/result.json) | 0% | 3.5 | 0.005958 | 60.8 | RuntimeError, RuntimeError |
+| gcode-to-text | sealed | [0.0](../logs/harbor/calibration-luna-json-medium-260910/gcode-to-text__7N696Vc/result.json), [0.0](../logs/harbor/calibration-luna-json-medium-260910/gcode-to-text__gcooiMd/result.json) | 0% | 12.5 | 0.041453 | 87.9 | none |
+| headless-terminal | sealed | [1.0](../logs/harbor/calibration-luna-json-medium-260910/headless-terminal__LgFWgXf/result.json), [1.0](../logs/harbor/calibration-luna-json-medium-260910/headless-terminal__MCnmdFv/result.json) | 100% | 6.5 | 0.012706 | 60.9 | none |
+| protein-assembly | sealed | [0.0](../logs/harbor/calibration-luna-json-medium-260910/protein-assembly__8wXcGcE/result.json), [0.0](../logs/harbor/calibration-luna-json-medium-260910/protein-assembly__b8hFCv5/result.json) | 0% | 14.5 | 0.068585 | 184.7 | NonZeroAgentExitCodeError |
+| raman-fitting | sealed | [0.0](../logs/harbor/calibration-luna-json-medium-260910/raman-fitting__jReoUok/result.json), [None](../logs/harbor/calibration-luna-json-medium-260910/raman-fitting__mcgTpin/result.json) | 0% | 13.5 | 0.025804 | 130.4 | RuntimeError |
+| torch-pipeline-parallelism | sealed | [0.0](../logs/harbor/calibration-luna-json-medium-260910/torch-pipeline-parallelism__KuRdabt/result.json), [0.0](../logs/harbor/calibration-luna-json-medium-260910/torch-pipeline-parallelism__i8Z7DwT/result.json) | 0% | 4.0 | 0.011473 | 55.7 | none |
+
+Environment build/setup failures:
+
+None recorded.
+
+Observed rate-limit headers (all distinct strings or numeric min/max; request IDs remain in the ledger):
+
+```json
+{
+  "x-ratelimit-abusepenalty-active": [
+    "False"
+  ],
+  "x-ratelimit-key": [
+    "gpt56luna"
+  ],
+  "x-ratelimit-limit-requests": {
+    "min": 500.0,
+    "max": 500.0
+  },
+  "x-ratelimit-limit-tokens": {
+    "min": 500000.0,
+    "max": 500000.0
+  },
+  "x-ratelimit-remaining-requests": {
+    "min": 497.0,
+    "max": 499.0
+  },
+  "x-ratelimit-remaining-tokens": {
+    "min": 461927.0,
+    "max": 499811.0
+  },
+  "x-ratelimit-renewalperiod-requests": {
+    "min": 60.0,
+    "max": 60.0
+  },
+  "x-ratelimit-renewalperiod-tokens": {
+    "min": 60.0,
+    "max": 60.0
+  },
+  "x-ratelimit-reset-requests": {
+    "min": 0.0,
+    "max": 0.0
+  },
+  "x-ratelimit-reset-tokens": {
+    "min": 0.0,
+    "max": 4.0
   }
 }
 ```

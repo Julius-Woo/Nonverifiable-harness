@@ -307,6 +307,8 @@ Exit criteria: one TB2 task completed end-to-end by the seed harness with an ora
 
 - 2026-09-10 (night): R7 (calibration review): under PREREG's definitions terra's no-action rate is 15% (token exhaustion) and a strict reading of A9 puts every low-effort configuration below 15%; native rejection cause identified (function tools + reasoning_effort unsupported on chat/completions). Task model cannot be frozen yet. Addendum AD10-AD12 added (tool-failure meaning, JSON protocol ratification, completion allowance). W5d interim: mini/json medium 13.3% at 2.1x cost; luna/json medium running. Re-analysis W5e queued after W5d.
 
+- 2026-09-10 (late): W5d done: medium reasoning gives mini/json 13.3% (0% no-action, USD 0.012/rollout) and luna/json 33.3% (11.7% no-action, USD 0.016); under the original (narrow) metric definitions terra/json low remains the only eligible configuration at USD 0.124/rollout (about USD 348 for 2,800 rollouts). W5e re-analysis under the corrected contracts (R7) launched. AD1/AD10-AD12 decision request updated for the user.
+
 ### 9.7 Proposed Amendments to Sections 1-8 (pending user approval)
 
 Sources: the literature digest `docs/background.md` (Part B deltas; independent review R2 pending) and the GDPevo assessment `docs/gdpevo_assessment.md` with its independent review R1 (`docs/reviews.md`). Sections 1-8 are unchanged until the user approves. Review R2 of the digest is complete; its dispositions are in `docs/reviews.md`.

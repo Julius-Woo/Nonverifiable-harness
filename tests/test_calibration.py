@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 
 from scripts import calibration_report
-from scripts.calibrate import CONFIGS, job_config
+from scripts.calibrate import CONFIGS, MEDIUM_CONFIGS, job_config
 from scripts.make_tb2_split import COMMIT
 
 
@@ -28,6 +28,31 @@ def test_all_jobs_are_pinned_and_have_no_retries():
 def test_concurrency_above_four_is_rejected():
     with pytest.raises(ValueError, match="concurrency 4"):
         job_config("luna-native", 8)
+
+
+def test_medium_jobs_change_only_reasoning_and_operational_settings():
+    for label in MEDIUM_CONFIGS:
+        baseline = job_config(label.removesuffix("-medium"), 4)
+        medium = job_config(label, 3)
+        assert medium.tasks == baseline.tasks
+        assert medium.n_attempts == baseline.n_attempts == 2
+        assert medium.retry == baseline.retry
+        assert medium.environment == baseline.environment
+        old = baseline.agents[0].kwargs.copy()
+        new = medium.agents[0].kwargs.copy()
+        assert new.pop("reasoning_effort") == "medium"
+        assert old.pop("reasoning_effort") == "low"
+        assert new.pop("shared_budget_usd") == 8
+        assert old.pop("shared_budget_usd") == 40
+        assert new["shared_budget_path"].endswith(
+            "calibration_medium_budget.json"
+        )
+        for key in ("shared_budget_path", "run_id", "arm", "timing_path"):
+            old.pop(key)
+            new.pop(key)
+        assert old == new
+        with pytest.raises(ValueError, match="concurrency 3"):
+            job_config(label, 4)
 
 
 def test_job_elapsed_accepts_mixed_utc_formats():

@@ -1,7 +1,10 @@
 """Memory admission uses available memory and preserves pause hysteresis."""
 
+import asyncio
 import json
 from pathlib import Path
+
+import pytest
 
 from scripts import harbor_memory_guard as guard
 
@@ -39,3 +42,28 @@ def test_pause_persists_until_ten_gib():
     assert not admission.ready.is_set()
     admission.observe(10)
     assert admission.ready.is_set()
+
+
+@pytest.mark.asyncio
+async def test_container_guard_reserves_pending_startups(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setenv(
+        "CALIBRATION_MEMORY_LOG", str(tmp_path / "memory.jsonl")
+    )
+    output = "alexgshaw/task:tag external-1\n"
+    monkeypatch.setattr(
+        guard.subprocess, "check_output", lambda *a, **kw: output
+    )
+    admission = guard.ContainerGuard(3)
+    await admission.acquire("first")
+    await admission.acquire("second")
+    pending = asyncio.create_task(admission.acquire("third"))
+    await asyncio.sleep(0.05)
+    assert not pending.done()
+    pending.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await pending
+    await admission.release("first")
+    await admission.acquire("third")
+    assert admission.active == {"second", "third"}
