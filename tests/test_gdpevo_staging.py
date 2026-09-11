@@ -109,3 +109,74 @@ def test_filtered_service_has_no_grader(tmp_path, group):
 def test_invalid_task_identity(tmp_path, group, split, task):
     with pytest.raises(ValueError):
         stage_task(group, split, task, tmp_path / "attempt")
+
+
+def test_physical_column_filter_stops_alias_and_union(tmp_path):
+    import sqlite3
+
+    stage_service(19, tmp_path / "service")
+    database = tmp_path / "service/env/data/licensing.db"
+    with sqlite3.connect(database) as db:
+        for table, count in (
+            ("contractor_applications", 10),
+            ("liquor_applications", 9),
+            ("alcohol_licensees", 8),
+        ):
+            columns = [
+                r[1] for r in db.execute(f'PRAGMA table_info("{table}")')
+            ]
+            assert len(columns) == count
+            assert "target_group" not in columns
+            aliases = ",".join(f"NULL AS safe{i}" for i in range(count + 1))
+            with pytest.raises(sqlite3.OperationalError, match="same number"):
+                db.execute(
+                    f"SELECT {aliases} WHERE 0 UNION ALL SELECT * FROM {table}"
+                ).fetchall()
+            assert (
+                len(db.execute(f"SELECT * FROM {table} LIMIT 1").fetchone())
+                == count
+            )
+    assert b"target_group" not in database.read_bytes()
+
+
+def test_manifest_removes_nested_task_mappings():
+    from gdpevo.services import clean_metadata
+
+    assert clean_metadata(
+        {
+            "primary_matters": [{"task_id": "train_001", "matter": "A"}],
+            "task_relevant_seed_objects": {"test_001": "B"},
+            "service": "public",
+        }
+    ) == {"service": "public"}
+
+
+@pytest.mark.parametrize("group", [11, 13, 14, 16, 17, 18, 19, 20])
+def test_public_projection_preserves_every_business_row(tmp_path, group):
+    import sqlite3
+    from collections import Counter
+
+    from gdpevo import ROOT
+
+    report = json.loads((ROOT / "data/gdpevo_hidden_columns.json").read_text())
+    spec = next(g for g in report["groups"] if g["group"] == group)
+    stage_service(group, tmp_path / "service")
+    original = SOURCE / f"data/task_groups/task_group_{group:03}/env"
+    for database in spec["databases"]:
+        with sqlite3.connect(
+            f"file:{original / database['path']}?mode=ro", uri=True
+        ) as source:
+            with sqlite3.connect(
+                tmp_path / "service/env" / database["path"]
+            ) as staged:
+                for table in database["tables"]:
+                    columns = ",".join(
+                        '"' + c.replace('"', '""') + '"'
+                        for c in table["public_columns"]
+                    )
+                    query = f'SELECT {columns} FROM "{table["table"]}"'
+                    expected = Counter(source.execute(query).fetchall())
+                    assert (
+                        Counter(staged.execute(query).fetchall()) == expected
+                    )
+                    assert sum(expected.values()) == table["row_count"]

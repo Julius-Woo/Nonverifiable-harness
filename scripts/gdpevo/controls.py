@@ -68,6 +68,8 @@ def controls(output: Path) -> dict:
         0 <= r["hardened"].get("score", 1) < 1
         and r["native"].get("score") == 1
         and not r["hardened"].get("error")
+        and not r["native"].get("error")
+        and r["native"].get("returncode") == 0
         for r in wrong
     )
     summary = {

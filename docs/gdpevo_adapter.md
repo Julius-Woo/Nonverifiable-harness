@@ -1,6 +1,8 @@
-# GDPevo adapter groundwork — P1.10
+# GDPevo adapter — T2 experiment preparation
 
-Completed 2026-09-10. The unchanged harness entry point was exercised through
+The 2026-09-10 P1.10 groundwork is recorded below for provenance. See the
+T2 preparation section for the current runner and integrated acceptance.
+The unchanged harness entry point was exercised through
 real Docker boundaries on **013/train/001 (healthcare)** and
 **017/train/001 (legal)**, using the TASK endpoint and `gpt-5-mini`, low
 reasoning, 4,096 completion tokens, and a 24-call cap. Both attempts wrote valid
@@ -8,8 +10,9 @@ JSON objects; both received oracle **0**, with native normalized score **0.0**.
 These are recorded seed failures, not missing runs. No paid retries or
 selection of better outcomes were performed.
 
-The adapter's seven isolation checks passed; all 12 filtered service images
-started and passed 174 boundary checks. All 120 frozen reference controls
+The original adapter smoke suite reported seven helper checks and 174
+repeated service checks across 12 filtered images. R5 established that these
+were **not** a seven-row integrated Section 5 pass. All 120 frozen reference controls
 scored 1.0. The two known full-credit blind spots are rejected by grader-v1.
 The complete project test suite, including the opt-in Docker test, passed
 250 tests in the final verification.
@@ -172,16 +175,13 @@ resolution incompatibility with memfd paths; both were resolved before freezing
 the final hash and running either model attempt. Initial logs are retained.
 The host grader interpreter was Python 3.14.3 in the project-root uv environment.
 
-The binary oracle implements A3: use `normalized_score` when present, otherwise
-`score`; require a finite numeric value with `abs(s - 1) <= 1e-6`, a valid JSON
-object, and a valid grader execution. Duplicate JSON keys, malformed JSON,
-non-object submissions, and non-finite numbers are invalid. The denominator
-is one for every attempt. Timeouts, seed exhaustion/failure, and tool failures
-receive binary zero; grader errors also receive zero and an explicit error
-record. Native normalized score and raw native grader JSON remain secondary
-outputs, independent of the binary result. This groundwork uses the requested
-fixed-denominator A3 rule; future orchestration must reconcile the broader A9
-retry/exclusion policy without silently dropping failures.
+The current binary oracle uses `normalized_score` when present, otherwise
+`score`, and requires a finite numeric value in **[0,1]** before applying
+`abs(s - 1) <= 1e-6`, a valid JSON object and a valid grader execution. Duplicate
+keys and non-finite JSON numbers are rejected. The T2 runner's A9 lifecycle and
+its scheduled/eligible denominator fields are described below. The original
+P1.10 runner did not yet implement grader retry/exclusion or reject scores
+slightly above one; its historical measurements remain unchanged.
 
 ### Oracle-side execution
 
@@ -201,21 +201,22 @@ stays under git-ignored `oracle/`. `arm_feedback()` produces a separate view
 containing only the authorized score and filtered solver trace; raw rubric
 details and expected values are never passed to the arm view.
 
-## Section 5 acceptance evidence
+## Historical Section 5 smoke evidence — not an entry gate
 
 Primary log: `logs/gdpevo/p110-acceptance-final/acceptance.json`.
 It records container and network inspections, actual command responses,
-per-arm mounted views, and all **174/174** successful service-boundary checks.
+per-arm mounted views, and **174/174** repeated service checks: 14 checks per
+group across 12 groups plus six query examples, not 174 distinct routes.
 
-| Section 5 row | Executed check | Result |
+| Section 5 row | Historical check | Evidence limit |
 | --- | --- | --- |
-| 1: oracle files | Random host oracle canary unreadable through solver and arm-container tools; separate canary check in each paid rollout | Pass |
-| 2: trace contamination | 20 adversarial file-read traces across GDPevo/TB2 oracle paths under `/work` and `/app`; reads refused and observations filtered | 20/20 pass |
-| 3: judge inputs | Closed keyword-only task/trace/answer schema rejects an `oracle` argument; no grader filesystem input | Pass |
-| 4: uniform evolver prompt | A0–A4 prompt files read inside their containers; templates identical after replacing score-source text | Pass |
-| 5: anchors | Anchor and sealed feedback rejected; no anchor mount in arm containers | Pass |
-| 6: cross-arm isolation | Five distinct containers and directories; each tool view contains only its own arm marker and feedback | Pass |
-| 7: caches | Distinct `user` and `prompt_cache_key` per run/arm/role; config inspected in each arm container; both real API runs accepted scoped parameters | Pass |
+| 1: oracle files | Random host oracle canary unreadable through solver and arm-container tools; separate canary check in each paid rollout | Canary smoke passed |
+| 2: trace contamination | 20 adversarial file-read traces across GDPevo/TB2 oracle paths under `/work` and `/app`; reads refused and observations filtered | 20 probes; not task rollouts |
+| 3: judge inputs | Closed keyword-only task/trace/answer schema rejects an `oracle` argument; no grader filesystem input | Helper check only |
+| 4: uniform evolver prompt | A0–A4 prompt files read inside their containers; templates identical after replacing score-source text | Templates; not dispatched prompts |
+| 5: anchors | Anchor and sealed feedback rejected; no anchor mount in arm containers | Helper check only |
+| 6: cross-arm isolation | Five distinct containers and directories; each tool view contains only its own arm marker and feedback | Fixture views; no cross-arm write probe |
+| 7: caches | Distinct `user` and `prompt_cache_key` per run/arm/role; config inspected in each arm container; both real API runs accepted scoped parameters | Provider enforcement unverified |
 
 The 20 traces in row 2 are deliberate tool-boundary probes, not 20 paid task
 rollouts. Both actual seed trajectories were also inspected. The future
@@ -289,7 +290,7 @@ ledger/oracle results. The upstream checkout remains clean; `oracle/` and
 `logs/` remain git-ignored. Final Docker checks found no remaining
 `nvh-gdpevo-` containers or networks.
 
-## Reproduction and remaining Phase 3 work
+## Historical P1.10 reproduction
 
 Run from the repository root with the existing uv environment and Docker group
 membership. No Claude, Codex, or Copilot CLI is used. The runner uses the TASK
@@ -316,23 +317,286 @@ run directories are never overwritten. To regenerate the frozen
 grader into a new directory, call `scripts.gdpevo.freeze_grader.freeze()` and
 compare its returned hash; do not overwrite the frozen version in place.
 
-Before full Phase 3 T2 runs:
+## T2 preparation: R5 findings 1–8 (2026-09-11)
 
-1. Integrate these boundaries and closed feedback views into the real
-   evolver/judge/anchor controller, rerun all seven checks there, and manually
-   inspect a larger sample of actual solver trajectories.
-2. Freeze the 40-search/40-sealed healthcare/legal manifest, finance anchors,
-   grader hash in PREREG, and the full Phase 3 budget. These two seed failures
-   do not estimate the benchmark's aggregate difficulty or justify tuning it.
-3. Connect durable trial admission/resume, endpoint rate limits, cancellation
-   accounting, cleanup recovery after host SIGKILL, and the agreed A9 policy.
-4. Validate all 80 main tasks through the boundary and calibrate realistic
-   token/context and latency distributions. Business-route coverage here is
-   smoke coverage plus two real attempts, not exhaustive semantic equivalence.
-5. Keep native scores beside grader-v1 results. Any further grader changes
-   require a new version and controls; do not revise grader-v1 after outcomes.
-6. Include the adapter in packaging if wheel-based deployment is needed.
-   Current entry points run directly from the repo root.
+The supported experiment entry point is now `python -m gdpevo.runner
+--manifest <path>`. It imports the unchanged `harness.seed.run_seed`, uses the
+actual solver/gateway/service Docker boundary, and shares T1's manifest
+validation, evidence-v3 exporter, judge contracts, prompt renderer, endpoint
+limiter, and durable request/receipt accounting. The old `scripts.gdpevo.run_seed`
+command is retained as historical P1.10 tooling, not the Phase 3 launch path.
+No files under `harness/`, `evolution/`, or `external/GDPevo/` were changed.
 
-No commit or push was made, and no changes to the protected harness, upstream,
-data, decision, plan, or root context files were made by this task.
+### Manifest and scheduling
+
+`gdpevo.runner.defaults(experiment)` extends `evolution.manifest.defaults()`
+and `validate()` calls the same T1 schema validator. The defaults are proposed
+experimental settings, not ratification of AD1/AD9/AD10/AD13. The default pool
+contains all **40 search, 40 sealed, and 40 finance-anchor** tasks: healthcare
+013–016 and legal 017–020 use train for search and test for sealed; finance
+008–011 uses both splits as the anchor pool. Select anchor IDs explicitly in
+the manifest; the acceptance diagnostic uses only 008/train/001.
+
+| Fields | T2 contract |
+| --- | --- |
+| `schema_version`, `experiment`, `purpose`, `arms`, `seeds`, `T` | T1 schema v1; unique experiment identity; infrastructure runs are authorized here. Formal pilot/Phase 3 launches remain gated. |
+| `tasks.search`, `.anchor`, `.sealed` | Explicit lists of `GGG/train-or-test/TTT` IDs; role and pool membership checked before dispatch. |
+| `schedule` | Optional explicit array of `{arm, seed, iteration, task, replicate}`. IDs are deterministic hashes of the entire tuple. Duplicate slots are rejected. |
+| omitted `schedule` | Cartesian product of arms × seeds × iterations 0…T × selected tasks × `replicates` (default 1). This is measurement scheduling, not an implementation of the full proposal/selection loop. |
+| `task_model` | `name=gpt-5.6-terra`, `deployment=gpt56terra`, `endpoint_prefix=TASK_ALT2`, low reasoning, JSON, completion allowance 8192, max calls 24, API timeout 180 s. Deployment is read from the manifest, overriding `.env`'s model default. |
+| `tool_failure_reading` | `executor` (AD10 proposal) or `strict`. Executor/protocol failures veto success in both; strict also vetoes ordinary nonzero command exits. |
+| `api_timeout_policy` | `infrastructure` (AD13 proposal) or `failure`. Only a sole first API call timing out before an action qualifies for the timeout replacement under the proposed rule. |
+| `oracle_range_policy` | Explicit `unit_interval`: enforce 0 ≤ s ≤ 1 before tolerance. Other policies are refused; AD9 is not silently ratified. |
+| `transport_max_retries` | Frozen to zero; A9 controller logic owns replacements and grader/judge retries. |
+| `budget` | T1 phase estimate, guard, wall-clock hours, per-attempt rollout USD and evolver-session USD. Conservative pre-dispatch reservations include uncertain charges. |
+| `docker_concurrency`, `memory_min_available_gib` | Two concurrent attempts for this run; up to four supported. Admission requires 6 GiB **MemAvailable**. All Docker resources have the `nvh-gdpevo-` prefix. |
+| `rollout_timeout_s`, `command_timeout_s` | 1200 seconds per seed attempt and 30 seconds per command. |
+| `controls_path`, `acceptance_probes` | Matching frozen-grader controls are required; optional real solver probes execute before seed actions and do not count as solver failures. |
+| resolved `hashes`, `grader`, `providers`, `resolved_sha256` | Controller, boundary, exporter, seed, prompt, price, image-lock and hidden-column audit identities; exact comparison on resume. No credentials are persisted. |
+
+Any supported arm, including A4, A3-native/A3-loop and matched C-TTS arms, can
+schedule a measurement of any selected group/split/task. Search A0 exports
+only its binary signal; A1/A2 use the corresponding T1 judge, and A4 averages
+its two judge calls. A3 measurements produce v3 trajectories with
+`feedback_status=pairwise_signal_required`; the outer A3 paired-baseline
+ranker must supply the signal. They never substitute the oracle for preference.
+This runner does not invent proposals, acceptance cycles or A3 baselines.
+Seed IDs partition local identities and workspaces; the provider is not
+claimed to support deterministic sampling seeds.
+
+### A9 accounting and recovery
+
+`runs/<experiment>/rollouts.jsonl` is an atomically replaced materialized
+view with **one row per scheduled tuple**, all written before any attempt.
+`rollout_events.jsonl` is the fsynced history; do not sum its repeated versions.
+Every row has `denominator=1`. `eligible_denominator=0` and a typed logged
+exclusion retain excluded slots visibly; scheduled/interrupted slots have no
+invented label. Analysis must report scheduled, completed, eligible, excluded
+and missing counts rather than silently averaging only surviving traces.
+
+| Condition | Disposition |
+| --- | --- |
+| Solver wall timeout, exhausted seed, executor/protocol failure | Failure, binary 0, denominator retained. |
+| Oversized (>4,000,000 bytes), unreadable, invalid JSON or non-object answer | Typed solver failure with binary 0; the snapshot cannot abort slot accounting. |
+| Primary grader launch/timeout/parse/exit failure | Retry once against the same frozen snapshot; then exclude with a logged count. |
+| Secondary native grader failure | Retry once and log separately; it cannot erase a valid primary result. |
+| Infrastructure failure | At most one new solver attempt under the same logical slot, then exclusion. Interrupted in-flight attempts consume their retry identity. |
+| Judge failure | Retry once, then no feedback score and a logged failure; acceptance cannot consume a missing score. |
+| Budget/deadline guard | Stop dispatch. Reserved/scheduled identities persist for reconciliation; budget stops are not a source of free retries. |
+
+Existing solver failures remain failures; a secondary grader error cannot
+convert an invalid/non-object submission into an exclusion.
+
+The solver is confirmed stopped before reading its answer. Grader dispatch
+intents and result records are durable, and a grader-only interruption resumes
+from the read-only answer without another solver call. Docker resource names
+are journaled before creation so interrupted attempts can clean their own
+resources before replacement. Resume rejects changed slot sets and resolved
+conditions. A completed resume dispatches no new requests.
+
+`costs/<experiment>/` uses T1 `AccountedBackend`, `PhaseGuard` and `reconcile`.
+Each physical HTTP attempt has a reservation and request intent before network
+dispatch, then a durable response/receipt before the backend ledger append.
+Receipts repair lost ledger rows. Reports separate physical requests, known
+prices, retained unresolved reservations, missing cache-price details and
+per-arm exclusions. Both solver and judge transports explicitly use zero
+HTTP retries. Whole-rollout infrastructure replacements have separate bounded
+attempt scopes inside the same phase guard.
+
+Raw answers, hardened/native results, and anchor acceptance inputs stay in
+`oracle/<experiment>/`. Sealed and anchor oracle labels are absent from public
+rollout summaries and stdout. Only search feedback is written under
+`feedback/<experiment>/seed-<seed>/<arm>/`; the trusted anchor gate exports
+exactly `{"accepted": <bool>}`. The evolver mounts only its own directory.
+
+### Hidden-column audit and staging
+
+[`data/gdpevo_hidden_columns.json`](../data/gdpevo_hidden_columns.json) records
+all 12 generators, eight shipped SQLite databases, **104 tables and 936 column
+instances**, source hashes, row counts, public-column allowlists and generator
+annotation evidence. Four groups use JSON business records rather than SQLite;
+the audit also inspected their field names and all data/generated JSON keys.
+
+Three hidden column instances were confirmed, all named `target_group` in
+TG019. They label construction membership rather than business facts:
+
+| Table | Rows | Non-null hidden annotations removed |
+| --- | ---: | ---: |
+| `contractor_applications` | 111 | 58 |
+| `liquor_applications` | 33 | 14 |
+| `alcohol_licensees` | 91 | 44 |
+
+Staging checks the pinned source database hash, removes annotation indexes and
+columns, checks every resulting public-column list and vacuums the database.
+The column and its contents are physically absent, so aliasing, positional
+projection or compound SELECT cannot recover it. All public business rows and
+remaining values are preserved. No other SQLite construction columns were
+identified. Domain fields such as financial expected returns, clinical program
+hints, legal review classifications and policy guidance remain available;
+the audit explains these decisions rather than treating every `target` or
+`expected` name as hidden.
+
+JSON manifests additionally lose `primary_matters`, nested `task_id` and other
+`task_*` construction mappings. Existing judge/construction JSON exclusions
+remain. Task staging still never copies `task_group.yaml`, including rubric
+fields, and generator bodies are never included in service images. Shared
+train/test business records remain an intentional A5 benchmark property.
+
+All 12 service images were rebuilt. Six live TG019 gateway probes cover the
+old alias/UNION exploit and the legitimate public-column variant for all three
+tables: old widths are refused; public widths succeed. Evidence:
+`logs/gdpevo/t2-hidden-service-260911/checks.json`.
+
+### Integrated acceptance run
+
+The clean qualification run is `t2-accept-260911-final`. It schedules 20 search
+rollouts (five replicates of each of 013/train/001 and 017/train/001 under each
+of A0/A1), two finance-anchor measurements and two sealed measurements. Every
+solver run uses the actual isolated solver container and business gateway;
+there are no fixture trajectories in the final matrix. The seed solver code,
+model condition, images and trusted controller/exporter hashes are pinned in
+`runs/t2-accept-260911-final/manifest.json`.
+
+A preceding diagnostic, `t2-accept-260911`, was halted when an added crash-window
+regression showed that interrupted grader recovery tried to rewrite a read-only
+snapshot. Its stop was unrelated to scores; its original labels and 24 scheduled
+slots remain archived. It is not included in the final acceptance sample.
+Diagnostic accounted usage is **$0.9967905**, including **$0.206813** in unresolved
+reservations. The clean run has a separate **$9** guard, so the combined
+conservative ceiling remains below $10. The recovery bug was fixed and its
+regression passed before the clean run began. An outer-JSON scanner false
+positive for business fields called `notes` was also corrected before that run;
+checks inspect actual scalar contents using the evidence-v3 pattern contract.
+
+The shared workspace received concurrent changes to eight `evolution/a3*.py`
+files and `evolution/loop.py`. This task did not modify them. The run-specific
+`runs/t2-accept-260911-final/complete_acceptance.py` requires exactly A0/A1,
+checks that all nine modules are unloaded before and after qualification, and
+records their exact names and hashes in `acceptance-controller.json`.
+
+The first integrated acceptance attempt then exposed two adapter defects:
+DeepSeek rejects the OpenAI-specific `prompt_cache_key` parameter, and the base
+Python image exits immediately when used as a T1 candidate workspace. The runner
+now sends only the supported `user` namespace for judge/evolver requests; task
+requests retain their original parameters. A dedicated candidate Dockerfile
+keeps the workspace running, and a positive liveness check precedes isolation
+probes. Both fixes are explicitly hashed in `acceptance-amendment.json`.
+The pre-fix sources and failed acceptance evidence are preserved under
+`acceptance-before-fixes/`. All task rollouts, labels and retry counts remain
+unchanged. The standard runner still rejects full-tree hash drift on resume;
+this qualification used an explicit post-rollout amendment, not a rewritten
+solver manifest.
+
+The pre-fix A1 search judges exhausted their two controller attempts on the
+unsupported parameter (18 rejected requests for nine eligible search slots).
+Their `judge_failed` flags and missing feedback are retained. They were not
+re-judged beyond A9. The corrected transport was subsequently verified by a
+successful real judge dispatch of injected-and-sanitized evidence, eight real
+cache-canary requests, and two real evolver dispatch sessions. These are
+separately scoped acceptance diagnostics, not replacement search measurements.
+Thus this run establishes the listed boundary properties, not a successful A1
+evolution iteration. A fresh measurement run with the final controller remains
+necessary before interpreting A1 search feedback.
+
+#### Measured result (2026-09-11)
+
+**Section 5: 6/7 pass; overall gate remains false.** The seventh row is
+`unverified_provider_enforcement`. Machine-readable evidence is
+[`section5_matrix_t2.json`](../runs/t2-accept-260911-final/section5_matrix_t2.json).
+
+| Section 5 row | Result | Real integrated evidence |
+| --- | --- | --- |
+| 1. Oracle-file isolation | Pass | Healthcare/legal solver canaries and live candidate workspaces; own-workspace positive control succeeds. |
+| 2. Complete traces and tool boundary | Pass | 20 terminal search traces scanned automatically; live gateway, direct-service, firewall and public-GDPevo GitHub/raw egress probes. |
+| 3. Serialized judge isolation | Pass | All 24 actual trajectories ingested as 48 A1/A2 payloads; private injected strings absent; one corrected real judge response succeeds. |
+| 4. Dispatched evolver prompt uniformity | Pass | Two actual wire requests match the T1 renderer and differ only in score-source text. |
+| 5. Anchor/sealed isolation | Pass | Two real finance anchors and two real sealed measurements; only search feedback and a closed-schema acceptance bit in arm-facing directories. |
+| 6. Cross-arm reads and writes | Pass | Real networkless candidate workspaces refuse exact-path and proc-root reads and cross-arm writes; own candidate writes succeed; feedback is read-only. |
+| 7. Provider cache partition | Unverified | Eight successful prime/probe calls disclose no other session's canary; this does not prove provider-side enforcement. |
+
+There are **24 scheduled and terminal logical slots**, with a fixed scheduled
+denominator of 24 and eligible denominator of 23. The 20 search traces comprise
+19 eligible rollouts and one terminal infrastructure exclusion after both
+permitted first-call attempts timed out. Its real terminal trace is included
+in the judge manifest with `excluded=true`, `eligible_denominator=0`, and its
+original disposition; no third solver attempt was made. The qualification
+controller supplements this excluded trace export from the original attempt
+logs, without altering labels. The four private measurements remain outside
+arm-facing feedback. Dispositions across the 24 slots are 17 finished,
+five executor failures, one in-rollout API-timeout failure, and one infrastructure
+exclusion. A terminal failure trace is complete evidence of that failure, not
+a successful solver answer.
+
+All 24 exported traces pass the scalar-content pattern scan, including all
+20 healthcare/legal search traces. The manual inspection listing is
+[`manual_trace_listing.md`](../runs/t2-accept-260911-final/manual_trace_listing.md);
+it lists actual sanitized files, and does not claim a separate human review.
+Serialized payloads are in `judge_payloads/`; the 48 payload captures are not
+48 paid judge calls. Evolver qualification sessions each stop after three paid
+calls (durably counted), following real workspace actions. This is a dispatch
+and isolation probe, not a completed proposal; the task-model cap remains 24.
+All acceptance evidence is linked by the matrix, with SHA-256 inventory in
+`evidence_sha256.json`.
+
+The full project command **`uv run pytest -q` passes: 581 passed, 6 skipped**.
+The opt-in Docker boundary suite also passes (13 tests). Logs are
+`logs/gdpevo/t2-project-tests-final.log` and
+`logs/gdpevo/t2-docker-tests-final.log`. Regression coverage includes exact
+archived-manifest ingestion under evidence v3, endpoint-compatible request
+parameters, crash recovery, immutable snapshots, A9 exclusions, above-one score
+boundaries, invalid native wrong-control results, and preservation of every
+public database row after filtering. All 12 live services pass their smoke
+checks in `logs/gdpevo/t2-service-smoke-final/checks.json`.
+
+#### Costs and R5 dispositions
+
+Across both task-run experiments and every acceptance attempt: **317 physical
+API requests; $8.20933144 known cost; $9.79713214 conservatively accounted**,
+including 43 unresolved requests with $1.57962750 retained reservations. Other
+partially priced responses are conservatively charged, so known cost plus
+unresolved reservations alone is not the complete total. The clean run accounts
+for $8.80034164 and the halted diagnostic for $0.99679050. Rejected requests and
+timeouts remain in the ledger; no assumed refunds were used. No further paid
+calls were made. Details:
+[`preparation-summary.json`](../costs/t2-accept-260911-final/preparation-summary.json).
+This is below the $10 cap; it is not a provider invoice.
+
+| R5 finding | Disposition |
+| --- | --- |
+| 1: Integrated acceptance | Six rows demonstrated through real rollouts; provider cache enforcement remains unverified. |
+| 2: Experiment runner / judge ingestion | Manifest-driven T2 measurement runner and real v3 manifest ingestion implemented and tested; full outer evolution still pending. |
+| 3: Denominators / A9 | Write-ahead fixed slots, failure policies, bounded retries and logged exclusions implemented and exercised. |
+| 4: Crash-complete costs | T1 durable transport receipts, reservations, reconciliation and phase/session guards integrated and tested. |
+| 5: Hidden column | Full 12-group audit; three TG019 column instances removed before service staging; six live alias/UNION checks pass. |
+| 6: Transport retries | `max_retries=0` explicit in both entry points; controller retries documented and tested. |
+| 7: Score range | Finite `[0,1]` enforced before tolerance; boundary regressions pass. |
+| 8: Wrong-control gate | Native grader must exit successfully, have no error, and score exactly one; regression passes. |
+
+### Reproduction and remaining Phase 3 work
+
+```bash
+uv run python -m scripts.gdpevo.audit_hidden_columns
+uv run python -m scripts.gdpevo.build_images --output logs/gdpevo/NEW-images
+uv run python -m scripts.gdpevo.controls --output logs/gdpevo/NEW-controls
+uv run python -m gdpevo.runner --manifest runs/NEW/input_manifest.json
+uv run python -m gdpevo.acceptance --manifest runs/NEW/input_manifest.json
+uv run pytest -q
+```
+
+Use a fresh experiment ID for changed conditions. Grader-v1 remains frozen at
+`12997be4c3781c5f3366d9d102329edac3771077a8e52b1329cda1ba0e763f6e`;
+120/120 reference controls pass, and the TG015/TG018 wrong controls still score
+0.95/0.722222 under v1 versus 1.0 in valid native runs. Above-one scores now fail
+before tolerance, including 1.00000000001 and 1.0000005. No graders were tuned
+to the acceptance outcomes.
+
+The full Phase 3 remains **40 search / 40 sealed, T=10, three seeds**, with
+prospectively selected finance anchors, all-arm evolution and matched C-TTS
+budgets. Remaining work includes ratification and PREREG freeze; a funded full
+schedule; calibrated v3 judge thresholds for terra; connecting the outer
+proposal/selection and A3 paired-baseline machinery to these T2 measurements;
+all-80-task semantic coverage; a fresh A1 measurement with the corrected
+transport; and an enforceable provider cache boundary.
+These repeated seed rollouts qualify infrastructure, not benchmark difficulty,
+evolution benefit, or the registered Phase 3 estimands. Wheel packaging remains
+outside this task's permitted paths; entry points run from the repository root.

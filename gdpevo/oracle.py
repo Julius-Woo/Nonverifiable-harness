@@ -11,6 +11,7 @@ import tempfile
 import time
 from pathlib import Path
 
+from evolution.candidates import atomic_json
 from gdpevo import ROOT, SOURCE, task_path
 from scripts.gdpevo.freeze_grader import tree_hash
 
@@ -55,7 +56,9 @@ def binary_rule(submission, grader: dict, status: str = "finished") -> int:
     score = result.get("normalized_score", result.get("score"))
     if isinstance(score, bool) or not isinstance(score, (float, int)):
         return 0
-    return int(math.isfinite(score) and abs(score - 1) <= 1e-6)
+    return int(
+        math.isfinite(score) and 0 <= score <= 1 and abs(score - 1) <= 1e-6
+    )
 
 
 def verify_frozen() -> dict:
@@ -111,7 +114,7 @@ def run_grader(script: Path, raw: bytes, timeout: float = 15) -> dict:
                 isinstance(score, bool)
                 or not isinstance(score, (float, int))
                 or not math.isfinite(score)
-                or not 0 <= score <= 1 + 1e-6
+                or not 0 <= score <= 1
             ):
                 raise ValueError("Invalid normalized score")
             record.update(result=result, score=score)
@@ -138,22 +141,71 @@ def grade_attempt(
     timeout: float = 15,
 ) -> dict:
     manifest = verify_frozen()
-    output.mkdir(parents=True, exist_ok=False)
+    output.mkdir(parents=True, exist_ok=True)
+    if (output / "result.json").exists():
+        saved = json.loads((output / "result.json").read_text())
+        if saved["answer_sha256"] != hashlib.sha256(raw).hexdigest():
+            raise ValueError("Frozen submission differs on grader resume")
+        if any(
+            saved[key] != value
+            for key, value in (
+                ("group", group),
+                ("split", split),
+                ("task_id", task_id),
+                ("status", status),
+            )
+        ):
+            raise ValueError("Frozen grading identity or status changed")
+        return saved
     answer = output / "answer.json"
-    answer.write_bytes(raw)
+    if answer.exists():
+        if answer.read_bytes() != raw:
+            raise ValueError("Frozen submission differs on grader resume")
+    else:
+        with answer.open("wb") as handle:
+            handle.write(raw)
+            handle.flush()
+            os.fsync(handle.fileno())
     answer.chmod(0o444)
     try:
         submission = strict_json(raw)
         valid = isinstance(submission, dict)
     except (ValueError, UnicodeDecodeError):
         submission, valid = None, False
-    results = {}
+    results, retries = {}, {}
     for name, root in (
         ("grader_v1", GRADER),
         ("upstream", SOURCE / "data/task_groups"),
     ):
         script = task_path(root, group, split, task_id) / "eval/eval.sh"
-        results[name] = run_grader(script, raw, timeout)
+        history = []
+        for attempt in range(2):
+            record_path = output / f"{name}-{attempt}.json"
+            intent_path = output / f"{name}-{attempt}-intent.json"
+            if record_path.exists():
+                record = json.loads(record_path.read_text())
+            elif intent_path.exists():
+                record = {"error": "interrupted_grader", "returncode": None}
+                atomic_json(record_path, record)
+            else:
+                atomic_json(
+                    intent_path, {"attempt": attempt, "status": "started"}
+                )
+                try:
+                    record = run_grader(script, raw, timeout)
+                except Exception as exc:
+                    record = {"error": type(exc).__name__, "returncode": None}
+                atomic_json(record_path, record)
+            history.append(record)
+            if not record.get("error") and record.get("returncode") == 0:
+                break
+        results[name] = history[-1]
+        retries[name] = len(history) - 1
+    excluded = (
+        bool(results["grader_v1"].get("error"))
+        and valid
+        and status == "finished"
+    )
     result = {
         "group": group,
         "split": split,
@@ -161,7 +213,13 @@ def grade_attempt(
         "status": status,
         "valid_json_object": valid,
         "denominator": 1,
-        "binary": binary_rule(submission, results["grader_v1"], status),
+        "binary": None
+        if excluded
+        else binary_rule(submission, results["grader_v1"], status),
+        "excluded": excluded,
+        "exclusion_reason": "grader_retry_exhausted" if excluded else None,
+        "grader_retries": retries,
+        "native_grader_failed": bool(results["upstream"].get("error")),
         "grader_v1_score": results["grader_v1"].get("score"),
         "upstream_native_score": results["upstream"].get("score"),
         "grader_tree_sha256": manifest["tree_sha256"],
@@ -169,5 +227,5 @@ def grade_attempt(
         "snapshot": "private host copy, mode 0444, verified after grading",
         **results,
     }
-    (output / "result.json").write_text(json.dumps(result, indent=2) + "\n")
+    atomic_json(output / "result.json", result)
     return result

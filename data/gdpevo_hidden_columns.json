@@ -1,0 +1,3490 @@
+{
+  "schema_version": 1,
+  "groups": [
+    {
+      "group": 8,
+      "generator_sha256": "25ca23dadc8851d45739015f744469e7ab68bf466c1541c8435d920e53e35b76",
+      "generator_annotation_lines": [],
+      "databases": [],
+      "decision": "Remove construction annotations; retain shared business records."
+    },
+    {
+      "group": 9,
+      "generator_sha256": "5c81fa657831c61c66b8448d9e302b0fa8922480bc92d5d250a2030e099ddae1",
+      "generator_annotation_lines": [],
+      "databases": [],
+      "decision": "Remove construction annotations; retain shared business records."
+    },
+    {
+      "group": 10,
+      "generator_sha256": "bbdcc2883f16986dc4acc914f7b8d1f7a3573899208464f16efa302528a25984",
+      "generator_annotation_lines": [],
+      "databases": [],
+      "decision": "Remove construction annotations; retain shared business records."
+    },
+    {
+      "group": 11,
+      "generator_sha256": "227b80b417a9361429d2f8c75cf88dc490f91cbc40ef9f7f12e9c3b0673a6bdf",
+      "generator_annotation_lines": [],
+      "databases": [
+        {
+          "path": "data/credit_office.db",
+          "sha256": "fa87bc6c329487b415c885ff070baed221f2486a81571a0bbb99693eed36d3c4",
+          "tables": [
+            {
+              "table": "applications",
+              "columns": [
+                "application_id",
+                "branch_id",
+                "applicant_name",
+                "business_name",
+                "loan_type",
+                "sector",
+                "requested_amount",
+                "purpose",
+                "proposed_rate",
+                "term_months",
+                "collateral_value",
+                "ltv",
+                "dscr",
+                "fico",
+                "years_in_business",
+                "annual_revenue",
+                "net_income",
+                "total_debt",
+                "total_assets",
+                "dti",
+                "sba_guaranty_pct",
+                "bankruptcy_months_ago",
+                "prior_delinquencies_12m",
+                "existing_relationship_years",
+                "co_guarantor_strength",
+                "relationship_deposit_balance",
+                "documentation_complete",
+                "notes"
+              ],
+              "public_columns": [
+                "application_id",
+                "branch_id",
+                "applicant_name",
+                "business_name",
+                "loan_type",
+                "sector",
+                "requested_amount",
+                "purpose",
+                "proposed_rate",
+                "term_months",
+                "collateral_value",
+                "ltv",
+                "dscr",
+                "fico",
+                "years_in_business",
+                "annual_revenue",
+                "net_income",
+                "total_debt",
+                "total_assets",
+                "dti",
+                "sba_guaranty_pct",
+                "bankruptcy_months_ago",
+                "prior_delinquencies_12m",
+                "existing_relationship_years",
+                "co_guarantor_strength",
+                "relationship_deposit_balance",
+                "documentation_complete",
+                "notes"
+              ],
+              "hidden_columns": [],
+              "row_count": 59,
+              "hidden_nonnull_counts": {}
+            },
+            {
+              "table": "branch_metrics",
+              "columns": [
+                "branch_id",
+                "quarter",
+                "total_loans_outstanding",
+                "nonperforming_loans",
+                "delinquency_30_plus_pct",
+                "allowance_for_loan_losses",
+                "net_charge_offs",
+                "total_deposits"
+              ],
+              "public_columns": [
+                "branch_id",
+                "quarter",
+                "total_loans_outstanding",
+                "nonperforming_loans",
+                "delinquency_30_plus_pct",
+                "allowance_for_loan_losses",
+                "net_charge_offs",
+                "total_deposits"
+              ],
+              "hidden_columns": [],
+              "row_count": 20,
+              "hidden_nonnull_counts": {}
+            },
+            {
+              "table": "branches",
+              "columns": [
+                "branch_id",
+                "branch_name",
+                "institution_type",
+                "total_assets",
+                "lending_capacity_q1",
+                "sector_ceiling_pct",
+                "cre_policy_limit_pct",
+                "fdic_benchmark_set",
+                "state_code"
+              ],
+              "public_columns": [
+                "branch_id",
+                "branch_name",
+                "institution_type",
+                "total_assets",
+                "lending_capacity_q1",
+                "sector_ceiling_pct",
+                "cre_policy_limit_pct",
+                "fdic_benchmark_set",
+                "state_code"
+              ],
+              "hidden_columns": [],
+              "row_count": 10,
+              "hidden_nonnull_counts": {}
+            },
+            {
+              "table": "credit_union_segments",
+              "columns": [
+                "segment_id",
+                "segment_json"
+              ],
+              "public_columns": [
+                "segment_id",
+                "segment_json"
+              ],
+              "hidden_columns": [],
+              "row_count": 2,
+              "hidden_nonnull_counts": {}
+            },
+            {
+              "table": "fdic_benchmarks",
+              "columns": [
+                "benchmark_version",
+                "total_loans_noncurrent_pct",
+                "total_real_estate_noncurrent_pct",
+                "total_real_estate_30_89_pct",
+                "construction_development_noncurrent_pct",
+                "construction_development_30_89_pct"
+              ],
+              "public_columns": [
+                "benchmark_version",
+                "total_loans_noncurrent_pct",
+                "total_real_estate_noncurrent_pct",
+                "total_real_estate_30_89_pct",
+                "construction_development_noncurrent_pct",
+                "construction_development_30_89_pct"
+              ],
+              "hidden_columns": [],
+              "row_count": 1,
+              "hidden_nonnull_counts": {}
+            },
+            {
+              "table": "loans",
+              "columns": [
+                "loan_id",
+                "branch_id",
+                "borrower_name",
+                "loan_type",
+                "sector",
+                "outstanding_balance",
+                "current_rating",
+                "payment_status",
+                "days_past_due",
+                "dscr",
+                "ltv",
+                "collateral_value",
+                "fico",
+                "liquidity_months",
+                "debt_to_asset",
+                "interest_rate",
+                "annual_debt_service",
+                "guarantor_strength",
+                "annual_review_date",
+                "notes"
+              ],
+              "public_columns": [
+                "loan_id",
+                "branch_id",
+                "borrower_name",
+                "loan_type",
+                "sector",
+                "outstanding_balance",
+                "current_rating",
+                "payment_status",
+                "days_past_due",
+                "dscr",
+                "ltv",
+                "collateral_value",
+                "fico",
+                "liquidity_months",
+                "debt_to_asset",
+                "interest_rate",
+                "annual_debt_service",
+                "guarantor_strength",
+                "annual_review_date",
+                "notes"
+              ],
+              "hidden_columns": [],
+              "row_count": 161,
+              "hidden_nonnull_counts": {}
+            },
+            {
+              "table": "ncua_benchmarks",
+              "columns": [
+                "state_code",
+                "delinquency_bps",
+                "loan_to_share_pct",
+                "roaa_bps",
+                "positive_net_income_pct"
+              ],
+              "public_columns": [
+                "state_code",
+                "delinquency_bps",
+                "loan_to_share_pct",
+                "roaa_bps",
+                "positive_net_income_pct"
+              ],
+              "hidden_columns": [],
+              "row_count": 12,
+              "hidden_nonnull_counts": {}
+            },
+            {
+              "table": "policies",
+              "columns": [
+                "policy_version",
+                "policy_json"
+              ],
+              "public_columns": [
+                "policy_version",
+                "policy_json"
+              ],
+              "hidden_columns": [],
+              "row_count": 1,
+              "hidden_nonnull_counts": {}
+            },
+            {
+              "table": "sector_exposures",
+              "columns": [
+                "branch_id",
+                "sector",
+                "current_exposure",
+                "grandfathered",
+                "limit_pct"
+              ],
+              "public_columns": [
+                "branch_id",
+                "sector",
+                "current_exposure",
+                "grandfathered",
+                "limit_pct"
+              ],
+              "hidden_columns": [],
+              "row_count": 85,
+              "hidden_nonnull_counts": {}
+            }
+          ]
+        }
+      ],
+      "decision": "Remove construction annotations; retain shared business records."
+    },
+    {
+      "group": 13,
+      "generator_sha256": "c7101e82b2ef74567e6a4bb48f40be01dbc0b00a281a3e1d4f1484545a493555",
+      "generator_annotation_lines": [
+        {
+          "line": 831,
+          "text": "\"train_001\": {\"roster_id\": \"NPI-JUN-01\", \"patients\": TASK_ROSTERS[\"NPI-JUN-01\"]},"
+        },
+        {
+          "line": 832,
+          "text": "\"train_002\": {\"batch_id\": \"ORTHO-JUN-01\"},"
+        },
+        {
+          "line": 833,
+          "text": "\"train_003\": {\"batch_id\": \"DIAL-WINTER-01\"},"
+        },
+        {
+          "line": 834,
+          "text": "\"train_004\": {\"program_code\": \"DMHTN-2026A\"},"
+        },
+        {
+          "line": 835,
+          "text": "\"train_005\": {\"batch_id\": \"PULM-JUN-02\"},"
+        },
+        {
+          "line": 836,
+          "text": "\"test_001\": {\"roster_id\": \"NPI-JUL-02\", \"patients\": TASK_ROSTERS[\"NPI-JUL-02\"]},"
+        },
+        {
+          "line": 837,
+          "text": "\"test_002\": {\"batch_id\": \"ORTHO-JUL-04\"},"
+        },
+        {
+          "line": 838,
+          "text": "\"test_003\": {\"batch_id\": \"DIAL-SUMMER-02\"},"
+        },
+        {
+          "line": 839,
+          "text": "\"test_004\": {\"program_code\": \"RENAL-DM-2026B\"},"
+        },
+        {
+          "line": 840,
+          "text": "\"test_005\": {\"batch_id\": \"CARD-JUL-03\"},"
+        }
+      ],
+      "databases": [
+        {
+          "path": "data/clinic.db",
+          "sha256": "9d1d3755279ec52b8edadba7f1f37b257403e873c74ad2850c1e7e39188b54c2",
+          "tables": [
+            {
+              "table": "chart_artifacts",
+              "columns": [
+                "artifact_id",
+                "patient_id",
+                "artifact_type",
+                "status",
+                "last_updated",
+                "value_summary"
+              ],
+              "public_columns": [
+                "artifact_id",
+                "patient_id",
+                "artifact_type",
+                "status",
+                "last_updated",
+                "value_summary"
+              ],
+              "hidden_columns": [],
+              "row_count": 132,
+              "hidden_nonnull_counts": {}
+            },
+            {
+              "table": "clinical_history",
+              "columns": [
+                "patient_id",
+                "chronic_conditions",
+                "surgeries",
+                "medication_count",
+                "allergy_count",
+                "recent_hospitalization",
+                "risk_flags"
+              ],
+              "public_columns": [
+                "patient_id",
+                "chronic_conditions",
+                "surgeries",
+                "medication_count",
+                "allergy_count",
+                "recent_hospitalization",
+                "risk_flags"
+              ],
+              "hidden_columns": [],
+              "row_count": 110,
+              "hidden_nonnull_counts": {}
+            },
+            {
+              "table": "coverage",
+              "columns": [
+                "coverage_id",
+                "patient_id",
+                "payer",
+                "policy_number",
+                "group_number",
+                "effective_date",
+                "termination_date",
+                "network_status",
+                "service_lines",
+                "status"
+              ],
+              "public_columns": [
+                "coverage_id",
+                "patient_id",
+                "payer",
+                "policy_number",
+                "group_number",
+                "effective_date",
+                "termination_date",
+                "network_status",
+                "service_lines",
+                "status"
+              ],
+              "hidden_columns": [],
+              "row_count": 90,
+              "hidden_nonnull_counts": {}
+            },
+            {
+              "table": "documents",
+              "columns": [
+                "document_id",
+                "patient_id",
+                "referral_id",
+                "transfer_id",
+                "doc_type",
+                "status",
+                "finalized",
+                "received_date",
+                "service_date",
+                "content_tag",
+                "notes"
+              ],
+              "public_columns": [
+                "document_id",
+                "patient_id",
+                "referral_id",
+                "transfer_id",
+                "doc_type",
+                "status",
+                "finalized",
+                "received_date",
+                "service_date",
+                "content_tag",
+                "notes"
+              ],
+              "hidden_columns": [],
+              "row_count": 162,
+              "hidden_nonnull_counts": {}
+            },
+            {
+              "table": "facility_capacity",
+              "columns": [
+                "location_id",
+                "date",
+                "modality",
+                "open_chairs"
+              ],
+              "public_columns": [
+                "location_id",
+                "date",
+                "modality",
+                "open_chairs"
+              ],
+              "hidden_columns": [],
+              "row_count": 206,
+              "hidden_nonnull_counts": {}
+            },
+            {
+              "table": "icd_codes",
+              "columns": [
+                "code",
+                "description",
+                "chapter",
+                "service_family",
+                "laterality"
+              ],
+              "public_columns": [
+                "code",
+                "description",
+                "chapter",
+                "service_family",
+                "laterality"
+              ],
+              "hidden_columns": [],
+              "row_count": 13,
+              "hidden_nonnull_counts": {}
+            },
+            {
+              "table": "intake_rosters",
+              "columns": [
+                "roster_id",
+                "patient_id",
+                "requested_service_date",
+                "service_line",
+                "source_note"
+              ],
+              "public_columns": [
+                "roster_id",
+                "patient_id",
+                "requested_service_date",
+                "service_line",
+                "source_note"
+              ],
+              "hidden_columns": [],
+              "row_count": 13,
+              "hidden_nonnull_counts": {}
+            },
+            {
+              "table": "lifestyle",
+              "columns": [
+                "patient_id",
+                "smoking_status",
+                "alcohol_use",
+                "exercise_frequency",
+                "sleep_hours"
+              ],
+              "public_columns": [
+                "patient_id",
+                "smoking_status",
+                "alcohol_use",
+                "exercise_frequency",
+                "sleep_hours"
+              ],
+              "hidden_columns": [],
+              "row_count": 110,
+              "hidden_nonnull_counts": {}
+            },
+            {
+              "table": "patient_pharmacy",
+              "columns": [
+                "patient_id",
+                "pharmacy_id",
+                "preference_rank"
+              ],
+              "public_columns": [
+                "patient_id",
+                "pharmacy_id",
+                "preference_rank"
+              ],
+              "hidden_columns": [],
+              "row_count": 136,
+              "hidden_nonnull_counts": {}
+            },
+            {
+              "table": "patients",
+              "columns": [
+                "patient_id",
+                "first_name",
+                "last_name",
+                "dob",
+                "phone",
+                "email",
+                "language",
+                "address",
+                "existing_chart",
+                "preferred_contact",
+                "emergency_contact_present"
+              ],
+              "public_columns": [
+                "patient_id",
+                "first_name",
+                "last_name",
+                "dob",
+                "phone",
+                "email",
+                "language",
+                "address",
+                "existing_chart",
+                "preferred_contact",
+                "emergency_contact_present"
+              ],
+              "hidden_columns": [],
+              "row_count": 110,
+              "hidden_nonnull_counts": {}
+            },
+            {
+              "table": "pbm",
+              "columns": [
+                "pbm_id",
+                "patient_id",
+                "payer",
+                "policy_number",
+                "active",
+                "formulary_status",
+                "specialty_required",
+                "status"
+              ],
+              "public_columns": [
+                "pbm_id",
+                "patient_id",
+                "payer",
+                "policy_number",
+                "active",
+                "formulary_status",
+                "specialty_required",
+                "status"
+              ],
+              "hidden_columns": [],
+              "row_count": 90,
+              "hidden_nonnull_counts": {}
+            },
+            {
+              "table": "pharmacies",
+              "columns": [
+                "pharmacy_id",
+                "name",
+                "address",
+                "phone",
+                "network_status"
+              ],
+              "public_columns": [
+                "pharmacy_id",
+                "name",
+                "address",
+                "phone",
+                "network_status"
+              ],
+              "hidden_columns": [],
+              "row_count": 35,
+              "hidden_nonnull_counts": {}
+            },
+            {
+              "table": "program_candidates",
+              "columns": [
+                "program_code",
+                "patient_id",
+                "candidate_date",
+                "source",
+                "consent_status",
+                "preferred_outreach",
+                "adherence_score",
+                "target_condition"
+              ],
+              "public_columns": [
+                "program_code",
+                "patient_id",
+                "candidate_date",
+                "source",
+                "consent_status",
+                "preferred_outreach",
+                "adherence_score",
+                "target_condition"
+              ],
+              "hidden_columns": [],
+              "row_count": 31,
+              "hidden_nonnull_counts": {}
+            },
+            {
+              "table": "referrals",
+              "columns": [
+                "referral_id",
+                "batch_id",
+                "service_line",
+                "date_received",
+                "patient_id",
+                "payer",
+                "insurance_id",
+                "referring_physician",
+                "referring_practice",
+                "referring_phone",
+                "referring_fax",
+                "icd10_code",
+                "diagnosis_description",
+                "referral_reason",
+                "urgency",
+                "records_received",
+                "imaging_received",
+                "auth_required",
+                "auth_status",
+                "appointment_scheduled",
+                "appointment_date",
+                "assigned_physician",
+                "notes"
+              ],
+              "public_columns": [
+                "referral_id",
+                "batch_id",
+                "service_line",
+                "date_received",
+                "patient_id",
+                "payer",
+                "insurance_id",
+                "referring_physician",
+                "referring_practice",
+                "referring_phone",
+                "referring_fax",
+                "icd10_code",
+                "diagnosis_description",
+                "referral_reason",
+                "urgency",
+                "records_received",
+                "imaging_received",
+                "auth_required",
+                "auth_status",
+                "appointment_scheduled",
+                "appointment_date",
+                "assigned_physician",
+                "notes"
+              ],
+              "hidden_columns": [],
+              "row_count": 81,
+              "hidden_nonnull_counts": {}
+            },
+            {
+              "table": "sqlite_sequence",
+              "columns": [
+                "name",
+                "seq"
+              ],
+              "public_columns": [
+                "name",
+                "seq"
+              ],
+              "hidden_columns": [],
+              "row_count": 3,
+              "hidden_nonnull_counts": {}
+            },
+            {
+              "table": "transfer_requests",
+              "columns": [
+                "transfer_id",
+                "batch_id",
+                "patient_id",
+                "referring_facility",
+                "requested_start_date",
+                "requested_end_date",
+                "modality",
+                "days_requested",
+                "chair_window",
+                "transportation",
+                "status_note"
+              ],
+              "public_columns": [
+                "transfer_id",
+                "batch_id",
+                "patient_id",
+                "referring_facility",
+                "requested_start_date",
+                "requested_end_date",
+                "modality",
+                "days_requested",
+                "chair_window",
+                "transportation",
+                "status_note"
+              ],
+              "hidden_columns": [],
+              "row_count": 26,
+              "hidden_nonnull_counts": {}
+            }
+          ]
+        }
+      ],
+      "decision": "Remove construction annotations; retain shared business records."
+    },
+    {
+      "group": 14,
+      "generator_sha256": "0caa34316703d6a157b458d7dfe2aa855801945ccff374e41f01b4489c17363f",
+      "generator_annotation_lines": [],
+      "databases": [
+        {
+          "path": "data/northstar_pa.sqlite",
+          "sha256": "fe8468bbf21317a6a15bc8631207a3f9a8a6660df6b5a9fe61bd40336fd039d2",
+          "tables": [
+            {
+              "table": "appeals",
+              "columns": [
+                "appeal_id",
+                "case_id",
+                "denial_date",
+                "received_date",
+                "appeal_type_requested",
+                "appeal_path",
+                "expedited_attestation",
+                "appeal_deadline",
+                "outcome",
+                "owner",
+                "notes"
+              ],
+              "public_columns": [
+                "appeal_id",
+                "case_id",
+                "denial_date",
+                "received_date",
+                "appeal_type_requested",
+                "appeal_path",
+                "expedited_attestation",
+                "appeal_deadline",
+                "outcome",
+                "owner",
+                "notes"
+              ],
+              "hidden_columns": [],
+              "row_count": 20,
+              "hidden_nonnull_counts": {}
+            },
+            {
+              "table": "assistance_screen",
+              "columns": [
+                "case_id",
+                "program_name",
+                "income_percent_fpl",
+                "insurance_type",
+                "denial_required",
+                "denial_on_file",
+                "missing_fields",
+                "assistance_status"
+              ],
+              "public_columns": [
+                "case_id",
+                "program_name",
+                "income_percent_fpl",
+                "insurance_type",
+                "denial_required",
+                "denial_on_file",
+                "missing_fields",
+                "assistance_status"
+              ],
+              "hidden_columns": [],
+              "row_count": 2,
+              "hidden_nonnull_counts": {}
+            },
+            {
+              "table": "authorizations",
+              "columns": [
+                "auth_id",
+                "case_id",
+                "auth_number",
+                "status",
+                "approved_units",
+                "approved_start",
+                "approved_end",
+                "approved_cpt",
+                "approved_modifier",
+                "denial_reason"
+              ],
+              "public_columns": [
+                "auth_id",
+                "case_id",
+                "auth_number",
+                "status",
+                "approved_units",
+                "approved_start",
+                "approved_end",
+                "approved_cpt",
+                "approved_modifier",
+                "denial_reason"
+              ],
+              "hidden_columns": [],
+              "row_count": 4,
+              "hidden_nonnull_counts": {}
+            },
+            {
+              "table": "case_criteria",
+              "columns": [
+                "case_id",
+                "criterion_id",
+                "result",
+                "evidence_fact_ids",
+                "gap_description",
+                "reviewer_scope"
+              ],
+              "public_columns": [
+                "case_id",
+                "criterion_id",
+                "result",
+                "evidence_fact_ids",
+                "gap_description",
+                "reviewer_scope"
+              ],
+              "hidden_columns": [],
+              "row_count": 17,
+              "hidden_nonnull_counts": {}
+            },
+            {
+              "table": "cases",
+              "columns": [
+                "case_id",
+                "member_id",
+                "provider_id",
+                "request_type",
+                "service_domain",
+                "policy_id",
+                "request_date",
+                "due_date",
+                "current_stage",
+                "current_status",
+                "urgency",
+                "summary"
+              ],
+              "public_columns": [
+                "case_id",
+                "member_id",
+                "provider_id",
+                "request_type",
+                "service_domain",
+                "policy_id",
+                "request_date",
+                "due_date",
+                "current_stage",
+                "current_status",
+                "urgency",
+                "summary"
+              ],
+              "hidden_columns": [],
+              "row_count": 160,
+              "hidden_nonnull_counts": {}
+            },
+            {
+              "table": "claim_lines",
+              "columns": [
+                "claim_line_id",
+                "claim_id",
+                "line_number",
+                "cpt_code",
+                "modifier",
+                "units",
+                "billed_amount",
+                "paid_amount",
+                "denial_code",
+                "service_date"
+              ],
+              "public_columns": [
+                "claim_line_id",
+                "claim_id",
+                "line_number",
+                "cpt_code",
+                "modifier",
+                "units",
+                "billed_amount",
+                "paid_amount",
+                "denial_code",
+                "service_date"
+              ],
+              "hidden_columns": [],
+              "row_count": 163,
+              "hidden_nonnull_counts": {}
+            },
+            {
+              "table": "claims",
+              "columns": [
+                "claim_id",
+                "member_id",
+                "case_id",
+                "payer",
+                "received_date",
+                "claim_status",
+                "auth_number",
+                "billed_total",
+                "paid_total"
+              ],
+              "public_columns": [
+                "claim_id",
+                "member_id",
+                "case_id",
+                "payer",
+                "received_date",
+                "claim_status",
+                "auth_number",
+                "billed_total",
+                "paid_total"
+              ],
+              "hidden_columns": [],
+              "row_count": 83,
+              "hidden_nonnull_counts": {}
+            },
+            {
+              "table": "document_facts",
+              "columns": [
+                "fact_id",
+                "document_id",
+                "case_id",
+                "fact_key",
+                "fact_value",
+                "numeric_value",
+                "unit",
+                "supports_criteria"
+              ],
+              "public_columns": [
+                "fact_id",
+                "document_id",
+                "case_id",
+                "fact_key",
+                "fact_value",
+                "numeric_value",
+                "unit",
+                "supports_criteria"
+              ],
+              "hidden_columns": [],
+              "row_count": 338,
+              "hidden_nonnull_counts": {}
+            },
+            {
+              "table": "documents",
+              "columns": [
+                "document_id",
+                "case_id",
+                "document_type",
+                "document_date",
+                "received_date",
+                "source_system",
+                "is_current",
+                "title",
+                "summary"
+              ],
+              "public_columns": [
+                "document_id",
+                "case_id",
+                "document_type",
+                "document_date",
+                "received_date",
+                "source_system",
+                "is_current",
+                "title",
+                "summary"
+              ],
+              "hidden_columns": [],
+              "row_count": 322,
+              "hidden_nonnull_counts": {}
+            },
+            {
+              "table": "drug_trials",
+              "columns": [
+                "trial_id",
+                "case_id",
+                "medication",
+                "outcome",
+                "documented",
+                "start_date",
+                "end_date",
+                "notes"
+              ],
+              "public_columns": [
+                "trial_id",
+                "case_id",
+                "medication",
+                "outcome",
+                "documented",
+                "start_date",
+                "end_date",
+                "notes"
+              ],
+              "hidden_columns": [],
+              "row_count": 4,
+              "hidden_nonnull_counts": {}
+            },
+            {
+              "table": "members",
+              "columns": [
+                "member_id",
+                "patient_name",
+                "dob",
+                "plan_id",
+                "plan_type",
+                "product",
+                "employer_group",
+                "member_status"
+              ],
+              "public_columns": [
+                "member_id",
+                "patient_name",
+                "dob",
+                "plan_id",
+                "plan_type",
+                "product",
+                "employer_group",
+                "member_status"
+              ],
+              "hidden_columns": [],
+              "row_count": 160,
+              "hidden_nonnull_counts": {}
+            },
+            {
+              "table": "p2p_events",
+              "columns": [
+                "p2p_id",
+                "case_id",
+                "scheduled_at",
+                "duration_minutes",
+                "provider_argument",
+                "new_information",
+                "outcome",
+                "final_status",
+                "reviewer",
+                "notes"
+              ],
+              "public_columns": [
+                "p2p_id",
+                "case_id",
+                "scheduled_at",
+                "duration_minutes",
+                "provider_argument",
+                "new_information",
+                "outcome",
+                "final_status",
+                "reviewer",
+                "notes"
+              ],
+              "hidden_columns": [],
+              "row_count": 11,
+              "hidden_nonnull_counts": {}
+            },
+            {
+              "table": "payment_benchmarks",
+              "columns": [
+                "benchmark_id",
+                "payer",
+                "plan_type",
+                "service_domain",
+                "cpt_code",
+                "modifier",
+                "effective_start",
+                "effective_end",
+                "allowed_amount",
+                "source_name",
+                "source_version"
+              ],
+              "public_columns": [
+                "benchmark_id",
+                "payer",
+                "plan_type",
+                "service_domain",
+                "cpt_code",
+                "modifier",
+                "effective_start",
+                "effective_end",
+                "allowed_amount",
+                "source_name",
+                "source_version"
+              ],
+              "hidden_columns": [],
+              "row_count": 23,
+              "hidden_nonnull_counts": {}
+            },
+            {
+              "table": "plans",
+              "columns": [
+                "plan_id",
+                "payer_name",
+                "plan_type",
+                "state",
+                "network",
+                "effective_start",
+                "effective_end",
+                "notes"
+              ],
+              "public_columns": [
+                "plan_id",
+                "payer_name",
+                "plan_type",
+                "state",
+                "network",
+                "effective_start",
+                "effective_end",
+                "notes"
+              ],
+              "hidden_columns": [],
+              "row_count": 5,
+              "hidden_nonnull_counts": {}
+            },
+            {
+              "table": "policies",
+              "columns": [
+                "policy_id",
+                "policy_name",
+                "version",
+                "effective_start",
+                "effective_end",
+                "precedence",
+                "summary"
+              ],
+              "public_columns": [
+                "policy_id",
+                "policy_name",
+                "version",
+                "effective_start",
+                "effective_end",
+                "precedence",
+                "summary"
+              ],
+              "hidden_columns": [],
+              "row_count": 5,
+              "hidden_nonnull_counts": {}
+            },
+            {
+              "table": "policy_criteria",
+              "columns": [
+                "criterion_id",
+                "policy_id",
+                "criterion_key",
+                "criterion_text",
+                "approval_required",
+                "result_if_missing"
+              ],
+              "public_columns": [
+                "criterion_id",
+                "policy_id",
+                "criterion_key",
+                "criterion_text",
+                "approval_required",
+                "result_if_missing"
+              ],
+              "hidden_columns": [],
+              "row_count": 15,
+              "hidden_nonnull_counts": {}
+            },
+            {
+              "table": "providers",
+              "columns": [
+                "provider_id",
+                "provider_name",
+                "specialty",
+                "npi",
+                "phone",
+                "fax",
+                "organization"
+              ],
+              "public_columns": [
+                "provider_id",
+                "provider_name",
+                "specialty",
+                "npi",
+                "phone",
+                "fax",
+                "organization"
+              ],
+              "hidden_columns": [],
+              "row_count": 6,
+              "hidden_nonnull_counts": {}
+            },
+            {
+              "table": "request_lines",
+              "columns": [
+                "line_id",
+                "case_id",
+                "cpt_code",
+                "modifier",
+                "service_name",
+                "requested_units",
+                "requested_start",
+                "requested_end",
+                "diagnosis_codes",
+                "billed_charge"
+              ],
+              "public_columns": [
+                "line_id",
+                "case_id",
+                "cpt_code",
+                "modifier",
+                "service_name",
+                "requested_units",
+                "requested_start",
+                "requested_end",
+                "diagnosis_codes",
+                "billed_charge"
+              ],
+              "hidden_columns": [],
+              "row_count": 328,
+              "hidden_nonnull_counts": {}
+            },
+            {
+              "table": "service_margin",
+              "columns": [
+                "month_id",
+                "period",
+                "payer",
+                "payer_segment",
+                "service_domain",
+                "cpt_code",
+                "visits",
+                "net_revenue",
+                "variable_cost",
+                "fixed_cost_allocated",
+                "charge_sensitive"
+              ],
+              "public_columns": [
+                "month_id",
+                "period",
+                "payer",
+                "payer_segment",
+                "service_domain",
+                "cpt_code",
+                "visits",
+                "net_revenue",
+                "variable_cost",
+                "fixed_cost_allocated",
+                "charge_sensitive"
+              ],
+              "hidden_columns": [],
+              "row_count": 27,
+              "hidden_nonnull_counts": {}
+            }
+          ]
+        }
+      ],
+      "decision": "Remove construction annotations; retain shared business records."
+    },
+    {
+      "group": 15,
+      "generator_sha256": "2e7e3ef22f189fa25bca219376324b79839dc0b4778b7e3b675d31ee0baa1095",
+      "generator_annotation_lines": [],
+      "databases": [],
+      "decision": "Remove construction annotations; retain shared business records."
+    },
+    {
+      "group": 16,
+      "generator_sha256": "ae775c25908ef865f6a3ed75cfc7031923d08f9af2e4d99cbcf384c2bcb214da",
+      "generator_annotation_lines": [],
+      "databases": [
+        {
+          "path": "generated/clinic.sqlite3",
+          "sha256": "f5c6e6646120b76ad54da29c63a7f9326975e1da3eee8f41466d2b17aa6671d8",
+          "tables": [
+            {
+              "table": "allergies",
+              "columns": [
+                "id",
+                "patient_id",
+                "allergen",
+                "reaction",
+                "status"
+              ],
+              "public_columns": [
+                "id",
+                "patient_id",
+                "allergen",
+                "reaction",
+                "status"
+              ],
+              "hidden_columns": [],
+              "row_count": 55,
+              "hidden_nonnull_counts": {}
+            },
+            {
+              "table": "care_registry",
+              "columns": [
+                "case_id",
+                "patient_id",
+                "risk_score",
+                "program_hint",
+                "recent_admission_date",
+                "dialysis_schedule",
+                "chronic_condition_count",
+                "medication_count"
+              ],
+              "public_columns": [
+                "case_id",
+                "patient_id",
+                "risk_score",
+                "program_hint",
+                "recent_admission_date",
+                "dialysis_schedule",
+                "chronic_condition_count",
+                "medication_count"
+              ],
+              "hidden_columns": [],
+              "row_count": 10,
+              "hidden_nonnull_counts": {}
+            },
+            {
+              "table": "case_findings",
+              "columns": [
+                "id",
+                "case_id",
+                "finding_key",
+                "finding_value",
+                "source_id"
+              ],
+              "public_columns": [
+                "id",
+                "case_id",
+                "finding_key",
+                "finding_value",
+                "source_id"
+              ],
+              "hidden_columns": [],
+              "row_count": 112,
+              "hidden_nonnull_counts": {}
+            },
+            {
+              "table": "cases",
+              "columns": [
+                "case_id",
+                "patient_id",
+                "case_type",
+                "service_date",
+                "status",
+                "summary"
+              ],
+              "public_columns": [
+                "case_id",
+                "patient_id",
+                "case_type",
+                "service_date",
+                "status",
+                "summary"
+              ],
+              "hidden_columns": [],
+              "row_count": 50,
+              "hidden_nonnull_counts": {}
+            },
+            {
+              "table": "imaging",
+              "columns": [
+                "imaging_id",
+                "patient_id",
+                "case_id",
+                "study",
+                "status",
+                "performed_at",
+                "impression"
+              ],
+              "public_columns": [
+                "imaging_id",
+                "patient_id",
+                "case_id",
+                "study",
+                "status",
+                "performed_at",
+                "impression"
+              ],
+              "hidden_columns": [],
+              "row_count": 13,
+              "hidden_nonnull_counts": {}
+            },
+            {
+              "table": "medications",
+              "columns": [
+                "medication_id",
+                "patient_id",
+                "name",
+                "code",
+                "status",
+                "dose",
+                "route",
+                "frequency",
+                "start_date",
+                "end_date",
+                "source"
+              ],
+              "public_columns": [
+                "medication_id",
+                "patient_id",
+                "name",
+                "code",
+                "status",
+                "dose",
+                "route",
+                "frequency",
+                "start_date",
+                "end_date",
+                "source"
+              ],
+              "hidden_columns": [],
+              "row_count": 100,
+              "hidden_nonnull_counts": {}
+            },
+            {
+              "table": "observations",
+              "columns": [
+                "observation_id",
+                "patient_id",
+                "case_id",
+                "code",
+                "display",
+                "category",
+                "status",
+                "effective_time",
+                "value_text",
+                "value_number",
+                "unit",
+                "interpretation",
+                "source"
+              ],
+              "public_columns": [
+                "observation_id",
+                "patient_id",
+                "case_id",
+                "code",
+                "display",
+                "category",
+                "status",
+                "effective_time",
+                "value_text",
+                "value_number",
+                "unit",
+                "interpretation",
+                "source"
+              ],
+              "hidden_columns": [],
+              "row_count": 214,
+              "hidden_nonnull_counts": {}
+            },
+            {
+              "table": "patients",
+              "columns": [
+                "patient_id",
+                "fhir_id",
+                "name",
+                "age",
+                "sex",
+                "birth_date"
+              ],
+              "public_columns": [
+                "patient_id",
+                "fhir_id",
+                "name",
+                "age",
+                "sex",
+                "birth_date"
+              ],
+              "hidden_columns": [],
+              "row_count": 90,
+              "hidden_nonnull_counts": {}
+            },
+            {
+              "table": "problems",
+              "columns": [
+                "id",
+                "patient_id",
+                "code",
+                "name",
+                "status",
+                "onset_date"
+              ],
+              "public_columns": [
+                "id",
+                "patient_id",
+                "code",
+                "name",
+                "status",
+                "onset_date"
+              ],
+              "hidden_columns": [],
+              "row_count": 71,
+              "hidden_nonnull_counts": {}
+            },
+            {
+              "table": "protocols",
+              "columns": [
+                "protocol_id",
+                "title",
+                "version",
+                "body_json"
+              ],
+              "public_columns": [
+                "protocol_id",
+                "title",
+                "version",
+                "body_json"
+              ],
+              "hidden_columns": [],
+              "row_count": 5,
+              "hidden_nonnull_counts": {}
+            },
+            {
+              "table": "sdoh",
+              "columns": [
+                "id",
+                "patient_id",
+                "domain",
+                "severity",
+                "evidence",
+                "source"
+              ],
+              "public_columns": [
+                "id",
+                "patient_id",
+                "domain",
+                "severity",
+                "evidence",
+                "source"
+              ],
+              "hidden_columns": [],
+              "row_count": 6,
+              "hidden_nonnull_counts": {}
+            },
+            {
+              "table": "sqlite_sequence",
+              "columns": [
+                "name",
+                "seq"
+              ],
+              "public_columns": [
+                "name",
+                "seq"
+              ],
+              "hidden_columns": [],
+              "row_count": 4,
+              "hidden_nonnull_counts": {}
+            }
+          ]
+        }
+      ],
+      "decision": "Remove construction annotations; retain shared business records."
+    },
+    {
+      "group": 17,
+      "generator_sha256": "9db61276751a1901a8d13a8967eb4ed7f45d9e0c04856b68c3df70a29b175614",
+      "generator_annotation_lines": [
+        {
+          "line": 45,
+          "text": "\"task_id\": \"train_001\","
+        },
+        {
+          "line": 57,
+          "text": "\"task_id\": \"train_002\","
+        },
+        {
+          "line": 69,
+          "text": "\"task_id\": \"train_003\","
+        },
+        {
+          "line": 81,
+          "text": "\"task_id\": \"train_004\","
+        },
+        {
+          "line": 93,
+          "text": "\"task_id\": \"train_005\","
+        },
+        {
+          "line": 105,
+          "text": "\"task_id\": \"test_001\","
+        },
+        {
+          "line": 117,
+          "text": "\"task_id\": \"test_002\","
+        },
+        {
+          "line": 129,
+          "text": "\"task_id\": \"test_003\","
+        },
+        {
+          "line": 141,
+          "text": "\"task_id\": \"test_004\","
+        },
+        {
+          "line": 153,
+          "text": "\"task_id\": \"test_005\","
+        },
+        {
+          "line": 2113,
+          "text": "{\"matter_id\": matter[\"matter_id\"], \"task_id\": matter[\"task_id\"]} for matter in PRIMARY_MATTERS"
+        }
+      ],
+      "databases": [
+        {
+          "path": "data/review_hub.db",
+          "sha256": "bf02f55de6aa983ce976220647b6c6e218233385edc49f05acaa50c175c7c0ae",
+          "tables": [
+            {
+              "table": "custodian_sources",
+              "columns": [
+                "source_id",
+                "matter_id",
+                "custodian_name",
+                "role",
+                "source_type",
+                "source_label",
+                "status",
+                "event_date",
+                "post_hold",
+                "category_impacts",
+                "issue_tags",
+                "notes"
+              ],
+              "public_columns": [
+                "source_id",
+                "matter_id",
+                "custodian_name",
+                "role",
+                "source_type",
+                "source_label",
+                "status",
+                "event_date",
+                "post_hold",
+                "category_impacts",
+                "issue_tags",
+                "notes"
+              ],
+              "hidden_columns": [],
+              "row_count": 241,
+              "hidden_nonnull_counts": {}
+            },
+            {
+              "table": "matters",
+              "columns": [
+                "matter_id",
+                "name",
+                "agency",
+                "investigation_type",
+                "issued_date",
+                "hold_date",
+                "lead_partner",
+                "description",
+                "status"
+              ],
+              "public_columns": [
+                "matter_id",
+                "name",
+                "agency",
+                "investigation_type",
+                "issued_date",
+                "hold_date",
+                "lead_partner",
+                "description",
+                "status"
+              ],
+              "hidden_columns": [],
+              "row_count": 16,
+              "hidden_nonnull_counts": {}
+            },
+            {
+              "table": "privilege_entries",
+              "columns": [
+                "entry_id",
+                "matter_id",
+                "category_code",
+                "custodian_name",
+                "doc_count",
+                "withheld_count",
+                "logged_count",
+                "issue_type",
+                "third_party",
+                "notes"
+              ],
+              "public_columns": [
+                "entry_id",
+                "matter_id",
+                "category_code",
+                "custodian_name",
+                "doc_count",
+                "withheld_count",
+                "logged_count",
+                "issue_type",
+                "third_party",
+                "notes"
+              ],
+              "hidden_columns": [],
+              "row_count": 141,
+              "hidden_nonnull_counts": {}
+            },
+            {
+              "table": "production_stats",
+              "columns": [
+                "matter_id",
+                "batch_id",
+                "batch_date",
+                "category_code",
+                "produced_count",
+                "withheld_count",
+                "responsive_count",
+                "nonresponsive_count",
+                "status",
+                "zero_claim_reason",
+                "notes"
+              ],
+              "public_columns": [
+                "matter_id",
+                "batch_id",
+                "batch_date",
+                "category_code",
+                "produced_count",
+                "withheld_count",
+                "responsive_count",
+                "nonresponsive_count",
+                "status",
+                "zero_claim_reason",
+                "notes"
+              ],
+              "hidden_columns": [],
+              "row_count": 138,
+              "hidden_nonnull_counts": {}
+            },
+            {
+              "table": "qc_findings",
+              "columns": [
+                "finding_id",
+                "matter_id",
+                "batch_id",
+                "issue_type",
+                "doc_count",
+                "affected_category",
+                "source_ref",
+                "severity",
+                "notes"
+              ],
+              "public_columns": [
+                "finding_id",
+                "matter_id",
+                "batch_id",
+                "issue_type",
+                "doc_count",
+                "affected_category",
+                "source_ref",
+                "severity",
+                "notes"
+              ],
+              "hidden_columns": [],
+              "row_count": 136,
+              "hidden_nonnull_counts": {}
+            },
+            {
+              "table": "remediation_actions",
+              "columns": [
+                "action_id",
+                "matter_id",
+                "action_type",
+                "priority",
+                "severity",
+                "owner",
+                "target_ref",
+                "due_days",
+                "description"
+              ],
+              "public_columns": [
+                "action_id",
+                "matter_id",
+                "action_type",
+                "priority",
+                "severity",
+                "owner",
+                "target_ref",
+                "due_days",
+                "description"
+              ],
+              "hidden_columns": [],
+              "row_count": 100,
+              "hidden_nonnull_counts": {}
+            },
+            {
+              "table": "retention_events",
+              "columns": [
+                "event_id",
+                "matter_id",
+                "record_type",
+                "event_date",
+                "hold_date",
+                "policy_section",
+                "retention_period_months",
+                "volume_count",
+                "volume_unit",
+                "status",
+                "affected_categories",
+                "source_ref",
+                "notes"
+              ],
+              "public_columns": [
+                "event_id",
+                "matter_id",
+                "record_type",
+                "event_date",
+                "hold_date",
+                "policy_section",
+                "retention_period_months",
+                "volume_count",
+                "volume_unit",
+                "status",
+                "affected_categories",
+                "source_ref",
+                "notes"
+              ],
+              "hidden_columns": [],
+              "row_count": 126,
+              "hidden_nonnull_counts": {}
+            },
+            {
+              "table": "review_documents",
+              "columns": [
+                "doc_id",
+                "matter_id",
+                "title",
+                "doc_date",
+                "custodian_name",
+                "source_system",
+                "category_code",
+                "responsiveness",
+                "privilege_status",
+                "produced_status",
+                "issue_tags",
+                "summary"
+              ],
+              "public_columns": [
+                "doc_id",
+                "matter_id",
+                "title",
+                "doc_date",
+                "custodian_name",
+                "source_system",
+                "category_code",
+                "responsiveness",
+                "privilege_status",
+                "produced_status",
+                "issue_tags",
+                "summary"
+              ],
+              "hidden_columns": [],
+              "row_count": 1955,
+              "hidden_nonnull_counts": {}
+            },
+            {
+              "table": "subpoena_categories",
+              "columns": [
+                "matter_id",
+                "category_code",
+                "title",
+                "date_start",
+                "date_end",
+                "request_text",
+                "topic_tags"
+              ],
+              "public_columns": [
+                "matter_id",
+                "category_code",
+                "title",
+                "date_start",
+                "date_end",
+                "request_text",
+                "topic_tags"
+              ],
+              "hidden_columns": [],
+              "row_count": 138,
+              "hidden_nonnull_counts": {}
+            }
+          ]
+        }
+      ],
+      "decision": "Remove construction annotations; retain shared business records."
+    },
+    {
+      "group": 18,
+      "generator_sha256": "c2d4b1f3088e96d71b8b3b387fd9c6833b89a70fa236c46083b66f76b662a5d6",
+      "generator_annotation_lines": [
+        {
+          "line": 14,
+          "text": "\"train_001\": {\"cases\": [\"RC-25-0412\", \"RC-25-0418\", \"RC-24-0987\", \"RC-25-0502\"]},"
+        },
+        {
+          "line": 15,
+          "text": "\"train_002\": {\"citations\": [\"OR26-TR-1188\", \"OR26-TR-1194\"]},"
+        },
+        {
+          "line": 16,
+          "text": "\"train_003\": {\"cases\": [\"VA-CR24-0716-00\"], \"petitions\": [\"VA-PET-716A\"]},"
+        },
+        {
+          "line": 17,
+          "text": "\"train_004\": {\"cases\": [\"UC-25-0221\", \"UC-25-0224\", \"UC-25-0230\", \"UC-24-0775\", \"UC-25-0238\"]},"
+        },
+        {
+          "line": 18,
+          "text": "\"train_005\": {"
+        },
+        {
+          "line": 22,
+          "text": "\"test_001\": {\"cases\": [\"MC-25-0601\", \"MC-25-0604\", \"MC-24-1109\", \"MC-25-0618\", \"MC-25-0622\"]},"
+        },
+        {
+          "line": 23,
+          "text": "\"test_002\": {\"citations\": [\"OR27-TR-2201\", \"OR27-TR-2208\", \"OR27-TR-2219\"]},"
+        },
+        {
+          "line": 24,
+          "text": "\"test_003\": {\"cases\": [\"VA-CR25-1044-00\"], \"petitions\": [\"VA-PET-1044A\"]},"
+        },
+        {
+          "line": 25,
+          "text": "\"test_004\": {\"cases\": [\"LC-25-0320\", \"LC-25-0326\", \"LC-24-0899\", \"LC-25-0331\"]},"
+        },
+        {
+          "line": 26,
+          "text": "\"test_005\": {"
+        }
+      ],
+      "databases": [
+        {
+          "path": "generated/court_ops.db",
+          "sha256": "746208ffe427ef48bc15c417830ef09c9b48507a0feff0b2d9eae7d36f957339",
+          "tables": [
+            {
+              "table": "cases",
+              "columns": [
+                "case_number",
+                "jurisdiction_code",
+                "case_type",
+                "defendant_first",
+                "defendant_last",
+                "defendant_dob",
+                "filed_date",
+                "disposition_date",
+                "status",
+                "counsel_type",
+                "attorney_name",
+                "judge",
+                "prosecutor",
+                "source_system",
+                "source_updated_at",
+                "attorney_label_raw",
+                "notes",
+                "external_party_id"
+              ],
+              "public_columns": [
+                "case_number",
+                "jurisdiction_code",
+                "case_type",
+                "defendant_first",
+                "defendant_last",
+                "defendant_dob",
+                "filed_date",
+                "disposition_date",
+                "status",
+                "counsel_type",
+                "attorney_name",
+                "judge",
+                "prosecutor",
+                "source_system",
+                "source_updated_at",
+                "attorney_label_raw",
+                "notes",
+                "external_party_id"
+              ],
+              "hidden_columns": [],
+              "row_count": 159,
+              "hidden_nonnull_counts": {}
+            },
+            {
+              "table": "charges",
+              "columns": [
+                "charge_id",
+                "case_number",
+                "count_no",
+                "offense_code",
+                "statute",
+                "description",
+                "severity",
+                "offense_date",
+                "plea",
+                "verdict",
+                "disposition",
+                "fine_amount",
+                "jail_days_imposed",
+                "jail_days_suspended",
+                "probation_months",
+                "license_suspension_months",
+                "presumptive_min_months",
+                "presumptive_max_months",
+                "departure_type",
+                "departure_reason",
+                "assessment_code"
+              ],
+              "public_columns": [
+                "charge_id",
+                "case_number",
+                "count_no",
+                "offense_code",
+                "statute",
+                "description",
+                "severity",
+                "offense_date",
+                "plea",
+                "verdict",
+                "disposition",
+                "fine_amount",
+                "jail_days_imposed",
+                "jail_days_suspended",
+                "probation_months",
+                "license_suspension_months",
+                "presumptive_min_months",
+                "presumptive_max_months",
+                "departure_type",
+                "departure_reason",
+                "assessment_code"
+              ],
+              "hidden_columns": [],
+              "row_count": 196,
+              "hidden_nonnull_counts": {}
+            },
+            {
+              "table": "citations",
+              "columns": [
+                "citation_number",
+                "jurisdiction_code",
+                "defendant_name",
+                "defendant_dob",
+                "violation_code",
+                "statute",
+                "violation_desc",
+                "event_date",
+                "hearing_date",
+                "plea",
+                "disposition",
+                "speed_mph",
+                "zone_mph",
+                "officer",
+                "standard_fine",
+                "county_surcharge",
+                "amount_due",
+                "plan_approved",
+                "monthly_payment",
+                "first_due_date",
+                "final_payment_amount",
+                "plan_notes",
+                "status"
+              ],
+              "public_columns": [
+                "citation_number",
+                "jurisdiction_code",
+                "defendant_name",
+                "defendant_dob",
+                "violation_code",
+                "statute",
+                "violation_desc",
+                "event_date",
+                "hearing_date",
+                "plea",
+                "disposition",
+                "speed_mph",
+                "zone_mph",
+                "officer",
+                "standard_fine",
+                "county_surcharge",
+                "amount_due",
+                "plan_approved",
+                "monthly_payment",
+                "first_due_date",
+                "final_payment_amount",
+                "plan_notes",
+                "status"
+              ],
+              "hidden_columns": [],
+              "row_count": 105,
+              "hidden_nonnull_counts": {}
+            },
+            {
+              "table": "docket_entries",
+              "columns": [
+                "entry_id",
+                "case_number",
+                "entry_date",
+                "entry_type",
+                "text",
+                "source",
+                "entered_by"
+              ],
+              "public_columns": [
+                "entry_id",
+                "case_number",
+                "entry_date",
+                "entry_type",
+                "text",
+                "source",
+                "entered_by"
+              ],
+              "hidden_columns": [],
+              "row_count": 721,
+              "hidden_nonnull_counts": {}
+            },
+            {
+              "table": "fee_schedules",
+              "columns": [
+                "fee_id",
+                "jurisdiction_code",
+                "fee_type",
+                "violation_code",
+                "statute",
+                "label",
+                "amount",
+                "effective_date",
+                "end_date",
+                "mandatory",
+                "priority",
+                "notes"
+              ],
+              "public_columns": [
+                "fee_id",
+                "jurisdiction_code",
+                "fee_type",
+                "violation_code",
+                "statute",
+                "label",
+                "amount",
+                "effective_date",
+                "end_date",
+                "mandatory",
+                "priority",
+                "notes"
+              ],
+              "hidden_columns": [],
+              "row_count": 26,
+              "hidden_nonnull_counts": {}
+            },
+            {
+              "table": "financial_petitions",
+              "columns": [
+                "petition_id",
+                "case_number",
+                "jurisdiction_code",
+                "petitioner_name",
+                "petition_sequence",
+                "submitted_date",
+                "income_monthly",
+                "household_size",
+                "obligations_monthly",
+                "public_assistance",
+                "restitution_balance",
+                "fines_costs_balance",
+                "account_fee_applicable",
+                "requested_monthly",
+                "approved_monthly",
+                "first_due_date",
+                "final_due_date",
+                "return_to_court_date",
+                "default_status",
+                "license_suspension_months",
+                "probation_report_datetime",
+                "employment_status",
+                "notes"
+              ],
+              "public_columns": [
+                "petition_id",
+                "case_number",
+                "jurisdiction_code",
+                "petitioner_name",
+                "petition_sequence",
+                "submitted_date",
+                "income_monthly",
+                "household_size",
+                "obligations_monthly",
+                "public_assistance",
+                "restitution_balance",
+                "fines_costs_balance",
+                "account_fee_applicable",
+                "requested_monthly",
+                "approved_monthly",
+                "first_due_date",
+                "final_due_date",
+                "return_to_court_date",
+                "default_status",
+                "license_suspension_months",
+                "probation_report_datetime",
+                "employment_status",
+                "notes"
+              ],
+              "hidden_columns": [],
+              "row_count": 56,
+              "hidden_nonnull_counts": {}
+            },
+            {
+              "table": "form_catalog",
+              "columns": [
+                "form_id",
+                "jurisdiction_code",
+                "form_name",
+                "label",
+                "required_fields",
+                "placeholder_instruction",
+                "revision_date",
+                "source_url"
+              ],
+              "public_columns": [
+                "form_id",
+                "jurisdiction_code",
+                "form_name",
+                "label",
+                "required_fields",
+                "placeholder_instruction",
+                "revision_date",
+                "source_url"
+              ],
+              "hidden_columns": [],
+              "row_count": 6,
+              "hidden_nonnull_counts": {}
+            },
+            {
+              "table": "jurisdictions",
+              "columns": [
+                "jurisdiction_code",
+                "state",
+                "county",
+                "court_name",
+                "court_level",
+                "policy_ref",
+                "active",
+                "clerk_office",
+                "phone",
+                "timezone"
+              ],
+              "public_columns": [
+                "jurisdiction_code",
+                "state",
+                "county",
+                "court_name",
+                "court_level",
+                "policy_ref",
+                "active",
+                "clerk_office",
+                "phone",
+                "timezone"
+              ],
+              "hidden_columns": [],
+              "row_count": 10,
+              "hidden_nonnull_counts": {}
+            },
+            {
+              "table": "payment_policies",
+              "columns": [
+                "policy_id",
+                "jurisdiction_code",
+                "policy_name",
+                "min_monthly",
+                "max_monthly",
+                "down_payment_required",
+                "first_due_days",
+                "return_to_court_offset_days",
+                "subsequent_petition_rule",
+                "account_fee",
+                "restitution_priority",
+                "notes"
+              ],
+              "public_columns": [
+                "policy_id",
+                "jurisdiction_code",
+                "policy_name",
+                "min_monthly",
+                "max_monthly",
+                "down_payment_required",
+                "first_due_days",
+                "return_to_court_offset_days",
+                "subsequent_petition_rule",
+                "account_fee",
+                "restitution_priority",
+                "notes"
+              ],
+              "hidden_columns": [],
+              "row_count": 5,
+              "hidden_nonnull_counts": {}
+            }
+          ]
+        }
+      ],
+      "decision": "Remove construction annotations; retain shared business records."
+    },
+    {
+      "group": 19,
+      "generator_sha256": "80911816fe9668b19055323161d5ebca9b5190d301777a7fbffcc31ed76f0680",
+      "generator_annotation_lines": [
+        {
+          "line": 15,
+          "text": "\"train_001\": [f\"C-TR1-{idx:03d}\" for idx in range(1, 9)],"
+        },
+        {
+          "line": 16,
+          "text": "\"train_004\": [f\"C-TR4-{idx:03d}\" for idx in range(1, 8)],"
+        },
+        {
+          "line": 17,
+          "text": "\"test_001\": [f\"C-TE1-{idx:03d}\" for idx in range(1, 10)],"
+        },
+        {
+          "line": 18,
+          "text": "\"test_004\": [f\"C-TE4-{idx:03d}\" for idx in range(1, 16)],"
+        },
+        {
+          "line": 22,
+          "text": "\"train_002\": {\"application_id\": \"L-TR2-001\", \"location_id\": \"LOC-TR2\"},"
+        },
+        {
+          "line": 23,
+          "text": "\"train_005\": {\"application_id\": \"L-TR5-001\", \"location_id\": \"LOC-TR5\"},"
+        },
+        {
+          "line": 24,
+          "text": "\"test_003\": {\"application_id\": \"L-TE3-001\", \"location_id\": \"LOC-TE3\"},"
+        },
+        {
+          "line": 28,
+          "text": "\"train_003\": {"
+        },
+        {
+          "line": 33,
+          "text": "\"test_002\": {"
+        },
+        {
+          "line": 38,
+          "text": "\"test_005\": {"
+        },
+        {
+          "line": 46,
+          "text": "\"train_003\": {"
+        },
+        {
+          "line": 83,
+          "text": "\"test_002\": {"
+        },
+        {
+          "line": 120,
+          "text": "\"test_005\": {"
+        },
+        {
+          "line": 280,
+          "text": "target_group TEXT"
+        },
+        {
+          "line": 354,
+          "text": "target_group TEXT"
+        },
+        {
+          "line": 403,
+          "text": "target_group TEXT"
+        },
+        {
+          "line": 432,
+          "text": "\"CREATE INDEX idx_contractor_app_target ON contractor_applications(target_group)\","
+        },
+        {
+          "line": 439,
+          "text": "\"CREATE INDEX idx_alcohol_licensees_target ON alcohol_licensees(target_group)\","
+        },
+        {
+          "line": 650,
+          "text": "target_offsets = {\"train_001\": 0, \"train_004\": 1, \"test_001\": 2, \"test_004\": 3}"
+        },
+        {
+          "line": 652,
+          "text": "def add_application(app_id, target_group, idx, is_target):"
+        },
+        {
+          "line": 653,
+          "text": "cfg = TRADE_CONFIGS[(idx + target_offsets.get(target_group, 0)) % len(TRADE_CONFIGS)]"
+        },
+        {
+          "line": 674,
+          "text": "\"target_group\": target_group if is_target else rng.choice([None, None, None, \"audit_pool\"]),"
+        },
+        {
+          "line": 817,
+          "text": "for target_group, app_ids in CONTRACTOR_TARGETS.items():"
+        },
+        {
+          "line": 818,
+          "text": "manifest_targets[target_group] = {\"contractor_application_ids\": list(app_ids)}"
+        },
+        {
+          "line": 819,
+          "text": "generated_app_ids = app_ids[:6] if target_group == \"test_004\" else app_ids"
+        },
+        {
+          "line": 822,
+          "text": "add_application(app_id, target_group, idx, True)"
+        },
+        {
+          "line": 941,
+          "text": "\"target_group\": \"test_004\","
+        },
+        {
+          "line": 954,
+          "text": "\"target_group\": \"test_004\","
+        },
+        {
+          "line": 967,
+          "text": "\"target_group\": \"test_004\","
+        },
+        {
+          "line": 980,
+          "text": "\"target_group\": \"test_004\","
+        },
+        {
+          "line": 993,
+          "text": "\"target_group\": \"test_004\","
+        },
+        {
+          "line": 1006,
+          "text": "\"target_group\": \"test_004\","
+        },
+        {
+          "line": 1019,
+          "text": "\"target_group\": \"test_004\","
+        },
+        {
+          "line": 1032,
+          "text": "\"target_group\": \"test_004\","
+        },
+        {
+          "line": 1045,
+          "text": "\"target_group\": \"test_004\","
+        },
+        {
+          "line": 1746,
+          "text": "def add_liquor_app(application_id, location_id, target_group, idx, is_target):"
+        },
+        {
+          "line": 1761,
+          "text": "\"target_group\": target_group if is_target else rng.choice([None, None, \"settlement_watch\"]),"
+        },
+        {
+          "line": 1915,
+          "text": "\"target_group\": group,"
+        },
+        {
+          "line": 1932,
+          "text": "\"target_group\": group,"
+        },
+        {
+          "line": 2051,
+          "text": "\"target_group\": rng.choice([None, None, None, \"general_renewal_pool\"]),"
+        },
+        {
+          "line": 2147,
+          "text": "target_groups = {}"
+        },
+        {
+          "line": 2148,
+          "text": "target_groups.update(contractor[\"manifest_targets\"])"
+        },
+        {
+          "line": 2149,
+          "text": "target_groups.update(liquor[\"manifest_targets\"])"
+        },
+        {
+          "line": 2150,
+          "text": "target_groups.update(alcohol[\"manifest_targets\"])"
+        },
+        {
+          "line": 2158,
+          "text": "\"target_groups\": target_groups,"
+        }
+      ],
+      "databases": [
+        {
+          "path": "data/licensing.db",
+          "sha256": "bae3789b771c5af93a8c0b05b850648e5798da5e3f5dba60f30934513756c913",
+          "tables": [
+            {
+              "table": "alcohol_licensees",
+              "columns": [
+                "license_no",
+                "agency",
+                "facility_name",
+                "address",
+                "channel_type",
+                "active",
+                "location_id",
+                "successor_to",
+                "target_group"
+              ],
+              "public_columns": [
+                "license_no",
+                "agency",
+                "facility_name",
+                "address",
+                "channel_type",
+                "active",
+                "location_id",
+                "successor_to"
+              ],
+              "hidden_columns": [
+                "target_group"
+              ],
+              "row_count": 91,
+              "hidden_nonnull_counts": {
+                "target_group": 44
+              }
+            },
+            {
+              "table": "alcohol_violations",
+              "columns": [
+                "violation_id",
+                "license_no",
+                "facility_name",
+                "address",
+                "violation_date",
+                "theme",
+                "severity",
+                "disposition",
+                "fine_balance",
+                "alert_flag",
+                "source_name"
+              ],
+              "public_columns": [
+                "violation_id",
+                "license_no",
+                "facility_name",
+                "address",
+                "violation_date",
+                "theme",
+                "severity",
+                "disposition",
+                "fine_balance",
+                "alert_flag",
+                "source_name"
+              ],
+              "hidden_columns": [],
+              "row_count": 273,
+              "hidden_nonnull_counts": {}
+            },
+            {
+              "table": "contractor_applications",
+              "columns": [
+                "application_id",
+                "applicant_name",
+                "trade",
+                "county",
+                "submitted_date",
+                "years_experience",
+                "endorsement_status",
+                "prior_license_id",
+                "requested_class",
+                "self_disclosed_issue",
+                "target_group"
+              ],
+              "public_columns": [
+                "application_id",
+                "applicant_name",
+                "trade",
+                "county",
+                "submitted_date",
+                "years_experience",
+                "endorsement_status",
+                "prior_license_id",
+                "requested_class",
+                "self_disclosed_issue"
+              ],
+              "hidden_columns": [
+                "target_group"
+              ],
+              "row_count": 111,
+              "hidden_nonnull_counts": {
+                "target_group": 58
+              }
+            },
+            {
+              "table": "contractor_bonds",
+              "columns": [
+                "bond_id",
+                "application_id",
+                "amount",
+                "status",
+                "effective_date",
+                "cancel_date",
+                "source_date",
+                "surety"
+              ],
+              "public_columns": [
+                "bond_id",
+                "application_id",
+                "amount",
+                "status",
+                "effective_date",
+                "cancel_date",
+                "source_date",
+                "surety"
+              ],
+              "hidden_columns": [],
+              "row_count": 222,
+              "hidden_nonnull_counts": {}
+            },
+            {
+              "table": "contractor_correspondence",
+              "columns": [
+                "correspondence_id",
+                "related_application_id",
+                "received_date",
+                "subject",
+                "assertion_type",
+                "assertion_value",
+                "verified_by_agency",
+                "notes"
+              ],
+              "public_columns": [
+                "correspondence_id",
+                "related_application_id",
+                "received_date",
+                "subject",
+                "assertion_type",
+                "assertion_value",
+                "verified_by_agency",
+                "notes"
+              ],
+              "hidden_columns": [],
+              "row_count": 127,
+              "hidden_nonnull_counts": {}
+            },
+            {
+              "table": "contractor_inspections",
+              "columns": [
+                "inspection_id",
+                "related_application_id",
+                "inspection_date",
+                "result",
+                "finding_code",
+                "notes"
+              ],
+              "public_columns": [
+                "inspection_id",
+                "related_application_id",
+                "inspection_date",
+                "result",
+                "finding_code",
+                "notes"
+              ],
+              "hidden_columns": [],
+              "row_count": 91,
+              "hidden_nonnull_counts": {}
+            },
+            {
+              "table": "contractor_insurance",
+              "columns": [
+                "insurance_id",
+                "application_id",
+                "amount",
+                "status",
+                "verified_date",
+                "expiration_date",
+                "insurer"
+              ],
+              "public_columns": [
+                "insurance_id",
+                "application_id",
+                "amount",
+                "status",
+                "verified_date",
+                "expiration_date",
+                "insurer"
+              ],
+              "hidden_columns": [],
+              "row_count": 222,
+              "hidden_nonnull_counts": {}
+            },
+            {
+              "table": "contractor_license_history",
+              "columns": [
+                "license_id",
+                "applicant_name",
+                "status",
+                "status_date",
+                "trade",
+                "notes"
+              ],
+              "public_columns": [
+                "license_id",
+                "applicant_name",
+                "status",
+                "status_date",
+                "trade",
+                "notes"
+              ],
+              "hidden_columns": [],
+              "row_count": 138,
+              "hidden_nonnull_counts": {}
+            },
+            {
+              "table": "contractor_violations",
+              "columns": [
+                "violation_id",
+                "related_application_id",
+                "license_id",
+                "violation_date",
+                "severity",
+                "theme",
+                "status",
+                "resolved_date"
+              ],
+              "public_columns": [
+                "violation_id",
+                "related_application_id",
+                "license_id",
+                "violation_date",
+                "severity",
+                "theme",
+                "status",
+                "resolved_date"
+              ],
+              "hidden_columns": [],
+              "row_count": 197,
+              "hidden_nonnull_counts": {}
+            },
+            {
+              "table": "liquor_applications",
+              "columns": [
+                "application_id",
+                "agency",
+                "applicant_name",
+                "dba",
+                "address",
+                "license_class",
+                "location_id",
+                "submitted_date",
+                "requested_posture",
+                "target_group"
+              ],
+              "public_columns": [
+                "application_id",
+                "agency",
+                "applicant_name",
+                "dba",
+                "address",
+                "license_class",
+                "location_id",
+                "submitted_date",
+                "requested_posture"
+              ],
+              "hidden_columns": [
+                "target_group"
+              ],
+              "row_count": 33,
+              "hidden_nonnull_counts": {
+                "target_group": 14
+              }
+            },
+            {
+              "table": "liquor_incidents",
+              "columns": [
+                "incident_id",
+                "location_id",
+                "incident_date",
+                "risk_code",
+                "severity",
+                "status",
+                "source_name"
+              ],
+              "public_columns": [
+                "incident_id",
+                "location_id",
+                "incident_date",
+                "risk_code",
+                "severity",
+                "status",
+                "source_name"
+              ],
+              "hidden_columns": [],
+              "row_count": 128,
+              "hidden_nonnull_counts": {}
+            },
+            {
+              "table": "liquor_privileges",
+              "columns": [
+                "privilege_id",
+                "license_class",
+                "obligation_code",
+                "description",
+                "standard_required"
+              ],
+              "public_columns": [
+                "privilege_id",
+                "license_class",
+                "obligation_code",
+                "description",
+                "standard_required"
+              ],
+              "hidden_columns": [],
+              "row_count": 29,
+              "hidden_nonnull_counts": {}
+            },
+            {
+              "table": "liquor_settlements",
+              "columns": [
+                "settlement_id",
+                "location_id",
+                "effective_date",
+                "settlement_type",
+                "basis_code",
+                "controls_json",
+                "source_name"
+              ],
+              "public_columns": [
+                "settlement_id",
+                "location_id",
+                "effective_date",
+                "settlement_type",
+                "basis_code",
+                "controls_json",
+                "source_name"
+              ],
+              "hidden_columns": [],
+              "row_count": 72,
+              "hidden_nonnull_counts": {}
+            },
+            {
+              "table": "liquor_site_evidence",
+              "columns": [
+                "evidence_id",
+                "location_id",
+                "evidence_date",
+                "evidence_code",
+                "status",
+                "notes"
+              ],
+              "public_columns": [
+                "evidence_id",
+                "location_id",
+                "evidence_date",
+                "evidence_code",
+                "status",
+                "notes"
+              ],
+              "hidden_columns": [],
+              "row_count": 76,
+              "hidden_nonnull_counts": {}
+            },
+            {
+              "table": "policies",
+              "columns": [
+                "policy_id",
+                "agency",
+                "family",
+                "effective_date",
+                "title",
+                "citation",
+                "rule_code",
+                "details_json"
+              ],
+              "public_columns": [
+                "policy_id",
+                "agency",
+                "family",
+                "effective_date",
+                "title",
+                "citation",
+                "rule_code",
+                "details_json"
+              ],
+              "hidden_columns": [],
+              "row_count": 10,
+              "hidden_nonnull_counts": {}
+            },
+            {
+              "table": "renewal_rules",
+              "columns": [
+                "rule_id",
+                "agency",
+                "effective_date",
+                "release_boundary",
+                "title",
+                "details_json"
+              ],
+              "public_columns": [
+                "rule_id",
+                "agency",
+                "effective_date",
+                "release_boundary",
+                "title",
+                "details_json"
+              ],
+              "hidden_columns": [],
+              "row_count": 5,
+              "hidden_nonnull_counts": {}
+            }
+          ]
+        }
+      ],
+      "decision": "Remove construction annotations; retain shared business records."
+    },
+    {
+      "group": 20,
+      "generator_sha256": "aa58a27c9a5ca548f9c0e7bfc4cea1bd8147376db3bf2faf7cf2a6fd553905a6",
+      "generator_annotation_lines": [
+        {
+          "line": 438,
+          "text": "\"task_use\": \"train_001\","
+        },
+        {
+          "line": 524,
+          "text": "\"task_use\": \"train_002\","
+        },
+        {
+          "line": 610,
+          "text": "\"task_use\": \"train_003\","
+        },
+        {
+          "line": 696,
+          "text": "\"task_use\": \"train_004\","
+        },
+        {
+          "line": 770,
+          "text": "\"task_use\": \"train_005\","
+        },
+        {
+          "line": 844,
+          "text": "\"task_use\": \"test_001\","
+        },
+        {
+          "line": 918,
+          "text": "\"task_use\": \"test_002\","
+        },
+        {
+          "line": 992,
+          "text": "\"task_use\": \"test_003\","
+        },
+        {
+          "line": 1054,
+          "text": "\"task_use\": \"test_004\","
+        },
+        {
+          "line": 1116,
+          "text": "\"task_use\": \"test_005\","
+        },
+        {
+          "line": 1899,
+          "text": "\"task_use\": spec[\"task_use\"],"
+        }
+      ],
+      "databases": [
+        {
+          "path": "data/ma_workbench.db",
+          "sha256": "26a8f36edd06c9896c1f562aee1a43cee11a0af2b7ee9e106a4abcb0ffa90ba0",
+          "tables": [
+            {
+              "table": "benchmarks",
+              "columns": [
+                "benchmark_id",
+                "deal_id",
+                "category",
+                "metric",
+                "sample_size",
+                "median_value",
+                "mean_value",
+                "upper_quartile",
+                "notable_precedent",
+                "notes"
+              ],
+              "public_columns": [
+                "benchmark_id",
+                "deal_id",
+                "category",
+                "metric",
+                "sample_size",
+                "median_value",
+                "mean_value",
+                "upper_quartile",
+                "notable_precedent",
+                "notes"
+              ],
+              "hidden_columns": [],
+              "row_count": 255,
+              "hidden_nonnull_counts": {}
+            },
+            {
+              "table": "cap_table",
+              "columns": [
+                "deal_id",
+                "holder",
+                "security_class",
+                "shares",
+                "as_converted_shares",
+                "fully_diluted_pct",
+                "role_notes"
+              ],
+              "public_columns": [
+                "deal_id",
+                "holder",
+                "security_class",
+                "shares",
+                "as_converted_shares",
+                "fully_diluted_pct",
+                "role_notes"
+              ],
+              "hidden_columns": [],
+              "row_count": 340,
+              "hidden_nonnull_counts": {}
+            },
+            {
+              "table": "consents",
+              "columns": [
+                "consent_id",
+                "deal_id",
+                "contract_name",
+                "counterparty",
+                "consent_type",
+                "required_for_closing",
+                "risk_rating",
+                "amount_at_risk",
+                "notes"
+              ],
+              "public_columns": [
+                "consent_id",
+                "deal_id",
+                "contract_name",
+                "counterparty",
+                "consent_type",
+                "required_for_closing",
+                "risk_rating",
+                "amount_at_risk",
+                "notes"
+              ],
+              "hidden_columns": [],
+              "row_count": 255,
+              "hidden_nonnull_counts": {}
+            },
+            {
+              "table": "deal_notes",
+              "columns": [
+                "note_id",
+                "deal_id",
+                "author",
+                "note_date",
+                "topic",
+                "content",
+                "source_document"
+              ],
+              "public_columns": [
+                "note_id",
+                "deal_id",
+                "author",
+                "note_date",
+                "topic",
+                "content",
+                "source_document"
+              ],
+              "hidden_columns": [],
+              "row_count": 255,
+              "hidden_nonnull_counts": {}
+            },
+            {
+              "table": "deals",
+              "columns": [
+                "deal_id",
+                "project_name",
+                "transaction_type",
+                "client_side",
+                "client_name",
+                "counterparty_name",
+                "target_name",
+                "industry",
+                "headline_value",
+                "upfront_cash",
+                "stock_value",
+                "milestone_value",
+                "currency",
+                "signing_date",
+                "meeting_date",
+                "playbook_id",
+                "policy_id",
+                "status",
+                "strategic_context"
+              ],
+              "public_columns": [
+                "deal_id",
+                "project_name",
+                "transaction_type",
+                "client_side",
+                "client_name",
+                "counterparty_name",
+                "target_name",
+                "industry",
+                "headline_value",
+                "upfront_cash",
+                "stock_value",
+                "milestone_value",
+                "currency",
+                "signing_date",
+                "meeting_date",
+                "playbook_id",
+                "policy_id",
+                "status",
+                "strategic_context"
+              ],
+              "hidden_columns": [],
+              "row_count": 85,
+              "hidden_nonnull_counts": {}
+            },
+            {
+              "table": "diligence_findings",
+              "columns": [
+                "finding_id",
+                "deal_id",
+                "topic",
+                "severity",
+                "amount",
+                "source",
+                "notes"
+              ],
+              "public_columns": [
+                "finding_id",
+                "deal_id",
+                "topic",
+                "severity",
+                "amount",
+                "source",
+                "notes"
+              ],
+              "hidden_columns": [],
+              "row_count": 255,
+              "hidden_nonnull_counts": {}
+            },
+            {
+              "table": "documents",
+              "columns": [
+                "document_id",
+                "deal_id",
+                "document_type",
+                "title",
+                "summary",
+                "version",
+                "effective_date"
+              ],
+              "public_columns": [
+                "document_id",
+                "deal_id",
+                "document_type",
+                "title",
+                "summary",
+                "version",
+                "effective_date"
+              ],
+              "hidden_columns": [],
+              "row_count": 255,
+              "hidden_nonnull_counts": {}
+            },
+            {
+              "table": "draft_terms",
+              "columns": [
+                "term_id",
+                "deal_id",
+                "category",
+                "draft_value",
+                "numeric_value",
+                "unit",
+                "basis",
+                "source_document",
+                "clause_ref",
+                "counterparty_rationale",
+                "last_updated",
+                "staleness_flag"
+              ],
+              "public_columns": [
+                "term_id",
+                "deal_id",
+                "category",
+                "draft_value",
+                "numeric_value",
+                "unit",
+                "basis",
+                "source_document",
+                "clause_ref",
+                "counterparty_rationale",
+                "last_updated",
+                "staleness_flag"
+              ],
+              "hidden_columns": [],
+              "row_count": 341,
+              "hidden_nonnull_counts": {}
+            },
+            {
+              "table": "employees",
+              "columns": [
+                "employee_id",
+                "deal_id",
+                "employee_group",
+                "count",
+                "draft_treatment",
+                "playbook_requirement",
+                "pto_liability",
+                "service_credit_required",
+                "warn_risk",
+                "notes"
+              ],
+              "public_columns": [
+                "employee_id",
+                "deal_id",
+                "employee_group",
+                "count",
+                "draft_treatment",
+                "playbook_requirement",
+                "pto_liability",
+                "service_credit_required",
+                "warn_risk",
+                "notes"
+              ],
+              "hidden_columns": [],
+              "row_count": 255,
+              "hidden_nonnull_counts": {}
+            },
+            {
+              "table": "material_contracts",
+              "columns": [
+                "contract_id",
+                "deal_id",
+                "contract_name",
+                "contract_type",
+                "annual_revenue",
+                "anti_assignment",
+                "change_of_control",
+                "consent_required",
+                "notes"
+              ],
+              "public_columns": [
+                "contract_id",
+                "deal_id",
+                "contract_name",
+                "contract_type",
+                "annual_revenue",
+                "anti_assignment",
+                "change_of_control",
+                "consent_required",
+                "notes"
+              ],
+              "hidden_columns": [],
+              "row_count": 255,
+              "hidden_nonnull_counts": {}
+            },
+            {
+              "table": "playbook_rules",
+              "columns": [
+                "playbook_id",
+                "category",
+                "preferred_position",
+                "fallback_position",
+                "limit_value",
+                "limit_unit",
+                "basis",
+                "required_action",
+                "risk_default",
+                "notes"
+              ],
+              "public_columns": [
+                "playbook_id",
+                "category",
+                "preferred_position",
+                "fallback_position",
+                "limit_value",
+                "limit_unit",
+                "basis",
+                "required_action",
+                "risk_default",
+                "notes"
+              ],
+              "hidden_columns": [],
+              "row_count": 12,
+              "hidden_nonnull_counts": {}
+            },
+            {
+              "table": "policy_thresholds",
+              "columns": [
+                "policy_id",
+                "category",
+                "policy_standard",
+                "threshold_value",
+                "threshold_unit",
+                "basis",
+                "approval_required",
+                "restricted_flag",
+                "notes"
+              ],
+              "public_columns": [
+                "policy_id",
+                "category",
+                "policy_standard",
+                "threshold_value",
+                "threshold_unit",
+                "basis",
+                "approval_required",
+                "restricted_flag",
+                "notes"
+              ],
+              "hidden_columns": [],
+              "row_count": 8,
+              "hidden_nonnull_counts": {}
+            },
+            {
+              "table": "regulatory",
+              "columns": [
+                "deal_id",
+                "hsr_required",
+                "threshold_basis",
+                "regulatory_approval",
+                "hell_or_high_water_required",
+                "notes"
+              ],
+              "public_columns": [
+                "deal_id",
+                "hsr_required",
+                "threshold_basis",
+                "regulatory_approval",
+                "hell_or_high_water_required",
+                "notes"
+              ],
+              "hidden_columns": [],
+              "row_count": 85,
+              "hidden_nonnull_counts": {}
+            },
+            {
+              "table": "risk_estimates",
+              "columns": [
+                "estimate_id",
+                "deal_id",
+                "category",
+                "exposure_low",
+                "exposure_high",
+                "confidence",
+                "method",
+                "notes"
+              ],
+              "public_columns": [
+                "estimate_id",
+                "deal_id",
+                "category",
+                "exposure_low",
+                "exposure_high",
+                "confidence",
+                "method",
+                "notes"
+              ],
+              "hidden_columns": [],
+              "row_count": 255,
+              "hidden_nonnull_counts": {}
+            }
+          ]
+        }
+      ],
+      "decision": "Remove construction annotations; retain shared business records."
+    }
+  ],
+  "summary": {
+    "groups": 12,
+    "databases": 8,
+    "tables": 104,
+    "columns": 936,
+    "hidden_column_instances": 3,
+    "hidden_column_names": [
+      "target_group"
+    ],
+    "affected_groups": [
+      19
+    ]
+  },
+  "json_audit": {
+    "removed_manifest_fields": [
+      "task_id",
+      "task_group_id",
+      "task_group",
+      "primary_matters",
+      "task_relevant_seed_objects",
+      "target_groups",
+      "target_identifiers",
+      "target_case_ids",
+      "target_patient_ids"
+    ],
+    "excluded_files": [
+      "judge_data.json",
+      "train_judge_data.json",
+      "construction_manifest.json"
+    ],
+    "retained_business_fields": {
+      "008": [
+        "conversion_bracket_targets",
+        "expected_return",
+        "expected_growth_rate"
+      ],
+      "010": [
+        "target_hy_reduction_pct",
+        "constraints"
+      ],
+      "013": [
+        "target_condition"
+      ],
+      "014": [
+        "case_criteria",
+        "supports_criteria"
+      ],
+      "015": [
+        "preferred_target_patient_id",
+        "expected_terms"
+      ],
+      "016": [
+        "program_hint",
+        "risk_score"
+      ],
+      "017": [
+        "remediation_actions",
+        "responsiveness",
+        "privilege_status"
+      ],
+      "018": [
+        "judge",
+        "approved_monthly"
+      ],
+      "020": [
+        "target_name",
+        "preferred_position"
+      ]
+    },
+    "basis": "Inspected schemas of all shipped databases, all 12 generators, and keys of JSON data/generated files. Listed retained fields are domain facts, operational decisions or policy guidance exposed by business endpoints; they do not label train/test construction membership. Full generator bodies and task_group.yaml are never staged."
+  }
+}

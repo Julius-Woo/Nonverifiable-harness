@@ -75,7 +75,7 @@ async def rollout(
         effort="low",
         max_completion_tokens=4096,
         budget_usd=1.0,
-        max_retries=1,
+        max_retries=0,
         extra_params=api_scope(run_id, "A0", "task"),
         shared_budget_path=ROOT / "logs/gdpevo/p110-budget.json",
         shared_budget_usd=10.0,

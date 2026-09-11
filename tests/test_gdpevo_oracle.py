@@ -107,3 +107,46 @@ def test_grader_timeout(tmp_path):
     result = run_grader(script, b"{}", timeout=0.05)
     assert result["error"] == "timeout"
     assert binary_rule({}, result) == 0
+
+
+@pytest.mark.parametrize(
+    "score,expected",
+    [
+        (1.00000000001, 0),
+        (1.0000005, 0),
+        (-0.0000001, 0),
+        (0, 0),
+        (1, 1),
+        (0.9999995, 1),
+    ],
+)
+def test_range_before_tolerance(score, expected, tmp_path):
+    grader = {"returncode": 0, "result": {"score": score}}
+    assert binary_rule({}, grader) == expected
+    script = tmp_path / "eval.sh"
+    script.write_text(
+        "printf '%s\\n' '" + json.dumps({"score": score}) + "'\n"
+    )
+    result = run_grader(script, b"{}")
+    assert bool(result.get("error")) == (not 0 <= score <= 1)
+
+
+def test_wrong_control_rejects_native_score_one_with_invalid_exit(
+    tmp_path, monkeypatch
+):
+    from scripts.gdpevo import controls as module
+
+    calls = []
+
+    def fake_grader(*args):
+        calls.append(args)
+        if len(calls) <= 240:
+            return {"score": 1, "returncode": 0}
+        if len(calls) % 2:
+            return {"score": 0.9, "returncode": 0}
+        return {"score": 1, "returncode": 1, "error": "grader_exit"}
+
+    monkeypatch.setattr(module, "run_grader", fake_grader)
+    result = module.controls(tmp_path / "controls")
+    assert not result["passed"]
+    assert result["reference_passes"] == 120

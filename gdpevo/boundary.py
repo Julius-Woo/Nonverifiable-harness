@@ -9,6 +9,7 @@ import uuid
 from dataclasses import dataclass
 from pathlib import Path
 
+from evolution.candidates import atomic_json
 from gdpevo import ROOT
 from gdpevo.staging import stage_task
 
@@ -44,12 +45,47 @@ class Attempt:
         self.name = PREFIX + uuid.uuid4().hex[:12]
         self.containers, self.networks = [], []
         self.tool_failed = False
+        self.executor_failed = False
         self.solver = self.name + "-solver"
+
+    def persist_resources(self):
+        atomic_json(
+            self.directory / "resources.json",
+            {
+                "containers": self.containers,
+                "networks": self.networks,
+            },
+        )
+
+    @staticmethod
+    def recover(directory):
+        """Remove only resources named by this attempt's durable journal."""
+        path = Path(directory) / "resources.json"
+        if not path.exists():
+            return
+        resources = json.loads(path.read_text())
+        for kind in ("containers", "networks"):
+            for name in reversed(resources[kind]):
+                if not name.startswith(PREFIX):
+                    raise ValueError(
+                        "Refusing foreign Docker resource cleanup"
+                    )
+                args = (
+                    ("rm", "-f") if kind == "containers" else ("network", "rm")
+                )
+                docker(*args, name, check=False)
+        atomic_json(
+            Path(directory) / "recovery.json",
+            {
+                "recovered": resources,
+            },
+        )
 
     def network(self, suffix):
         name = self.name + suffix
-        docker("network", "create", "--internal", name)
         self.networks.append(name)
+        self.persist_resources()
+        docker("network", "create", "--internal", name)
         return name
 
     def launch(self, name, network, image, *extra, privileged_init=False):
@@ -79,6 +115,7 @@ class Attempt:
                 command += ["--cap-add", cap]
         # Register before launch so partial startup is still cleaned up.
         self.containers.append(name)
+        self.persist_resources()
         docker(*command, *extra, image_ref(image))
 
     @staticmethod
@@ -227,6 +264,7 @@ class Attempt:
             await process.wait()
         except BaseException:
             self.tool_failed = True
+            self.executor_failed = True
             process.kill()
             await process.wait()
             # Killing docker exec alone leaves its container child alive.
@@ -235,11 +273,17 @@ class Attempt:
         if process.returncode:
             self.tool_failed = True
         if process.returncode in (124, 137):
+            self.executor_failed = True
             raise TimeoutError("Container command timed out")
         return ExecResult(stdout, stderr, process.returncode)
 
     def snapshot(self):
         docker("kill", self.solver, check=False)
+        state = json.loads(docker("inspect", self.solver).stdout)[0]["State"]
+        if state["Running"]:
+            raise RuntimeError(
+                "Solver is still running; refusing mutable snapshot"
+            )
         fd = os.open(self.answer_path, os.O_RDONLY | os.O_NOFOLLOW)
         try:
             with os.fdopen(fd, "rb") as handle:

@@ -331,6 +331,8 @@ Exit criteria: one TB2 task completed end-to-end by the seed harness with an ora
 
 - 2026-09-11 (W10b done): R9 fixes applied to A3 (v3 evidence, censoring statuses, exact tie handling, C-TTS(A3) matching, win/tie/loss reporting, Azure embedding default, separate native budget); 577 tests. Clean A3-native calibration (USD 40-60) awaits ratification. W11 (GDPevo Phase 3 prep) in progress.
 
+- 2026-09-11 (W11 done): GDPevo Phase 3 preparation: manifest runner with A9 policies and fixed denominators, hidden-column audit (3 instances / 116 annotations removed), integrated T2 acceptance matrix 6/7 on real rollouts in one healthcare and one legal group, grader fixes; USD 9.80; 581 tests. All Phase 1 engineering items are now implemented and reviewed; remaining steps depend on user ratification of AD1-AD15 (PREREG freeze, clean A3-native calibration, final controller qualification run). Polling loop stopped until the user responds.
+
 ### 9.7 Proposed Amendments to Sections 1-8 (pending user approval)
 
 Sources: the literature digest `docs/background.md` (Part B deltas; independent review R2 pending) and the GDPevo assessment `docs/gdpevo_assessment.md` with its independent review R1 (`docs/reviews.md`). Sections 1-8 are unchanged until the user approves. Review R2 of the digest is complete; its dispositions are in `docs/reviews.md`.

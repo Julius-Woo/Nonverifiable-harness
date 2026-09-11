@@ -1,12 +1,14 @@
 """Build contexts containing business data and service code only."""
 
 import ast
+import hashlib
 import json
 import re
 import shutil
+import sqlite3
 from pathlib import Path
 
-from gdpevo import GROUPS, SOURCE
+from gdpevo import GROUPS, ROOT, SOURCE
 from gdpevo.staging import business_routes
 
 ORACLE_NAME = re.compile(r"judge|eval|admin|operator_reset", re.I)
@@ -95,7 +97,9 @@ def clean_metadata(value):
             k: clean_metadata(v)
             for k, v in value.items()
             if not re.search(
-                r"judge|eval|construction|train|test|target", k, re.I
+                r"judge|eval|construction|train|test|target|task_|primary_matters",
+                k,
+                re.I,
             )
         }
     if isinstance(value, list):
@@ -108,6 +112,53 @@ def clean_metadata(value):
             )
         ]
     return value
+
+
+def stage_database(group, source, destination, relative):
+    """Fail closed on schema/data drift; physically erase hidden columns."""
+    report = json.loads((ROOT / "data/gdpevo_hidden_columns.json").read_text())
+    groups = {g["group"]: g for g in report["groups"]}
+    specs = {d["path"]: d for d in groups[group]["databases"]}
+    spec = specs.get(relative)
+    if (
+        not spec
+        or hashlib.sha256(source.read_bytes()).hexdigest() != spec["sha256"]
+    ):
+        raise ValueError("Business database differs from hidden-column audit")
+    shutil.copyfile(source, destination)
+
+    def quote(name):
+        return '"' + name.replace('"', '""') + '"'
+
+    with sqlite3.connect(destination) as db:
+        db.execute("PRAGMA secure_delete=ON")
+        for table in spec["tables"]:
+            name = table["table"]
+            for column in table["hidden_columns"]:
+                # DROP COLUMN refuses indexes referring to the annotation.
+                for index in list(
+                    db.execute(f"PRAGMA index_list({quote(name)})")
+                ):
+                    columns = [
+                        r[2]
+                        for r in db.execute(
+                            f"PRAGMA index_info({quote(index[1])})"
+                        )
+                    ]
+                    if column in columns:
+                        db.execute(f"DROP INDEX {quote(index[1])}")
+                db.execute(
+                    f"ALTER TABLE {quote(name)} DROP COLUMN {quote(column)}"
+                )
+            actual = [
+                r[1] for r in db.execute(f"PRAGMA table_info({quote(name)})")
+            ]
+            if actual != table["public_columns"]:
+                raise ValueError(
+                    "Staged database violates public-column audit"
+                )
+        db.commit()
+        db.execute("VACUUM")
 
 
 def stage_service(
@@ -195,7 +246,9 @@ def stage_service(
                 raise ValueError(f"Unexpected data file: {path.name}")
             dst = target / folder / path.name
             dst.parent.mkdir(exist_ok=True)
-            if "manifest" in path.name:
+            if path.suffix in (".db", ".sqlite", ".sqlite3"):
+                stage_database(group, path, dst, str(path.relative_to(env)))
+            elif "manifest" in path.name:
                 dst.write_text(
                     json.dumps(
                         clean_metadata(json.loads(path.read_text())), indent=2
