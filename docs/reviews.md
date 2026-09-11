@@ -140,3 +140,19 @@ R8b (attempt 2, complete): verdict "not ready for the Phase 2 pilot"; the artifa
 | 12 | major | Evolver 24-call cap not crash-durable (in-memory counter; trace append after completion). | W9b: durable per-session call ledger updated before dispatch. |
 
 R8b follow-up (2026-09-11, W9b): findings 2-12 implemented with regression coverage (451 tests pass); finding 1 partially closed: six of the seven Section 5 rows are demonstrated on a real run (`runs/r8b-validation-260910-final/section5_matrix.json`); the provider cache-partitioning row cannot be proven from the API and is recorded as a documented limitation (cache isolation is implemented via the API user field; the provider exposes no cache observability). Pilot launcher `scripts/run_pilot.py` fails closed on missing gates. Validation run (terra-low-8k, 6 search / 3 anchor / 3 sealed, T = 1): A0 J = 0.50, search O = 3/6, seed retained; A1 J = 0.40, search O = 3/6, seed retained; USD 14.49 accounted (18 charges unresolved at catalog prices). Outstanding before Phase 2: final controller qualification run after the post-validation hardening, ratification AD1/AD10-AD14, tau recomputed under evidence v2 for the chosen task model, A3 arms (P1.5), PREREG freeze, and the pilot budget.
+
+## R9 - A3 (P1.5) (2026-09-11)
+
+Reviewer verdict: the recognizable RHO recipe is implemented (weighted greedy DPP coreset, k = 10, G = 3 qualitative diagnosis, three independent proposal copies, fixed replicate-zero reference, candidate-A/reference-B orientation, one-round native restriction; A3-loop refreshes the incumbent while keeping the seed-selected coreset); no oracle, hidden-test, or held-out leakage found; accounting preserves role totals (681 resolve, 83 diagnose incl. embedding, 18 propose, 320 rank). Not ready for Phase 2 or a clean native performance claim; the completed run is BGE/v2 infrastructure evidence with an eligibility-based rejection and censored sealed measurement.
+
+| # | Severity | Finding | Disposition |
+| --- | --- | --- | --- |
+| 1 | blocking | Prospective A3 runs bypass evidence contract v3 (A3Evaluator hardwires the v2 exporter). | W10b: route all A3 evidence through v3. |
+| 2 | blocking | The budget guard censors correctly but completion reporting loses the censoring (censored pairs and sealed rollouts reported as if complete). | W10b: explicit censoring fields in reports; censored measurements never enter estimates without a flag. |
+| 3 | blocking | Pilot entry needs an A3-specific calibration (Azure embedding default, uncensored) and substantially more funding than the USD 20 used. | Budget item for AD14: a clean A3-native calibration is estimated at USD 40-60; scheduled after ratification. |
+| 4 | major | Floating-point aggregation can promote an exact preference tie. | W10b: tie handling with exact rational comparison and a preregistered tie rule (tie = retain incumbent). |
+| 5 | major | C-TTS(A3) physical-rollout matching breaks when the control itself needs an infrastructure retry. | W10b: match on logical rollouts with the same retry policy as the compared arm. |
+| 6 | major | "Seed retained" was an eligibility outcome (two proposals failed source checks, pairs unscored), not evidence that preferences favoured the seed. | docs/a3.md wording corrected by W10b; win/tie/loss reported. |
+| 7 | major | The completed calibration used BGE embeddings, so it does not establish the Azure default; repeating its budget is not a clean-run plan. | Same as 3. |
+| 8 | minor | "Complete evidence" claim needs the v3 cap qualification. | W10b doc fix. |
+| 9 | minor | Win/tie/loss reporting per pair is missing. | W10b. |
