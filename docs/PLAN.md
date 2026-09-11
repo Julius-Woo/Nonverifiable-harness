@@ -329,6 +329,8 @@ Exit criteria: one TB2 task completed end-to-end by the seed harness with an ora
 
 - 2026-09-11 (R9 done): A3 review: recipe faithful and leak-free, but 3 blocking (A3 bypasses evidence v3; censoring lost in reporting; clean A3-native calibration with Azure embeddings needs USD 40-60) and 4 major (float tie promotion; C-TTS(A3) matching under retries; 'seed retained' overstated; embedding default unestablished). W10b launched for the code and doc fixes; the clean A3 calibration waits for ratification and budget. W11 (GDPevo Phase 3 prep) in progress.
 
+- 2026-09-11 (W10b done): R9 fixes applied to A3 (v3 evidence, censoring statuses, exact tie handling, C-TTS(A3) matching, win/tie/loss reporting, Azure embedding default, separate native budget); 577 tests. Clean A3-native calibration (USD 40-60) awaits ratification. W11 (GDPevo Phase 3 prep) in progress.
+
 ### 9.7 Proposed Amendments to Sections 1-8 (pending user approval)
 
 Sources: the literature digest `docs/background.md` (Part B deltas; independent review R2 pending) and the GDPevo assessment `docs/gdpevo_assessment.md` with its independent review R1 (`docs/reviews.md`). Sections 1-8 are unchanged until the user approves. Review R2 of the digest is complete; its dispositions are in `docs/reviews.md`.

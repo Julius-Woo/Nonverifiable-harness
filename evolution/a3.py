@@ -1,22 +1,33 @@
 """One RHO Algorithm 1 round, reused by native calibration and A3-loop."""
 
 import asyncio
+import json
 import time
 from pathlib import Path
 
 from evolution.a3_coreset import embed_fingerprints, select_coreset
 from evolution.a3_inspection import difficulty_digest
+from evolution.a3_metrics import (
+    annotate_measurement,
+    completion,
+    measurement_report,
+    metrics,
+    pair_record,
+    phase_censored,
+    preference_report,
+)
 from evolution.a3_operators import (
     Operators,
     evidence,
     first_baselines,
     mean_preference,
+    preference_total,
     source_evidence,
 )
-from evolution.a3_v2 import export_trace
-from evolution.accounting import cost_summary
+from evolution.accounting import BudgetHalt, cost_summary
 from evolution.candidates import atomic_json, source_hash
-from evolution.evaluation import Evaluator, aggregate
+from evolution.evaluation import Evaluator
+from evolution.judge_queue import export_trace
 from evolution.sanitize import digest
 
 ARMS = {"A3-native", "A3-loop"}
@@ -27,18 +38,77 @@ class A3Evaluator(Evaluator):
 
     trace_exporter = staticmethod(export_trace)
 
-    async def batch(self, *args, **kwargs):
+    def export_feedback(self, rows):
+        for row in rows:
+            if row.get("evidence"):
+                evidence(row)
+        return super().export_feedback(rows)
+
+    def __init__(
+        self, root, experiment, arm, iteration, state, guard, config, **kwargs
+    ):
+        from evolution.a3_manifest import require_v3
+
+        require_v3(config)
+        super().__init__(
+            root, experiment, arm, iteration, state, guard, config, **kwargs
+        )
+
+    async def _one_once(self, candidate, spec):
+        row = annotate_measurement(await super()._one_once(candidate, spec))
+        self.state.finish(row["id"], row)
+        return row
+
+    async def one(self, candidate, spec):
+        row = annotate_measurement(await super().one(candidate, spec))
+        self.state.finish(row["id"], row)
+        return row
+
+    async def batch(
+        self, candidate, partition, stage, attempts=1, tasks=None, **kwargs
+    ):
         kwargs["judge"] = False
-        return await super().batch(*args, **kwargs)
+        tasks = tasks or [t["name"] for t in self.split["splits"][partition]]
+        try:
+            rows = await super().batch(
+                candidate, partition, stage, attempts, tasks=tasks, **kwargs
+            )
+        except BudgetHalt:
+            # The shared queue may stop before scheduling every logical slot.
+            # Account for all slots without dispatching or granting a retry.
+            rows = []
+            start = kwargs.get("replicate_start", 0)
+            for task in tasks:
+                for repeat in range(start, start + attempts):
+                    spec = self.spec(candidate, partition, stage, task, repeat)
+                    identity = self.state.schedule(spec)
+                    stored = self.state.row(identity)
+                    if stored["result"]:
+                        row = json.loads(stored["result"])
+                    else:
+                        row = {
+                            "id": identity,
+                            **spec,
+                            "oracle": None,
+                            "score": None,
+                            "status": "budget_halted",
+                            "budget_halt": True,
+                            "censored": stored["status"] == "running",
+                        }
+                    row = annotate_measurement(row)
+                    self.state.finish(identity, row)
+                    rows.append(row)
+        rows = [annotate_measurement(row) for row in rows]
+        atomic_json(
+            (self.logs if partition == "search" else self.private)
+            / "batches"
+            / f"{stage}-{candidate.name}-{partition}.json",
+            {"metrics": metrics(rows), "rows": rows},
+        )
+        return rows
 
     async def score(self, rows):
         raise ValueError("A3 requires explicit paired self-preference inputs")
-
-
-def metrics(rows):
-    result = aggregate(rows)
-    result.pop("common_gap", None)
-    return {**result, "scale": "signed_preference"}
 
 
 async def bounded_map(function, values, concurrency=4):
@@ -75,19 +145,26 @@ class A3Round:
         if len(tasks) < 10:
             raise ValueError("A3 needs at least ten search tasks")
         if fixed is not None:
+            if fixed.get("evidence_version") != "v3":
+                raise ValueError("Frozen A3 coreset must use v3 evidence")
             if fixed["search_tasks"] != tasks or fixed[
                 "seed_sha256"
             ] != source_hash(seed):
                 raise ValueError("Frozen coreset input changed")
             expected = loop.manifest.get("a3", {}).get("embedding")
-            if self.embedder is None and expected and (
-                fixed["embedding"]["model"] != expected
+            if (
+                self.embedder is None
+                and expected
+                and (fixed["embedding"]["model"] != expected)
             ):
                 raise ValueError("Frozen coreset embedding model changed")
             return fixed
         azure = loop.manifest.get("a3", {}).get("embedding") == (
             "text-embedding-3-large"
         )
+        import tiktoken
+
+        tiktoken.get_encoding("cl100k_base")  # Preflight before paid priors.
         if azure and self.embedder is None:
             from evolution.a3_embeddings import azure_provider
 
@@ -122,6 +199,7 @@ class A3Round:
         )
         fixed = {
             "arm": loop.arm,
+            "evidence_version": "v3",
             "search_tasks": tasks,
             "tasks": selected,
             "k": 10,
@@ -177,23 +255,39 @@ class A3Round:
     async def rank_rows(self, stage, rows, references, candidate, baseline):
         async def rank(row):
             reference = references.get(row["task"])
-            score = (
-                None
-                if reference is None
-                else await self.ops.rank(
-                    digest(f"{stage}:{row['id']}:{reference['id']}")[:24],
-                    row,
-                    reference,
-                    candidate,
-                    baseline,
-                )
-            )
-            return {
+            row = annotate_measurement(row)
+            score = None
+            if reference is not None and phase_censored(reference):
+                row["reference_censored"] = True
+            if row["measurement_status"] == "unscored-budget":
+                row["rank_budget_halt"] = True
+            elif (
+                not phase_censored(row)
+                and not row.get("reference_censored")
+                and reference is not None
+            ):
+                try:
+                    score = await self.ops.rank(
+                        digest(f"{stage}:{row['id']}:{reference['id']}")[:24],
+                        row,
+                        reference,
+                        candidate,
+                        baseline,
+                    )
+                except BudgetHalt:
+                    row["rank_budget_halt"] = True
+            result = {
                 **row,
                 "score": score,
                 "scale": "signed_preference",
                 "reference_id": reference["id"] if reference else None,
                 "pair_order": "candidate_A_reference_B",
+            }
+            pair = pair_record(result)
+            return {
+                **result,
+                "pair_status": pair["status"],
+                "raw_rating": pair["raw_rating"],
             }
 
         scored = await bounded_map(rank, rows)
@@ -224,6 +318,9 @@ class A3Round:
         if previous is not None:
             loop.write_summary(previous)
             return previous
+        from evolution.a3_manifest import require_v3
+
+        require_v3(loop.manifest)
         start_key = f"started-{loop.iteration}"
         started = loop.state.stage(start_key) or {"time": time.time()}
         loop.state.stage(start_key, started)
@@ -253,13 +350,19 @@ class A3Round:
                     "candidate": str(seed),
                     "rows": sealed,
                     "metrics": metrics(sealed),
+                    "measurements": measurement_report(sealed, private=True),
+                    "measurement_complete": metrics(sealed)[
+                        "measurement_complete"
+                    ],
                 },
             )
             seed_rows = await loop.batch(seed, "search", "a3-seed-measurement")
-            await self.rank_rows(
+            seed_measured = await self.rank_rows(
                 "seed-measurement", seed_rows, seed_references, seed, seed
             )
-            loop.state.stage("seed-sealed-checkpoint", {"complete": True})
+            loop.state.stage(
+                "seed-sealed-checkpoint", completion(seed_measured, sealed)
+            )
         group = await loop.batch(parent, "search", "a3-group", 3, tasks=tasks)
         references = first_baselines(group, tasks, candidate=parent.name)
         # Freeze reference identities before diagnosis/proposals/ranking.
@@ -273,6 +376,19 @@ class A3Round:
         proposals = [await loop.propose(parent, slot) for slot in range(1, 4)]
         for proposal in proposals:
             if proposal["status"] != "valid":
+                proposal["preferences"] = preference_report(
+                    [
+                        {
+                            "id": f"{proposal['id']}:{task}",
+                            "task": task,
+                            "reference_id": identities[task],
+                            "score": None,
+                            "pair_status": "unscored-failure",
+                        }
+                        for task in tasks
+                    ]
+                )
+                proposal["ineligible_reason"] = "source_checks_failed"
                 continue
             candidate = Path(proposal["candidate"])
             rows = await loop.batch(
@@ -290,10 +406,15 @@ class A3Round:
                 [r["score"] for r in scored]
             )
             proposal["pair_scores"] = [r["score"] for r in scored]
+            proposal["raw_ratings"] = [r["raw_rating"] for r in scored]
+            proposal["signed_total"] = preference_total(
+                proposal["raw_ratings"]
+            )
+            proposal["preferences"] = preference_report(scored)
             proposal["reference_ids"] = identities
         eligible = [p for p in proposals if p.get("preference") is not None]
         best = (
-            min(eligible, key=lambda p: (-p["preference"], p["id"]))
+            min(eligible, key=lambda p: (-p["signed_total"], p["id"]))
             if eligible
             else None
         )
@@ -349,6 +470,7 @@ class A3Round:
         # standard incumbent avg@2 checkpoint, no sealed t=0 or anchor calls.
         sealed = await loop.batch(incumbent, "sealed", "measurement", 2)
         measured_metrics = metrics(measured)
+        completion_fields = completion(measured, sealed)
         costs = cost_summary(
             loop.accounting / "ledger.jsonl",
             loop.accounting / "requests.jsonl",
@@ -360,8 +482,12 @@ class A3Round:
             "experiment": loop.experiment,
             "arm": loop.arm,
             "purpose": loop.manifest.get("purpose"),
+            "evidence_version": "v3",
             "iteration": loop.iteration,
-            "status": "complete",
+            "status": "complete"
+            if completion_fields["measurement_complete"]
+            else "measurement-incomplete",
+            **completion_fields,
             "parent": parent.name,
             "incumbent": incumbent.name,
             "winner": winner.name if winner else None,
@@ -400,6 +526,11 @@ class A3Round:
                 "incumbent": incumbent.name,
                 "O_t_sealed": metrics(sealed)["O"],
                 "sealed_measurement": metrics(sealed),
+                "measurements": measurement_report(sealed, private=True),
+                "measurement_complete": completion_fields[
+                    "sealed_measurements"
+                ]["complete"],
+                "endpoint_eligible": completion_fields["endpoint_eligible"],
             },
         )
         loop.state.stage(key, summary)

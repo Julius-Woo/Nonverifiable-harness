@@ -7,9 +7,10 @@ from types import SimpleNamespace
 
 import pytest
 
-from evolution.a3 import A3Round
+from evolution.a3 import A3Evaluator, A3Round
 from evolution.a3_control import score_control_pool
 from evolution.a3_coreset import select_coreset
+from evolution.a3_manifest import defaults, validate
 from evolution.a3_native import native_manifest
 from evolution.a3_operators import (
     Operators,
@@ -18,12 +19,11 @@ from evolution.a3_operators import (
     pair_evidence,
     signed_preference,
 )
-from evolution.a3_v2 import JudgeInput, sanitize
 from evolution.candidates import atomic_json, source_hash, working_copy
 from evolution.evaluation import aggregate
+from evolution.judges import JudgeInput
 from evolution.loop import EvolutionLoop, acceptance_decision, select_control
-from evolution.manifest import defaults, validate
-from evolution.sanitize import canonical
+from evolution.sanitize import canonical, sanitize
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -147,7 +147,7 @@ def write_evidence(path, *, task="Task.", answer="done", secret=False):
     return str(path)
 
 
-def test_pair_contract_preserves_full_v2_and_scrubs_sources(tmp_path):
+def test_pair_contract_uses_v3_caps_and_scrubs_sources(tmp_path):
     candidate = tmp_path / "candidate"
     (candidate / "harness").mkdir(parents=True)
     (candidate / "harness/seed.py").write_text(
@@ -161,7 +161,9 @@ def test_pair_contract_preserves_full_v2_and_scrubs_sources(tmp_path):
     }
     payload = pair_evidence(row, row, candidate, candidate)
     wire = canonical(payload)
-    assert "x" * 17000 in wire
+    assert "x" * 17000 not in wire
+    assert "omitted 9000 bytes" in wire
+    assert payload["trajectory_A"]["version"] == "v3"
     assert all(
         secret not in wire
         for secret in (
@@ -363,7 +365,7 @@ async def test_control_uses_self_preference_and_disjoint_sealed_pools(
             "task": "x",
             "replicate": i,
             "oracle": int(i == 2),
-            "evidence": "fixture",
+            "evidence": write_evidence(tmp_path / f"r{i}.json"),
         }
         for i in range(6)
     ]
@@ -429,8 +431,9 @@ async def test_operator_retry_is_durable_and_input_changes_fail(
         await ops.call("rank", "one", {"allowed": "changed"})
 
 
-async def test_control_full_loop_matches_physical_allocations(
-    tmp_path, monkeypatch
+@pytest.mark.parametrize("retry_index", [None, 0, 3])
+async def test_control_full_loop_matches_logical_allocations(
+    tmp_path, monkeypatch, retry_index
 ):
     from evolution import a3_control
     from evolution.candidates import Manifest, copy_seed
@@ -443,6 +446,9 @@ async def test_control_full_loop_matches_physical_allocations(
     ).write(seed)
     state = State(comparator / "state.sqlite")
     state.stage("finished-1", {"status": "complete"})
+    from evolution.a3_control import retry_policy
+
+    state.stage("a3-retry-policy", retry_policy({}))
     for partition in ("search", "anchor", "sealed"):
         for replicate in range(4):
             state.schedule(
@@ -453,9 +459,42 @@ async def test_control_full_loop_matches_physical_allocations(
                     "replicate": replicate,
                 }
             )
+    # Comparator replacements are physical trials, not additional pool slots.
+    state.schedule(
+        {
+            "iteration": 1,
+            "task": "task-0",
+            "partition": "search",
+            "replicate": 0,
+            "infrastructure_attempt": 1,
+        }
+    )
     state.close()
 
-    class ControlEvaluator(MockEvaluator):
+    class ControlEvaluator(MockEvaluator, A3Evaluator):
+        async def _one_once(self, candidate, spec):
+            identity = self.state.schedule(spec)
+            saved = self.state.row(identity)
+            if saved["result"]:
+                return json.loads(saved["result"])
+            retried = spec.get("infrastructure_attempt")
+            fail = spec["replicate"] == retry_index and not retried
+            trace = self.jobs / identity / "agent/trace.jsonl"
+            trace.parent.mkdir(parents=True, exist_ok=True)
+            trace.write_text(
+                json.dumps({"kind": "instruction", "text": "Task."})
+            )
+            row = {
+                "id": identity,
+                **spec,
+                "score": None,
+                "status": "infrastructure_failed" if fail else "complete",
+                "oracle": None if fail else 1,
+                "evidence": write_evidence(self.logs / f"{identity}.json"),
+            }
+            self.state.finish(identity, row)
+            return row
+
         async def batch(
             self,
             candidate,
@@ -466,32 +505,21 @@ async def test_control_full_loop_matches_physical_allocations(
             replicate_start=0,
             **kwargs,
         ):
-            rows = []
-            for task in tasks:
-                spec = {
-                    "iteration": self.iteration,
-                    "candidate": candidate.name,
-                    "task": task,
-                    "partition": partition,
-                    "stage": stage,
-                    "replicate": replicate_start,
-                }
-                identity = self.state.schedule(spec)
-                trace = self.jobs / identity / "agent/trace.jsonl"
-                trace.parent.mkdir(parents=True, exist_ok=True)
-                trace.write_text(
-                    json.dumps({"kind": "instruction", "text": "Task."}) + "\n"
+            self.config = {"api_timeout_policy": "infrastructure"}
+            return [
+                await self.one(
+                    candidate,
+                    {
+                        "iteration": self.iteration,
+                        "candidate": candidate.name,
+                        "task": task,
+                        "partition": partition,
+                        "stage": stage,
+                        "replicate": replicate_start,
+                    },
                 )
-                row = {
-                    "id": identity,
-                    **spec,
-                    "score": None,
-                    "oracle": 1,
-                    "evidence": write_evidence(self.logs / f"{identity}.json"),
-                }
-                self.state.finish(identity, row)
-                rows.append(row)
-            return rows
+                for task in tasks
+            ]
 
         async def score(self, rows):
             pytest.fail("A3 control must never invoke independent A1 scorer")
@@ -522,16 +550,16 @@ async def test_control_full_loop_matches_physical_allocations(
         assert result["rollouts"] == 12 and result["edited"] is False
         assert result["scale"] == "signed_preference"
         assert result["J_t"] == 0.5
-        assert result["allocations"]["search"]["metrics"]["common_gap"] is None
-        assert (
-            loop.state.db.execute("SELECT count(*) FROM trials").fetchone()[0]
-            == 12
-        )
+        assert result["allocation_unit"] == "logical_rollouts"
+        assert result["physical_trials"] == (12 if retry_index is None else 15)
+        assert "common_gap" not in result["allocations"]["search"]["metrics"]
+        assert loop.state.db.execute("SELECT count(*) FROM trials").fetchone()[
+            0
+        ] == (12 if retry_index is None else 15)
         assert await loop.control(comparator) == result
-        assert (
-            loop.state.db.execute("SELECT count(*) FROM trials").fetchone()[0]
-            == 12
-        )
+        assert loop.state.db.execute("SELECT count(*) FROM trials").fetchone()[
+            0
+        ] == (12 if retry_index is None else 15)
     finally:
         loop.close()
 
@@ -558,7 +586,7 @@ async def test_loop_dispatches_reserved_a3_hook(tmp_path, monkeypatch):
         loop.close()
 
 
-def test_a3_exporter_stays_full_v2_during_generic_contract_migration(tmp_path):
+def test_a3_exporter_uses_v3_and_refuses_v2(tmp_path):
     from evolution.a3 import A3Evaluator
 
     trace = tmp_path / "trace.jsonl"
@@ -576,15 +604,16 @@ def test_a3_exporter_stays_full_v2_during_generic_contract_migration(tmp_path):
         )
     )
     exported = A3Evaluator.trace_exporter(trace, tmp_path / "export")
-    assert exported.trajectory.version == "sanitized-trajectory-v2"
-    assert "q" * 22000 in canonical(exported.to_dict())
+    assert exported.trajectory.version == "v3"
+    assert "q" * 22000 not in canonical(exported.to_dict())
+    assert exported.trajectory.truncations
     with pytest.raises(ValueError, match="Unsupported"):
         JudgeInput.from_dict(
             {
                 "task_text": "Task.",
                 "trajectory": {
                     **exported.trajectory.to_dict(),
-                    "version": "v3",
+                    "version": "sanitized-trajectory-v2",
                 },
             }
         )

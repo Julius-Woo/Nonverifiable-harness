@@ -7,15 +7,13 @@ from pathlib import Path
 
 from dotenv import dotenv_values
 
+from evolution.a3_manifest import defaults, entry_errors, resolve
 from evolution.accounting import PhaseGuard
 from evolution.candidates import atomic_json
 from evolution.loop import EvolutionLoop
 from evolution.manifest import (
     budget_errors,
-    defaults,
-    entry_errors,
     freeze_manifest,
-    resolve,
 )
 from evolution.reconcile import reconcile
 from evolution.workspace import ensure_image

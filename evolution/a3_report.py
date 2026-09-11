@@ -7,10 +7,17 @@ import sqlite3
 from collections import Counter, defaultdict
 from pathlib import Path
 
+from evolution.a3_metrics import (
+    completion,
+    metrics,
+    phase_censored,
+    preference_report,
+)
 from evolution.a3_operators import mean_preference
-from evolution.a3_v2 import JudgeInput
+from evolution.a3_v2 import JudgeInput as HistoricalJudgeInput
 from evolution.accounting import cost_summary
 from evolution.candidates import atomic_json
+from evolution.judges import JudgeInput
 from evolution.manifest import file_hash
 from evolution.sanitize import canonical, digest
 from evolution.state import State
@@ -24,17 +31,147 @@ def rows(path):
     )
 
 
+def completion_report(summary, selection, search, sealed, tasks, references):
+    """Reconstruct missingness without modifying any frozen run artifacts."""
+    proposals = {}
+    for proposal in summary["candidates"]:
+        scored = selection.get(proposal["id"])
+        if scored is None:
+            scored = [
+                {
+                    "id": f"{proposal['id']}:{task}",
+                    "task": task,
+                    "reference_id": references[task],
+                    "score": None,
+                    "pair_status": "unscored-failure",
+                }
+                for task in tasks
+            ]
+        preferences = preference_report(scored)
+        proposals[proposal["id"]] = {
+            "source_status": proposal["status"],
+            "eligible": proposal.get("preference") is not None,
+            "selection_preference": proposal.get("preference"),
+            **preferences,
+        }
+    fields = completion(search, sealed)
+    return {
+        "schema_version": "a3-completion-v3",
+        "experiment": summary["experiment"],
+        "arm": summary["arm"],
+        "evidence_version": summary.get(
+            "evidence_version", "sanitized-trajectory-v2"
+        ),
+        "regeneration": (
+            "offline; frozen evidence, decisions and labels unchanged"
+        ),
+        "status": "complete"
+        if fields["measurement_complete"]
+        else "measurement-incomplete",
+        "decision": summary["decision"],
+        "decision_basis": "eligibility-based rejection"
+        if not any(p["eligible"] for p in proposals.values())
+        else "signed preference with incumbent-retaining zero tie",
+        "incumbent": summary["incumbent"],
+        "selection": proposals,
+        **fields,
+        "J_t": metrics(search)["J"],
+        "O_t_search": metrics(search)["O"],
+        "search_estimates": metrics(search),
+        "J_t_scored_pairs": fields["search_preferences"]["scored"],
+        "O_t_sealed": None,
+        "sealed_outcomes": "private; consult measurement_complete before use",
+    }
+
+
+def pair_table(preferences):
+    lines = [
+        "| Task | Replicate | Raw A→B | Signed preference | Status | W/T/L |",
+        "| --- | ---: | ---: | ---: | --- | --- |",
+    ]
+    for pair in preferences["pairs"]:
+        rating = pair["raw_rating"]
+        score = pair["signed_preference"]
+        lines.append(
+            f"| {pair['task']} | {pair['replicate']} | "
+            f"{rating if rating is not None else '—'} | "
+            f"{score if score is not None else '—'} | {pair['status']} | "
+            f"{pair['outcome'] or '—'} |"
+        )
+    return "\n".join(lines)
+
+
+def completion_markdown(value):
+    lines = [
+        "# A3-native offline completion report",
+        "",
+        f"Decision: {value['decision']}; {value['decision_basis']}.",
+        "",
+        f"Optimization complete: {value['optimization_complete']}. "
+        f"Measurement complete: {value['measurement_complete']}. "
+        f"Endpoint eligible: {value['endpoint_eligible']}.",
+        "",
+        f"Evidence version: {value['evidence_version']}; "
+        "offline report corrections.",
+        "",
+    ]
+    for name, preferences in [
+        *value["selection"].items(),
+        ("Fixed seed reference measurement", value["search_preferences"]),
+    ]:
+        lines.extend(
+            [
+                f"## {name}",
+                "",
+                f"Wins/ties/losses: {preferences['wins']}/"
+                f"{preferences['ties']}/{preferences['losses']}; "
+                f"scored {preferences['scored']}/{preferences['planned']}. "
+                f"Win rate: {preferences['win_rate']} (wins / scored pairs).",
+                "",
+                pair_table(preferences),
+                "",
+            ]
+        )
+    for name in ("search_measurements", "sealed_measurements"):
+        lines.extend(
+            [
+                f"## {name}",
+                "",
+                "| Task | Replicate | Status |",
+                "| --- | ---: | --- |",
+            ]
+        )
+        lines.extend(
+            f"| {row['task']} | {row['replicate']} | {row['status']} |"
+            for row in value[name]["rows"]
+        )
+        lines.extend(
+            ["", f"Status counts: {value[name]['status_counts']}", ""]
+        )
+    return "\n".join(lines)
+
+
 def report(root, experiment):
-    root = Path(root)
+    root = Path(root).resolve()
     arm = "A3-native"
     run = root / "runs" / experiment / arm
-    state = State(
-        run / "state.sqlite",
-        private=root / "oracle" / experiment / arm / "state",
+    state = sqlite3.connect(
+        f"{(run / 'state.sqlite').as_uri()}?mode=ro", uri=True
     )
+    state.row_factory = sqlite3.Row
+
+    def stage(key):
+        row = state.execute(
+            "SELECT value FROM stages WHERE id=?", (key,)
+        ).fetchone()
+        return State.decode(row[0]) if row else None
+
     try:
-        summary = state.stage("finished-1")
-        if not summary or summary["status"] != "complete":
+        summary = stage("finished-1")
+        if not summary or summary["status"] not in {
+            "complete",
+            "measurement-incomplete",
+        }:
             raise ValueError("Native round is not complete")
         trials = [
             {
@@ -43,12 +180,12 @@ def report(root, experiment):
                     json.loads(row["spec"]).get("infrastructure_attempt")
                 ),
             }
-            for row in state.db.execute(
+            for row in state.execute(
                 "SELECT spec,result FROM trials WHERE result IS NOT NULL"
             )
         ]
-        refs = state.stage("a3-references-1")
-        core = state.stage("a3-coreset")
+        refs = stage("a3-references-1")
+        core = stage("a3-coreset")
     finally:
         state.close()
     expected_groups = {
@@ -93,9 +230,33 @@ def report(root, experiment):
             == expected
         )
     logs = root / "logs/evolution" / experiment / arm
+    search = json.loads((logs / "a3/i01/measurement.json").read_text())["rows"]
+    selection = {
+        proposal["id"]: json.loads(
+            (logs / "a3/i01" / f"selection-{proposal['id']}.json").read_text()
+        )["rows"]
+        for proposal in summary["candidates"]
+        if "pair_scores" in proposal
+    }
+    completed = completion_report(
+        summary,
+        selection,
+        search,
+        [r for r in logical if r["partition"] == "sealed"],
+        core["tasks"],
+        refs,
+    )
     exports = list((logs / "exports").glob("*/evidence.json"))
+    export_versions = Counter()
     for path in exports:
-        JudgeInput.from_dict(json.loads(path.read_text()))
+        value = json.loads(path.read_text())
+        export_versions[value["trajectory"]["version"]] += 1
+        contract = (
+            HistoricalJudgeInput
+            if value["trajectory"]["version"] == ("sanitized-trajectory-v2")
+            else JudgeInput
+        )
+        contract.from_dict(value)
     boundaries = list((logs / "a3").glob("**/boundary-*.json"))
     proposal_boundaries = list((logs / "sessions").glob("*/boundary.json"))
     for path in boundaries + proposal_boundaries:
@@ -181,10 +342,7 @@ def report(root, experiment):
                 bool(r.get("_physical_infrastructure_attempt")) for r in items
             ),
             "excluded": sum(r.get("oracle") is None for r in logical),
-            "phase_budget_censored": sum(
-                "Projected phase API budget exceeded" in canonical(r)
-                for r in logical
-            ),
+            "phase_budget_censored": sum(phase_censored(r) for r in logical),
         }
         if items[0]["partition"] == "search":
             allocation[stage]["search_passes"] = sum(
@@ -202,7 +360,9 @@ def report(root, experiment):
             "failures": sum(r.get("result") is None for r in records),
             "retries": sum(max(0, len(r["attempts"]) - 1) for r in records),
         }
-    with sqlite3.connect(accounting / "budget.sqlite") as budget:
+    with sqlite3.connect(
+        f"{(accounting / 'budget.sqlite').as_uri()}?mode=ro", uri=True
+    ) as budget:
         scope_costs = dict(
             budget.execute(
                 "SELECT scope, sum(coalesce(charged, reserved)) "
@@ -215,7 +375,7 @@ def report(root, experiment):
         halts = budget.execute(
             "SELECT reason,occurred FROM phase_halt"
         ).fetchall()
-    assert sum(scope_costs.values()) <= 20 + 1e-8
+    assert sum(scope_costs.values()) <= phase[2] + 1e-8
     for role in allowed_roles:
         scopes = {r["scope"] for r in intents if r["role"] == role}
         maximum = max((scope_costs[s] for s in scopes), default=0)
@@ -232,12 +392,18 @@ def report(root, experiment):
             "rounds": 1,
             "fixed_first_group_references": True,
             "candidate_A_baseline_B": True,
-            "full_v2_exports": len(exports),
+            "full_v2_exports": export_versions["sanitized-trajectory-v2"],
+            "capped_v3_exports": export_versions["v3"],
             "read_only_inspection_boundaries": len(boundaries),
             "isolated_proposal_boundaries": len(proposal_boundaries),
         },
         "decision": summary["decision"],
         "incumbent": summary["incumbent"],
+        "completion": completed,
+        "optimization_complete": completed["optimization_complete"],
+        "measurement_complete": completed["measurement_complete"],
+        "endpoint_eligible": completed["endpoint_eligible"],
+        "decision_basis": completed["decision_basis"],
         "candidate_preferences": {
             p["id"]: p.get("preference") for p in summary["candidates"]
         },
@@ -288,7 +454,7 @@ def report(root, experiment):
         "manifest_sha256": file_hash(
             root / "runs" / experiment / "manifest.json"
         ),
-        "final_controller_sha256": digest(
+        "report_controller_sha256": digest(
             canonical(
                 {
                     str(p.relative_to(root)): file_hash(p)
@@ -302,6 +468,8 @@ def report(root, experiment):
         ).hexdigest(),
     }
     atomic_json(run / "infrastructure-audit.json", audit)
+    atomic_json(run / "completion-report.json", completed)
+    (run / "completion-report.md").write_text(completion_markdown(completed))
     return audit
 
 
@@ -318,6 +486,10 @@ def main():
                     "arm",
                     "decision",
                     "candidate_preferences",
+                    "optimization_complete",
+                    "measurement_complete",
+                    "endpoint_eligible",
+                    "decision_basis",
                     "J_t",
                     "O_t_search",
                     "costs",

@@ -156,3 +156,5 @@ Reviewer verdict: the recognizable RHO recipe is implemented (weighted greedy DP
 | 7 | major | The completed calibration used BGE embeddings, so it does not establish the Azure default; repeating its budget is not a clean-run plan. | Same as 3. |
 | 8 | minor | "Complete evidence" claim needs the v3 cap qualification. | W10b doc fix. |
 | 9 | minor | Win/tie/loss reporting per pair is missing. | W10b. |
+
+R9 follow-up (2026-09-11, W10b): findings 1, 2, 4, 5, 6, 8, 9 fixed with regression tests (577 tests pass); A3 evidence now v3 only; explicit censoring statuses with historical reports regenerated offline; exact integer preference aggregation with ties retaining the incumbent; logical-rollout matching for C-TTS(A3) under identical retry policy; per-pair win/tie/loss tables; docs/a3.md describes the native run as an eligibility-based rejection. Findings 3 and 7: Azure text-embedding-3-large is now the manifest default with a separate A3-native budget; the clean calibration (USD 40-60) is a pending budget item under AD14.

@@ -3,17 +3,77 @@
 import argparse
 import asyncio
 import json
+import sqlite3
 from pathlib import Path
 
 from dotenv import dotenv_values
 
+from evolution.a3_manifest import defaults, resolve, validate
 from evolution.candidates import atomic_json, safe_id
 from evolution.loop import EvolutionLoop
-from evolution.manifest import defaults, freeze_manifest, resolve
+from evolution.manifest import freeze_manifest
 from evolution.reconcile import reconcile
 
 
-def native_manifest(experiment, *, embedding="azure"):
+def finished_result(root, experiment):
+    """Replay reads frozen state and its offline completion report."""
+    directory = Path(root) / "runs" / experiment / "A3-native"
+    path = directory / "state.sqlite"
+    if not path.exists():
+        return None
+    with sqlite3.connect(f"{path.resolve().as_uri()}?mode=ro", uri=True) as db:
+        row = db.execute(
+            "SELECT value FROM stages WHERE id='finished-1'"
+        ).fetchone()
+    if row is None:
+        return None
+    from evolution.state import State
+
+    result = State.decode(row[0])
+    if "optimization_complete" not in result:
+        report_path = directory / "completion-report.json"
+        if not report_path.exists():
+            raise ValueError(
+                "Regenerate the offline A3 completion report before replay"
+            )
+        report = json.loads(report_path.read_text())
+        if (
+            report["experiment"] != experiment
+            or report["decision"] != result["decision"]
+        ):
+            raise ValueError("Offline completion report identity mismatch")
+        result.update(report)
+    return result
+
+
+def print_result(result):
+    print(
+        json.dumps(
+            {
+                k: result.get(k)
+                for k in (
+                    "arm",
+                    "decision",
+                    "status",
+                    "coreset_preference",
+                    "J_t",
+                    "O_t_search",
+                    "cost_upper_usd",
+                    "optimization_complete",
+                    "measurement_complete",
+                    "endpoint_eligible",
+                    "search_preferences",
+                    "search_measurements",
+                    "sealed_measurements",
+                )
+            }
+        )
+    )
+
+
+def native_manifest(
+    experiment, *, embedding="azure", budget_usd=60, estimate_usd=50, hours=4
+):
     value = defaults(experiment, validation=True)
     value.update(
         arms=["A3-native"],
@@ -22,12 +82,11 @@ def native_manifest(experiment, *, embedding="azure"):
         candidates_per_arm={"A3-native": 3},
         acceptance="improve",
         seed=1,
-        evidence_version="sanitized-trajectory-v2",
     )
     value["budget"].update(
-        estimate_usd=20,
-        guard_usd=20,
-        wall_clock_hours=4,
+        estimate_usd=estimate_usd,
+        guard_usd=budget_usd,
+        wall_clock_hours=hours,
         rollout_usd=1,
         evolver_session_usd=5,
     )
@@ -38,10 +97,16 @@ def native_manifest(experiment, *, embedding="azure"):
         )
     elif embedding != "azure":
         raise ValueError("Unknown embedding implementation")
+    value["a3_native_budget"].update(
+        estimate_usd=estimate_usd, guard_usd=budget_usd, wall_clock_hours=hours
+    )
+    validate(value)
     return value
 
 
 async def execute(root, manifest, *, resume=False):
+    validate(manifest)
+    budget = manifest["budget"]
     loop = EvolutionLoop(
         root,
         manifest["experiment"],
@@ -50,9 +115,9 @@ async def execute(root, manifest, *, resume=False):
         resume=resume,
         rule="improve",
         concurrency=4,
-        estimate=20,
-        ceiling=20,
-        hours=4,
+        estimate=budget["estimate_usd"],
+        ceiling=budget["guard_usd"],
+        hours=budget["wall_clock_hours"],
     )
     try:
         return await loop.run()
@@ -68,37 +133,37 @@ def main():
     parser.add_argument(
         "--embedding", choices=("azure", "bge"), default="azure"
     )
+    parser.add_argument("--native-budget-usd", type=float)
+    parser.add_argument("--native-estimate-usd", type=float, default=50)
+    parser.add_argument("--native-hours", type=float, default=4)
     args = parser.parse_args()
     safe_id(args.experiment)
     root = Path(__file__).resolve().parents[1]
     if args.resume:
-        from evolution.state import State
-
-        state_path = root / "runs" / args.experiment / "A3-native/state.sqlite"
-        if state_path.exists():
-            state = State(state_path)
-            try:
-                finished = state.stage("finished-1")
-            finally:
-                state.close()
-            if finished is not None:
-                print(
-                    json.dumps(
-                        {
-                            k: finished[k]
-                            for k in (
-                                "arm",
-                                "decision",
-                                "coreset_preference",
-                                "J_t",
-                                "O_t_search",
-                                "cost_upper_usd",
-                            )
-                        }
-                    )
-                )
-                return
-    value = native_manifest(args.experiment, embedding=args.embedding)
+        finished = finished_result(root, args.experiment)
+        if finished is not None:
+            print_result(finished)
+            return
+    if args.resume:
+        value = json.loads(
+            (root / "runs" / args.experiment / "manifest.json").read_text()
+        )
+        validate(value)  # Historical v2 is only admitted by completed replay.
+        if (
+            args.native_budget_usd is not None
+            and args.native_budget_usd != value["budget"]["guard_usd"]
+        ):
+            raise ValueError("A resumed native run cannot change its budget")
+    else:
+        if args.native_budget_usd is None:
+            parser.error("New calibration requires --native-budget-usd")
+        value = native_manifest(
+            args.experiment,
+            embedding=args.embedding,
+            budget_usd=args.native_budget_usd,
+            estimate_usd=args.native_estimate_usd,
+            hours=args.native_hours,
+        )
     manifest = resolve(root, value, dotenv_values(root / ".env"))
     freeze_manifest(root, manifest)
     atomic_json(
@@ -106,28 +171,14 @@ def main():
         {
             "arm": "A3-native",
             "purpose": "infrastructure",
-            "authorization": "User P1.5 task; single native calibration",
+            "authorization": "Explicit native launcher budget parameter",
             "pilot_gates_bypassed": False,
             "pilot_entry": "not applicable to authorized infrastructure",
-            "max_usd": 20,
+            "max_usd": manifest["budget"]["guard_usd"],
         },
     )
     result = asyncio.run(execute(root, manifest, resume=args.resume))
-    print(
-        json.dumps(
-            {
-                k: result[k]
-                for k in (
-                    "arm",
-                    "decision",
-                    "coreset_preference",
-                    "J_t",
-                    "O_t_search",
-                    "cost_upper_usd",
-                )
-            }
-        )
-    )
+    print_result(result)
 
 
 if __name__ == "__main__":

@@ -156,6 +156,14 @@ class EvolutionLoop:
             hours=hours,
         )
         self.config = {**dotenv_values(self.root / ".env"), **self.manifest}
+        if arm in {"A3-native", "A3-loop"}:
+            from evolution.a3_control import retry_policy
+
+            policy = retry_policy(self.config)
+            saved_policy = self.state.stage("a3-retry-policy")
+            if saved_policy is not None and saved_policy != policy:
+                raise ValueError("A3 infrastructure-retry policy changed")
+            self.state.stage("a3-retry-policy", policy)
         if (
             arm in {"A3-native", "A3-loop", "C-TTS-A3-loop"}
             and evaluator_class is Evaluator
@@ -681,8 +689,18 @@ class EvolutionLoop:
             db.close()
             raise ValueError("Comparator iteration must finish before C-TTS")
         allocations = {}
+        if signal == "A3-loop":
+            from evolution.a3_control import check_retry_policy
+
+            try:
+                check_retry_policy(self, db)
+            except ValueError:
+                db.close()
+                raise
         for row in db.db.execute("SELECT spec FROM trials"):
             spec = json.loads(row[0])
+            if signal == "A3-loop" and spec.get("infrastructure_attempt"):
+                continue
             if spec["iteration"] <= self.iteration:
                 key = (spec["partition"], spec["task"])
                 allocations[key] = allocations.get(key, 0) + 1
@@ -722,7 +740,11 @@ class EvolutionLoop:
                         and (item["partition"], item["task"])
                         == (partition, task)
                     ]
-                    physical = len(scheduled_specs)
+                    physical = sum(
+                        signal != "A3-loop"
+                        or not item.get("infrastructure_attempt")
+                        for item in scheduled_specs
+                    )
                     already_scheduled = any(
                         item["replicate"] == index
                         and not item.get("infrastructure_attempt")
@@ -748,6 +770,10 @@ class EvolutionLoop:
                 produced.append(existing[index])
             physical = sum(
                 (spec["partition"], spec["task"]) == (partition, task)
+                and (
+                    signal != "A3-loop"
+                    or not spec.get("infrastructure_attempt")
+                )
                 for stored in self.state.db.execute("SELECT spec FROM trials")
                 if (spec := json.loads(stored["spec"]))
             )
@@ -771,14 +797,17 @@ class EvolutionLoop:
                 )
             if partition != "search" and signal != "A0":
                 # Build scorer evidence privately; it never reaches feedback.
-                if signal == "A3-loop":
-                    from evolution.a3_v2 import export_trace
-                else:
-                    from evolution.judge_queue import export_trace
+                from evolution.judge_queue import export_trace
 
                 for row in produced:
                     trace = (
-                        self.evaluator.jobs / row["id"] / "agent/trace.jsonl"
+                        self.evaluator.jobs
+                        / (
+                            row.get("replacement_id", row["id"])
+                            if signal == "A3-loop"
+                            else row["id"]
+                        )
+                        / "agent/trace.jsonl"
                     )
                     if trace.exists():
                         evidence = export_trace(
@@ -860,6 +889,18 @@ class EvolutionLoop:
                     - len(chosen)
                 ),
             }
+            if signal == "A3-loop":
+                from evolution.a3_metrics import metrics, preference_report
+
+                selected[partition]["metrics"] = metrics(
+                    selected_rows, expected=slots
+                )
+                selected[partition]["preferences"] = preference_report(pool)
+                selected[partition]["allocation_unit"] = "logical_rollouts"
+                selected[partition]["physical_trials"] = sum(
+                    json.loads(r[0])["partition"] == partition
+                    for r in self.state.db.execute("SELECT spec FROM trials")
+                )
         costs = cost_summary(
             self.accounting / "ledger.jsonl",
             self.accounting / "requests.jsonl",
@@ -887,6 +928,33 @@ class EvolutionLoop:
             **({"scale": "signed_preference"} if signal == "A3-loop" else {}),
             "rollouts": len(rows),
         }
+        if signal == "A3-loop":
+            from evolution.a3_metrics import completion, preference_report
+
+            sealed_pool = [r for r in rows if r["partition"] == "sealed"]
+            completed = completion(
+                [r for r in rows if r["partition"] == "search"],
+                sealed_pool,
+            )
+            sealed_preferences = preference_report(sealed_pool)
+            if not sealed_preferences["complete"]:
+                completed.update(
+                    measurement_complete=False, endpoint_eligible=False
+                )
+            completed["sealed_preference_status_counts"] = sealed_preferences[
+                "status_counts"
+            ]
+            summary.update(
+                **completed,
+                status="complete"
+                if completed["measurement_complete"]
+                else "measurement-incomplete",
+                allocation_unit="logical_rollouts",
+                retry_policy=self.state.stage("a3-control-allocation-policy"),
+                physical_trials=self.state.db.execute(
+                    "SELECT count(*) FROM trials"
+                ).fetchone()[0],
+            )
         atomic_json(
             self.evaluator.private / f"control-t{self.iteration}.json",
             selected,
