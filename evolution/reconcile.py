@@ -103,6 +103,14 @@ def reconcile(directory):
             ):
                 data = json.loads(response_path.read_text())
                 usage = data.get("usage") or {}
+                embedding = intent.get("operation") == "embeddings"
+                if embedding:
+                    usage = {**usage, "completion_tokens": 0}
+                successful = (
+                    bool(data.get("data")) and "error" not in data
+                    if embedding
+                    else bool(data.get("choices"))
+                )
                 details = usage.get("prompt_tokens_details") or {}
                 recovered = {
                     **{
@@ -130,7 +138,7 @@ def reconcile(directory):
                         details.get("cache_creation_tokens", 0),
                     ),
                     "cost_usd": None,
-                    "ok": bool(data.get("choices")),
+                    "ok": successful,
                     "cost_source": "durable_response_recovery",
                 }
                 prices = intent["prices"]
@@ -149,8 +157,11 @@ def reconcile(directory):
                         * max(rates["input"], rates["cache_write"])
                         + usage["completion_tokens"] * rates["output"]
                     ) / 1e6
-                if not data.get("choices"):
+                if not successful:
                     upper = None
+                if embedding:
+                    recovered["known_response_cost_usd"] = upper
+                    recovered["cost_usd"] = upper
                 receipt = {
                     **intent,
                     "usage": usage,

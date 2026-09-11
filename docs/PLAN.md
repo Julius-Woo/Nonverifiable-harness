@@ -325,6 +325,8 @@ Exit criteria: one TB2 task completed end-to-end by the seed harness with an ora
 
 - 2026-09-11 (W8f done): evidence contract v3 (4,000-character head/tail per observation, 200,000 total; truncation recorded) implemented; terra-low-8k judge calibration: tau v3 A1 0.00602, A2 0.01739; TPR/FPR at 0.5 (executor reading) A1 77.1%/17.1%, A2 88.6%/55.9%; Kimi A2 unusable (93% FPR), 7 Kimi scores missing; 15/228 observations truncated (12/48 trajectories, 96.6 MB omitted); USD 3.24; 507 tests. W10 (A3) in progress.
 
+- 2026-09-11 (W10 done, P1.5): A3-native, A3-loop, and C-TTS(A3) implemented (k/G/N = 10/3/3, fixed first-rollout baseline, signed preference in [-1, 1]; deviation: ranking failures get the A9 retry). Real A3-native round on terra-low-8k: 88 logical trials, seed retained, fresh search oracle 6/18, USD 19.74 (guard-censored at the end: 2 pairs unscored, 4 sealed rollouts censored); coreset calibration used BGE embeddings, Azure text-embedding-3-large path verified but not yet used for a full round. 514 tests. Review R9 (A3 fidelity) and W11 (GDPevo Phase 3 prep from R5) launched.
+
 ### 9.7 Proposed Amendments to Sections 1-8 (pending user approval)
 
 Sources: the literature digest `docs/background.md` (Part B deltas; independent review R2 pending) and the GDPevo assessment `docs/gdpevo_assessment.md` with its independent review R1 (`docs/reviews.md`). Sections 1-8 are unchanged until the user approves. Review R2 of the digest is complete; its dispositions are in `docs/reviews.md`.

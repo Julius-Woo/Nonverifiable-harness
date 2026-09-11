@@ -11,7 +11,7 @@ while preregistration, calibration, isolation, or budget entry gates are missing
 | --- | --- | --- |
 | 1 — Section 5 | Actual evolver container environment and mounts are archived; peer probes target the other real arm root. Solver processes are paused before filesystem snapshotting; a fresh grader container receives tests and a grader-only canary. The machine-readable matrix audits actual requests, exports, acceptance-cycle feedback, and these live boundaries. The concrete Harbor factory has a regression test. | 6/7 rows passed on the completed real run. Row 7 is blocked: provider cache partitioning is unverified. Finding 1 is not closed. |
 | 2 — pass labels / A9 | `oracle_label` applies reward 1, no executor/protocol failure, and no agent timeout. `executor` and `strict` readings are explicit. Raw reward is separate. Post-hoc relabelling raises and cannot update feedback. One linked clean-state infrastructure replacement and one identical-snapshot grader retry are durable. | Implemented; executor/strict, timeout, missing-label, and immutable-feedback regressions pass. |
-| 3 — pilot launcher | `scripts/run_pilot.py` resolves/freezes a manifest, checks entry gates before evaluation, and schedules independent seeds and iterations with a shared phase guard. Seed sealed t=0 precedes proposals. Controls match their own comparator. A3-loop is a reserved hook that refuses dispatch. | Implemented and deliberately blocked. No pilot calls. |
+| 3 — pilot launcher | `scripts/run_pilot.py` resolves/freezes a manifest, checks entry gates before evaluation, and schedules independent seeds and iterations with a shared phase guard. Seed sealed t=0 precedes proposals. Controls match their own comparator. A3-loop dispatches the separately documented [RHO hook](a3.md); pilot entry gates remain binding. | Implemented and deliberately blocked. No pilot calls. |
 | 4 — C-TTS v2 | Held-out control scoring uses full v2 exports and trusted termination metadata. The obsolete 12,000-character export argument is gone. | Full mocked A1/A2 control paths preserve observations exceeding 16,000 characters. No paid control run was requested. |
 | 5 — wire prompt | Exact wire messages are hashed; transport adds no system message. Cache identifiers are API metadata. The real wire audit compares paid judge payloads with queued v2 evidence and evolver instructions with the common template. | All 809 real wire requests have exact message hashes and no injected system message; 42 actual A1 judge exports also pass oracle-injection comparison. |
 | 6 — control resume | Explicit replicate indices and durable expected index lists replace completed-row counts. Resume fills missing identities; selected pools report K and missing slots with fixed denominators. Comparator/selection-signal mismatches and duplicate identities fail. | A1/A2 out-of-order resume regressions pass, including replicate 1 completing before 0. |
@@ -46,7 +46,7 @@ byte on resume. Input examples are retained under `runs/`.
 | `tool_failure_reading` | `executor` default, or `strict`; the latter also vetoes chosen commands' nonzero exit codes. Executor exceptions, timeouts and action-protocol failures veto both. |
 | `api_timeout_policy` | Proposed `infrastructure`, or `failure`, per pending AD13. Only an attempt whose sole API call timed out without an executed action qualifies for the infrastructure replacement. |
 | `tau`, `tau_evidence`, `epsilon`, `acceptance` | Tau per judge and its evidence (`path`/`sha256`, five finite aggregate scores under v2 and the frozen prompt, provider, task-provider, seed, and split hashes/settings); A0 is 0, uncalibrated judge defaults are null. Epsilon defaults to 0. Pilot acceptance is ordinary strict improvement; infrastructure can exercise the private anchor gate. |
-| `arms`, `a3_loop_hook` | A0/A1/A2, reserved A3-loop, and matched C-TTS variants. The unimplemented A3 hook is an explicit pre-dispatch blocker. |
+| `arms`, `a3_loop_hook` | A0/A1/A2, A3-loop via `evolution.a3:A3Round`, and matched C-TTS variants. See [A3 recipe and native calibration](a3.md); native runs only through its infrastructure launcher. |
 | `seeds`, `T`, `candidates_per_arm` | Proposed seeds 1/2, T=6, ordinary arms 2 proposals, A3-loop 3 per pending AD7. Distinct seed workspaces share one phase budget. |
 | `partition_limits`, resolved `tasks` | Empty for pilot; validation takes the first 6 search, 3 anchor, and 3 sealed task IDs. Full split hash remains frozen. |
 | `evidence_version`, `prompt_version` | `sanitized-trajectory-v2`, `judge-v2`; historical v1 tau does not calibrate this condition. |
@@ -77,8 +77,9 @@ ratification flags, manifest and split hashes, v2 tau evidence, the Section 5
 artifact and its evidence hashes, P1.8/P1.9/P1.11/P1.5 artifacts, the armed phase
 guard with matching estimate/ceiling/duration, supported arms, hashed provider
 cache attestation, and nominal schedule cost. An existing
-condition mismatch fails before paid dispatch. A3-loop cannot fall through to
-an ordinary arm. `run_evolution` rejects pilot manifests; its manifest path is
+condition mismatch fails before paid dispatch. A3-loop dispatches its RHO
+round hook, including three proposals and signed-preference acceptance; it
+cannot fall through to an ordinary arm. C-TTS(A3) uses paired self-preference. `run_evolution` rejects pilot manifests; its manifest path is
 for explicitly authorized infrastructure validation. The legacy ungated
 command-line path is removed; `--manifest` is required. `--recover-sessions`
 explicitly resumes eligible unfinished sessions within their durable limits.

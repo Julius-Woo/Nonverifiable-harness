@@ -187,6 +187,8 @@ def test_truthy_tau_metadata_is_not_calibration_evidence(tmp_path):
 
 
 def test_tau_evidence_requires_five_actual_aggregate_scores(tmp_path):
+    from evolution.sanitize import VERSION
+
     (tmp_path / "PREREG.md").write_text("Frozen")
     (tmp_path / "data").mkdir()
     (tmp_path / "data/tb2_split.json").write_text("{}")
@@ -202,7 +204,7 @@ def test_tau_evidence_requires_five_actual_aggregate_scores(tmp_path):
     atomic_json(
         artifact,
         {
-            "evidence_version": "sanitized-trajectory-v2",
+            "evidence_version": VERSION,
             "judge": "A1",
             "aggregate_scores": [0.5] * 4,
             "prompt_sha256": "prompt",

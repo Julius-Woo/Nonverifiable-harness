@@ -58,8 +58,15 @@ def acceptance_decision(
 ):
     if baseline is None or proposed is None:
         return False
+    signed = (
+        SearchEvaluation(
+            baseline, proposed, family="task-self", scale="signed_preference"
+        )
+        if arm in {"A3-native", "A3-loop"}
+        else None
+    )
     if rule == "improve":
-        return proposed > baseline
+        return signed.gain > 0 if signed is not None else proposed > baseline
     if baseline_anchor is None or proposed_anchor is None:
         return False
     threshold = TAU.get(arm) if tau is None else tau
@@ -69,7 +76,9 @@ def acceptance_decision(
         )
     return accept(
         CandidateEvaluation(
-            SearchEvaluation(baseline, proposed),
+            signed
+            if signed is not None
+            else SearchEvaluation(baseline, proposed),
             AnchorEvaluation(baseline_anchor, proposed_anchor),
         ),
         tau=threshold,
@@ -78,7 +87,7 @@ def acceptance_decision(
 
 
 def select_control(rows, signal):
-    if signal not in ("A0", "A1", "A2", "A4"):
+    if signal not in ("A0", "A1", "A2", "A4", "A3-loop", "A3-native"):
         raise ValueError("Unsupported C-TTS signal")
     selected = []
     for task in sorted({r["task"] for r in rows}):
@@ -121,7 +130,7 @@ class EvolutionLoop:
             "completion_allowance", 8192
         )
         self.candidate_count = self.manifest.get("candidates_per_arm", {}).get(
-            arm, 2
+            arm, 3 if arm.startswith("A3") else 2
         )
         self.epsilon = self.manifest.get("epsilon", 0)
         self.iteration, self.rule, self.tau = iteration, rule, tau
@@ -147,6 +156,13 @@ class EvolutionLoop:
             hours=hours,
         )
         self.config = {**dotenv_values(self.root / ".env"), **self.manifest}
+        if (
+            arm in {"A3-native", "A3-loop", "C-TTS-A3-loop"}
+            and evaluator_class is Evaluator
+        ):
+            from evolution.a3 import A3Evaluator
+
+            evaluator_class = A3Evaluator
         self.evaluator = evaluator_class(
             self.root,
             experiment,
@@ -243,7 +259,12 @@ class EvolutionLoop:
         work = working_copy(parent, self.directory / "working" / identity)
         session = self.logs / "sessions" / identity
         session.mkdir(parents=True)
-        prompt = render(self.arm, self.completion_allowance)
+        if hasattr(self, "a3"):
+            from evolution.a3_operators import PROPOSE
+
+            prompt = PROPOSE.replace("8192", str(self.completion_allowance))
+        else:
+            prompt = render(self.arm, self.completion_allowance)
         (session / "prompt.txt").write_text(prompt)
         tags = CallTags(
             "P1.3",
@@ -253,33 +274,39 @@ class EvolutionLoop:
             identity,
             "evolver",
         )
-        backend = EvolverBackend(
-            base_url=self.config["EVOLVER_API_BASE"],
-            api_key=self.config["EVOLVER_API_KEY"],
-            model=self.config["EVOLVER_MODEL"],
-            ledger=self.accounting / "ledger.jsonl",
-            logs_dir=session / "calls",
-            effort=None,
-            max_completion_tokens=4096,
-            extra_params={
-                "temperature": 0.6,
-                "top_p": 0.95,
-                "response_format": {"type": "json_object"},
-            },
-            max_retries=0,
-            budget_usd=self.manifest.get("budget", {}).get(
-                "evolver_session_usd", 5
-            ),
-            timeout_s=180,
-            prices_path=self.root / "costs/judges_prices.json",
-            guard_path=self.accounting / "budget.sqlite",
-            limiter_path=self.root / "logs/evolution-endpoints.sqlite",
-            audit_path=self.accounting / "requests.jsonl",
-            tags=tags,
-            scope=session_id,
-            rpm=float(self.config.get("EVOLVER_RPM", 250)),
-            tpm=float(self.config.get("EVOLVER_TPM", 250000)),
+        backend = (
+            self.a3.ops.backend("a3-propose", identity, session=True)
+            if hasattr(self, "a3")
+            else EvolverBackend(
+                base_url=self.config["EVOLVER_API_BASE"],
+                api_key=self.config["EVOLVER_API_KEY"],
+                model=self.config["EVOLVER_MODEL"],
+                ledger=self.accounting / "ledger.jsonl",
+                logs_dir=session / "calls",
+                effort=None,
+                max_completion_tokens=4096,
+                extra_params={
+                    "temperature": 0.6,
+                    "top_p": 0.95,
+                    "response_format": {"type": "json_object"},
+                },
+                max_retries=0,
+                budget_usd=self.manifest.get("budget", {}).get(
+                    "evolver_session_usd", 5
+                ),
+                timeout_s=180,
+                prices_path=self.root / "costs/judges_prices.json",
+                guard_path=self.accounting / "budget.sqlite",
+                limiter_path=self.root / "logs/evolution-endpoints.sqlite",
+                audit_path=self.accounting / "requests.jsonl",
+                tags=tags,
+                scope=session_id,
+                rpm=float(self.config.get("EVOLVER_RPM", 250)),
+                tpm=float(self.config.get("EVOLVER_TPM", 250000)),
+            )
         )
+        if hasattr(self, "a3"):
+            tags = backend.tags
         result = {
             "id": identity,
             "parent": parent.name,
@@ -294,7 +321,9 @@ class EvolutionLoop:
             with Workspace(
                 work,
                 f"nvhe-evo-{self.arm.lower()}-{identity}",
-                feedback=self.evaluator.feedback,
+                feedback=self.a3.feedback
+                if hasattr(self, "a3")
+                else self.evaluator.feedback,
                 writable=True,
                 audit=session / "boundary.json",
             ) as workspace:
@@ -389,6 +418,10 @@ class EvolutionLoop:
         return rows
 
     async def run(self):
+        if self.arm in {"A3-native", "A3-loop"}:
+            from evolution.a3 import A3Round
+
+            return await A3Round(self).run()
         finished_key = f"finished-{self.iteration}"
         previous = self.state.stage(finished_key)
         if previous:
@@ -738,7 +771,10 @@ class EvolutionLoop:
                 )
             if partition != "search" and signal != "A0":
                 # Build scorer evidence privately; it never reaches feedback.
-                from evolution.judge_queue import export_trace
+                if signal == "A3-loop":
+                    from evolution.a3_v2 import export_trace
+                else:
+                    from evolution.judge_queue import export_trace
 
                 for row in produced:
                     trace = (
@@ -761,7 +797,12 @@ class EvolutionLoop:
                         )
                         atomic_json(path, evidence.to_dict())
                         row["evidence"] = str(path)
-                produced = await self.evaluator.score(produced)
+                if signal != "A3-loop":
+                    produced = await self.evaluator.score(produced)
+            if signal == "A3-loop":
+                from evolution.a3_control import score_control_pool
+
+                produced = await score_control_pool(self, produced, seed)
             rows.extend(produced)
         selected = {}
         for partition in ("search", "anchor", "sealed"):
@@ -843,6 +884,7 @@ class EvolutionLoop:
             "allocations": {"search": selected["search"]},
             "candidate": "seed",
             "edited": False,
+            **({"scale": "signed_preference"} if signal == "A3-loop" else {}),
             "rollouts": len(rows),
         }
         atomic_json(

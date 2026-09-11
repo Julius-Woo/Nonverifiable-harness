@@ -114,13 +114,10 @@ async def execute(root, manifest, *, resume=False, recover_sessions=False):
                         result = await loop.control(
                             root / "runs" / experiment / arm[6:]
                         )
-                    elif arm == "A3-loop":
-                        raise ValueError(
-                            "Reserved A3-loop hook has no implementation"
-                        )
                     else:
                         if (
                             recover_sessions
+                            and arm != "A3-loop"
                             and loop.state.stage(f"finished-{iteration}")
                             is None
                             and loop.state.stage(f"checkpoint-{iteration}")

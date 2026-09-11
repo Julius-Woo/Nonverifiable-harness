@@ -182,6 +182,7 @@ class AuditTransport(httpx.AsyncBaseTransport):
         )
         archive = self.audit.parent / "requests" / request_id
         archive.mkdir(parents=True)
+        self.receipt_path = archive / "receipt.json"
         atomic_json(archive / "request.json", payload)
         row = {
             "ts": utc_now(),
@@ -199,7 +200,18 @@ class AuditTransport(httpx.AsyncBaseTransport):
             "archive": str(archive),
             "backend_raw_dir": str(backend_raw),
             "payload_sha256": hashlib.sha256(request.content).hexdigest(),
-            "prompt_sha256": digest(canonical(payload["messages"])),
+            "prompt_sha256": digest(
+                canonical(
+                    payload["input"]
+                    if getattr(self.backend, "is_embedding", False)
+                    else payload["messages"]
+                )
+            ),
+            **(
+                {"operation": "embeddings"}
+                if getattr(self.backend, "is_embedding", False)
+                else {}
+            ),
             "cache_user": payload["user"],
             "prices": self.backend.prices,
             "requested_model": self.backend.model,
@@ -225,6 +237,10 @@ class AuditTransport(httpx.AsyncBaseTransport):
             # and audit archives both contain the exact outbound payload.
             atomic_json(backend_raw / "response.json", data)
             usage = data.get("usage") or {}
+            if getattr(self.backend, "is_embedding", False):
+                # Embeddings have input usage and no generated text tokens.
+                # The original response archive remains byte-faithful JSON.
+                usage = {**usage, "completion_tokens": 0}
             rates = self.backend.prices["models"].get(
                 pricing_model(
                     data.get("model") or self.backend.model,
@@ -297,6 +313,9 @@ class AuditTransport(httpx.AsyncBaseTransport):
                 receipt_record,
                 self.backend.prices,
             )
+            if getattr(self.backend, "is_embedding", False):
+                # Embedding pricing has one flat input rate, no cache tiers.
+                receipt_record["known_response_cost_usd"] = upper
             receipt_record["cost_source"] = "durable_receipt"
             if response.status_code >= 400 and response.status_code != 429:
                 upper = None

@@ -139,7 +139,12 @@ def aggregate(rows, expected=None):
         "common_complete_task_blocks": len(complete),
         "common_J": common_j,
         "common_O": common_o,
-        "common_gap": common_j - common_o if common_j is not None else None,
+        "common_gap": (
+            common_j - common_o
+            if common_j is not None
+            and not any(r.get("scale") == "signed_preference" for r in rows)
+            else None
+        ),
         "task_blocks": len(blocks),
         "scheduled": len(rows),
         "judge_missing": len(rows) - len(scores),
@@ -150,6 +155,8 @@ def aggregate(rows, expected=None):
 
 
 class Evaluator:
+    trace_exporter = staticmethod(export_trace)
+
     def __init__(
         self,
         root,
@@ -243,7 +250,7 @@ class Evaluator:
         }
         atomic_json(self.private / f"{identity}.json", row)
         if trace.exists() and spec["partition"] == "search":
-            evidence = export_trace(
+            evidence = self.trace_exporter(
                 trace,
                 self.logs / "exports" / identity,
                 result=result,

@@ -296,7 +296,9 @@ async def test_r8b1_factory_preserves_isolated_concrete_class(monkeypatch):
 
 
 @pytest.mark.parametrize("arm", ["A1", "A2"])
-async def test_r8b4_r8b6_control_v2_out_of_order_resume(tmp_path, arm):
+async def test_r8b4_r8b6_control_current_contract_out_of_order_resume(
+    tmp_path, arm
+):
     import shutil
 
     from test_evolution_loop import FakeEvaluator
@@ -332,8 +334,17 @@ async def test_r8b4_r8b6_control_v2_out_of_order_resume(tmp_path, arm):
             for row in rows:
                 value = json.loads(Path(row["evidence"]).read_text())
                 evidence = JudgeInput.from_dict(value)
-                assert len(json.dumps(evidence.to_dict())) > 16000
-                assert evidence.trajectory.version == "sanitized-trajectory-v2"
+                from evolution.sanitize import VERSION
+
+                assert evidence.trajectory.version == VERSION
+                if VERSION == "sanitized-trajectory-v2":
+                    assert len(json.dumps(evidence.to_dict())) > 16000
+                else:
+                    assert evidence.trajectory.truncations
+                    assert (
+                        evidence.trajectory.truncations[0]["original_bytes"]
+                        >= 16000
+                    )
                 row["score"] = 0.8
                 self.state.finish(row["id"], row)
             return rows

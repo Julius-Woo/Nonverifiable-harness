@@ -123,6 +123,10 @@ class ReplayEnvironment:
 
 async def recover_sessions(loop):
     """Explicit continuation after a boundary pause, with archived failures."""
+    if "A3" in loop.arm:
+        raise ValueError(
+            "A3 owns its operator retries; interrupted proposals are dropped"
+        )
     checkpoint = loop.state.stage(f"checkpoint-{loop.iteration}")
     if checkpoint is None:
         raise ValueError("Recovery requires the active iteration checkpoint")
@@ -137,7 +141,9 @@ async def recover_sessions(loop):
         if audit.exists()
         else []
     )
-    dispatched = {r["task"] for r in calls if r["role"] == "task"}
+    dispatched = {
+        r["task"] for r in calls if r["role"] in {"task", "a3-resolve"}
+    }
     if loop.state.stage(f"finished-{loop.iteration}") is not None:
         raise ValueError("Cannot reopen a completed iteration")
     for stored in loop.state.db.execute("SELECT id,spec FROM trials"):

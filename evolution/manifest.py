@@ -65,7 +65,19 @@ def defaults(experiment, *, validation=False):
             "C-TTS-A2",
             "C-TTS-A3-loop",
         ],
-        "a3_loop_hook": None,
+        "a3_loop_hook": "evolution.a3:A3Round",
+        "a3": {
+            "k": 10,
+            "G": 3,
+            "N": 3,
+            "theta": 0.7,
+            "floor": 0.1,
+            "embedding": "text-embedding-3-large",
+            "embedding_revision": None,
+            "pair_order": "candidate_A_reference_B",
+            "evidence_version": "sanitized-trajectory-v2",
+            "floor_semantics": "raw_score_before_max_normalization",
+        },
         "seeds": [1] if validation else [1, 2],
         "T": 1 if validation else 6,
         "candidates_per_arm": {"A0": 2, "A1": 2, "A2": 2, "A3-loop": 3},
@@ -130,7 +142,32 @@ def validate(value):
         set(value["arms"])
     ) != len(value["arms"]):
         raise ValueError("Duplicate arm or seed")
-    allowed = {"A0", "A1", "A2", "A4", "A3-loop"}
+    allowed = {"A0", "A1", "A2", "A4", "A3-loop", "A3-native"}
+    if "A3-native" in value["arms"] and (
+        value["purpose"] != "infrastructure"
+        or value["T"] != 1
+        or value["arms"] != ["A3-native"]
+        or len(value["seeds"]) != 1
+    ):
+        raise ValueError("A3-native is one standalone infrastructure round")
+    for arm in ("A3-loop", "A3-native"):
+        if arm in value["arms"]:
+            if value["candidates_per_arm"].get(arm) != 3:
+                raise ValueError("A3 requires three proposals")
+            if value.get("a3_loop_hook") != "evolution.a3:A3Round":
+                raise ValueError("Unknown A3 implementation hook")
+            expected = defaults("check")["a3"]
+            legacy = {
+                **expected,
+                "embedding": "BAAI/bge-large-en-v1.5",
+                "embedding_revision": (
+                    "d4aa6901d3a41ba39fb536a557fa166f842b0e09"
+                ),
+            }
+            if value.get("a3") not in (expected, legacy):
+                raise ValueError(
+                    "A3 recipe differs from implemented condition"
+                )
     for arm in value["arms"]:
         if arm.removeprefix("C-TTS-") not in allowed:
             raise ValueError("Unknown arm")
@@ -139,11 +176,22 @@ def validate(value):
     for n in value["budget"].values():
         if type(n) not in (int, float) or not math.isfinite(n) or n <= 0:
             raise ValueError("Invalid budget")
-    if value["evidence_version"] != EVIDENCE_VERSION:
+    expected_evidence = (
+        "sanitized-trajectory-v2"
+        if value["arms"] == ["A3-native"]
+        else EVIDENCE_VERSION
+    )
+    if value["evidence_version"] != expected_evidence:
         raise ValueError("Evidence condition changed")
     for tau in value["tau"].values():
         if tau is not None and (not math.isfinite(tau) or tau < 0):
             raise ValueError("Invalid tau")
+
+
+def a3_prompt_hash():
+    from evolution.a3_operators import PROMPTS as A3_PROMPTS
+
+    return digest(canonical(A3_PROMPTS))
 
 
 def resolve(root, value, config):
@@ -215,6 +263,20 @@ def resolve(root, value, config):
         },
         timeout_s=float(config.get("JUDGE_TIMEOUT_S", 180)),
     )
+    if value.get("a3", {}).get("embedding") == "text-embedding-3-large":
+        base = config.get("AZURE_EP8_BASE")
+        if base:
+            base = base.rstrip("/")
+            if not base.endswith("/v1"):
+                base += "/openai/v1"
+        providers["embedding"] = {
+            "base_url": base,
+            "deployment": "text-embedding-3-large",
+            "dimensions": 1024,
+            "input_usd_per_million": 0.13,
+            "rpm": 250,
+            "tpm": 250000,
+        }
     value["providers"] = providers
     value["hashes"] = {
         "prereg": file_hash(root / "PREREG.md"),
@@ -230,6 +292,7 @@ def resolve(root, value, config):
             )
         ),
         "judge_prompts": digest(canonical(PROMPTS)),
+        "a3_prompts": a3_prompt_hash(),
         "evolver_prompts": digest(
             canonical(
                 {
@@ -238,7 +301,15 @@ def resolve(root, value, config):
                 }
             )
         ),
-        "evidence_contract": file_hash(root / "evolution/sanitize.py"),
+        "evidence_contract": file_hash(
+            root
+            / (
+                "evolution/a3_v2.py"
+                if value["arms"] == ["A3-native"]
+                else "evolution/sanitize.py"
+            )
+        ),
+        "a3_evidence_contract": file_hash(root / "evolution/a3_v2.py"),
         "controller": digest(
             canonical(
                 {
@@ -404,7 +475,12 @@ def entry_errors(root, manifest):
                         data = json.loads(path.read_text())
                         scores = data["aggregate_scores"]
                         valid_tau = (
-                            data["evidence_version"] == EVIDENCE_VERSION
+                            data["evidence_version"]
+                            == (
+                                "sanitized-trajectory-v2"
+                                if signal == "A3-loop"
+                                else EVIDENCE_VERSION
+                            )
                             and data["judge"] == signal
                             and len(scores) == 5
                             and all(
@@ -418,22 +494,34 @@ def entry_errors(root, manifest):
                                 abs_tol=1e-12,
                             )
                             and data["prompt_sha256"]
-                            == manifest["hashes"]["judge_prompts"]
+                            == manifest["hashes"][
+                                "a3_prompts"
+                                if signal == "A3-loop"
+                                else "judge_prompts"
+                            ]
                             and data["provider"]
-                            == manifest["providers"]["judge"]
+                            == manifest["providers"][
+                                "task" if signal == "A3-loop" else "judge"
+                            ]
                             and data["task_provider"]
                             == manifest["providers"]["task"]
                             and data["seed_sha256"]
                             == manifest["hashes"]["seed"]
                             and data["split_sha256"]
                             == manifest["split_sha256"]
+                            and (
+                                signal != "A3-loop"
+                                or (
+                                    data.get("a3_recipe") == manifest["a3"]
+                                    and data.get("embedding_provider")
+                                    == manifest["providers"].get("embedding")
+                                )
+                            )
                         )
                     except (KeyError, TypeError, ValueError):
                         valid_tau = False
             if not valid_tau:
                 errors.append(f"{signal} lacks valid frozen v2 tau evidence")
-        if signal == "A3-loop":
-            errors.append("Reserved A3-loop hook is not implemented")
     matrix = manifest.get("section5_artifact")
     if not matrix or not (root / matrix).is_file():
         errors.append("Section 5 artifact missing")
@@ -481,11 +569,7 @@ def entry_errors(root, manifest):
         ):
             errors.append(f"{gate} evidence missing or changed")
     errors.extend(budget_errors(root, manifest))
-    ordinary = [
-        a
-        for a in manifest["arms"]
-        if not a.startswith("C-TTS-") and a != "A3-loop"
-    ]
+    ordinary = [a for a in manifest["arms"] if not a.startswith("C-TTS-")]
     search = len(manifest.get("tasks", {}).get("search", []))
     sealed = len(manifest.get("tasks", {}).get("sealed", []))
     anchor = len(manifest.get("tasks", {}).get("anchor", []))
@@ -496,6 +580,11 @@ def entry_errors(root, manifest):
         if manifest["acceptance"] == "anchor":
             per_iteration += 2 * anchor
         count = 2 * sealed + manifest["T"] * per_iteration
+        if arm == "A3-loop":
+            per_iteration = 10 * (3 + 3) + search + 2 * sealed
+            if manifest["acceptance"] == "anchor":
+                per_iteration += 2 * anchor
+            count = 2 * search + 2 * sealed + manifest["T"] * per_iteration
         nominal += count * (2 if f"C-TTS-{arm}" in manifest["arms"] else 1)
     nominal *= len(manifest["seeds"])
     projected_solver_cost = (

@@ -55,7 +55,12 @@ class CandidateAgent(BaseAgent):
         self.accounting = Path(accounting_dir)
         config = dotenv_values(ROOT / ".env")
         tags = CallTags(
-            "P1.3", experiment, arm, int(iteration), trial_id, "task"
+            "P1.5" if "A3" in arm else "P1.3",
+            experiment,
+            arm,
+            int(iteration),
+            trial_id,
+            "a3-resolve" if "A3" in arm else "task",
         )
         task_settings = task_settings or {}
         prefix = task_settings.get("endpoint_prefix", "TASK_ALT2")
