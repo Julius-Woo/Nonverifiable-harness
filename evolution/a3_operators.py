@@ -287,6 +287,34 @@ def check_evidence_versions(payload):
             check_evidence_versions(value)
 
 
+class A3Backend(AccountedBackend):
+    """Do not mistake empty filter metadata for a provider rejection."""
+
+    async def complete(self, prompt, tags):
+        reply = await super().complete(prompt, tags)
+        if (
+            reply.record.get("termination_category")
+            == "content_policy_rejection"
+        ):
+            path = Path(reply.record["raw_dir"]) / "response.json"
+            response = json.loads(path.read_text())
+            choices = response.get("choices", [])
+            if (
+                choices
+                and not response.get("error")
+                and all(
+                    c.get("finish_reason") == "length"
+                    and not c.get("message", {}).get("refusal")
+                    for c in choices
+                )
+            ):
+                reply.record.pop("termination_category", None)
+                reply.record["note"] = (
+                    "API returned no answer (token exhaustion)"
+                )
+        return reply
+
+
 class Operators:
     def __init__(self, loop):
         self.loop = loop
@@ -341,7 +369,10 @@ class Operators:
         tags = CallTags(
             "P1.5", loop.experiment, loop.arm, loop.iteration, identity, role
         )
-        return AccountedBackend(
+        operator_timeout = loop.manifest.get("clean_calibration", {}).get(
+            "operator_attempt_timeout_s"
+        )
+        return A3Backend(
             base_url=base,
             api_key=loop.config[f"{prefix}_API_KEY"],
             model=task["deployment"],
@@ -350,7 +381,8 @@ class Operators:
             extra_params={"response_format": {"type": "json_object"}},
             ledger=loop.accounting / "ledger.jsonl",
             logs_dir=self.directory / "calls" / identity,
-            timeout_s=300 if role == "a3-rank" else task["api_timeout_s"],
+            timeout_s=operator_timeout
+            or (300 if role == "a3-rank" else task["api_timeout_s"]),
             max_retries=0,
             budget_usd=loop.manifest["budget"]["evolver_session_usd"],
             prices_path=loop.root / "costs/judges_prices.json",
@@ -377,7 +409,12 @@ class Operators:
         identity = f"{kind}-{identity}"
         path = self.directory / "operators" / f"{identity}.json"
         prompt = PROMPTS[kind] + "\nEvidence JSON:\n" + canonical(payload)
-        workspace_mode = len(prompt.encode()) > INLINE_BYTES
+        inline_bytes = (
+            min(INLINE_BYTES, 10000)
+            if getattr(self.loop, "manifest", {}).get("clean_calibration")
+            else INLINE_BYTES
+        )
+        workspace_mode = len(prompt.encode()) > inline_bytes
         record = json.loads(path.read_text()) if path.exists() else None
         if record is not None and not record.get("reroute_after_admission"):
             # Routing is frozen with an operator, including completed results.
@@ -405,11 +442,15 @@ class Operators:
         atomic_json(path, record)
         role = "a3-rank" if kind == "rank" else "a3-diagnose"
         backend = self.backend(role, identity, session=workspace_mode)
+        resume_attempt = bool(record.pop("resume_inspection", False))
+        resumed_index = record.pop("resume_attempt_index", None)
+        omitted_calls = record.pop("resume_unresolved_calls", 0)
         try:
             # Recover an archived completion before granting the one retry.
             if (
                 record["attempts"]
                 and record["attempts"][-1]["status"] == "running"
+                and not resume_attempt
             ):
                 responses = sorted(
                     backend.logs_dir.glob("*/response.json"),
@@ -430,8 +471,20 @@ class Operators:
                 except (IndexError, KeyError, ValueError, TypeError):
                     record["attempts"][-1]["status"] = "interrupted"
                 atomic_json(path, record)
-            while not record["complete"] and len(record["attempts"]) < 2:
-                record["attempts"].append({"status": "running"})
+            while not record["complete"] and (
+                resume_attempt or len(record["attempts"]) < 2
+            ):
+                continuing = resume_attempt
+                if not continuing:
+                    record["attempts"].append({"status": "running"})
+                attempt_index = (
+                    resumed_index
+                    if continuing and resumed_index
+                    else len(record["attempts"])
+                )
+                attempt_record = record["attempts"][attempt_index - 1]
+                attempt_record["status"] = "running"
+                resume_attempt = False
                 atomic_json(path, record)
                 try:
                     if workspace_mode:
@@ -447,7 +500,15 @@ class Operators:
                                 identity,
                                 payload,
                                 backend,
-                                len(record["attempts"]),
+                                attempt_index,
+                                **(
+                                    {
+                                        "resume": True,
+                                        "omitted_calls": omitted_calls,
+                                    }
+                                    if continuing
+                                    else {}
+                                ),
                             )
                     else:
                         reply = await backend.complete(prompt, backend.tags)
@@ -458,9 +519,9 @@ class Operators:
                         answer = reply.text
                     result = parse_operator(kind, json.loads(answer))
                     record.update(complete=True, result=result)
-                    record["attempts"][-1]["status"] = "complete"
+                    attempt_record["status"] = "complete"
                 except BudgetHalt as exc:
-                    record["attempts"][-1].update(
+                    attempt_record.update(
                         status="unscored-budget", reason=str(exc)
                     )
                     record.update(complete=True, status="unscored-budget")
@@ -473,9 +534,7 @@ class Operators:
                     SeedError,
                     TimeoutError,
                 ) as exc:
-                    record["attempts"][-1].update(
-                        status="failed", reason=str(exc)
-                    )
+                    attempt_record.update(status="failed", reason=str(exc))
                 atomic_json(path, record)
             record["complete"] = True
             atomic_json(path, record)

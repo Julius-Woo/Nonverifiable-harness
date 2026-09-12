@@ -118,7 +118,13 @@ async def bounded_map(function, values, concurrency=4):
         async with semaphore:
             return await function(value)
 
-    return await asyncio.gather(*(one(value) for value in values))
+    results = await asyncio.gather(
+        *(one(value) for value in values), return_exceptions=True
+    )
+    for result in results:
+        if isinstance(result, BaseException):
+            raise result
+    return results
 
 
 class A3Round:
@@ -241,6 +247,8 @@ class A3Round:
                 raise ValueError(
                     "RHO diagnosis requires G=3 distinct re-solves"
                 )
+            if any(row.get("excluded") for row in rows):
+                return None
             traces = [evidence(row) for row in rows]
             if len({t["task_text"] for t in traces}) != 1:
                 raise ValueError("Group task text mismatch")
@@ -262,6 +270,7 @@ class A3Round:
             return {"task_text": traces[0]["task_text"], "diagnosis": result}
 
         diagnosed = await bounded_map(diagnose, tasks)
+        diagnosed = [item for item in diagnosed if item is not None]
         diagnosed.sort(key=lambda item: -item["diagnosis"]["severity"])
         atomic_json(self.feedback / "diagnoses.json", diagnosed)
         return diagnosed
@@ -273,12 +282,16 @@ class A3Round:
             reference = references.get(row["task"])
             row = annotate_measurement(row)
             score = None
+            if reference is not None and reference.get("excluded"):
+                row["reference_excluded"] = True
             if reference is not None and phase_censored(reference):
                 row["reference_censored"] = True
             if row["measurement_status"] == "unscored-budget":
                 row["rank_budget_halt"] = True
             elif (
-                not phase_censored(row)
+                not row.get("excluded")
+                and not (reference or {}).get("excluded")
+                and not phase_censored(row)
                 and not row.get("reference_censored")
                 and reference is not None
             ):

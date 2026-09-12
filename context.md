@@ -92,3 +92,5 @@ Costs to date (API, conservative): smoke 0.54; calibration 8.85 + 1.70 + 9.87; j
 ## A3-native clean calibration worker (2026-09-12)
 
 Active task and handoff: `runs/a3-native-260912/context.md`. Own $60 cap; projected $48.95493134 before dispatch. Only A3 module/test code is edited. Historical run stays immutable. Raw oracle data stays under oracle/.
+
+A3-native clean calibration (2026-09-12) completed. See runs/a3-native-260912/completion.json and docs/a3.md, section "Clean calibration (2026-09-12)". Full uncensored endpoint allocation; seed retained because proposals were ineligible; conservative cost USD 25.02637565. Final A3 suite 68 passed. Runtime/retry deviations and offline summary-schema repair are documented; no changes to other workers' shared modules, no commit, no push.

@@ -72,11 +72,18 @@ async def score_control_pool(loop, rows, seed, *, operators=None):
         )
         reference = references[key]
         value = None
+        if reference.get("excluded"):
+            row["reference_excluded"] = True
         if phase_censored(reference):
             row["reference_censored"] = True
         if row["measurement_status"] == "unscored-budget":
             row["rank_budget_halt"] = True
-        elif not phase_censored(row) and not row.get("reference_censored"):
+        elif (
+            not row.get("excluded")
+            and not reference.get("excluded")
+            and not phase_censored(row)
+            and not row.get("reference_censored")
+        ):
             if row["id"] == reference["id"]:
                 try:
                     evidence(row)  # Even the zero-reference must satisfy v3.

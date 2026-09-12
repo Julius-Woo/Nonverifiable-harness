@@ -657,7 +657,7 @@ def test_operator_inherits_solver_endpoint_quota(tmp_path, monkeypatch):
         captured.append(kwargs)
         return SimpleNamespace(**kwargs)
 
-    monkeypatch.setattr(a3_operators, "AccountedBackend", backend)
+    monkeypatch.setattr(a3_operators, "A3Backend", backend)
     manifest = native_manifest("quota")
     loop = SimpleNamespace(
         root=tmp_path,

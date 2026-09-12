@@ -50,6 +50,7 @@ def completion_report(summary, selection, search, sealed, tasks, references):
         preferences = preference_report(scored)
         proposals[proposal["id"]] = {
             "source_status": proposal["status"],
+            "proposal_failure_reason": proposal.get("reason"),
             "eligible": proposal.get("preference") is not None,
             "selection_preference": proposal.get("preference"),
             **preferences,
@@ -384,7 +385,13 @@ def report(root, experiment):
             "infrastructure_replacements": sum(
                 bool(r.get("_physical_infrastructure_attempt")) for r in items
             ),
-            "excluded": sum(r.get("oracle") is None for r in logical),
+            "excluded": sum(
+                bool(r.get("excluded")) or r.get("oracle") is None
+                for r in logical
+            ),
+            "oracle_labels_missing": sum(
+                r.get("oracle") is None for r in logical
+            ),
             "phase_budget_censored": sum(phase_censored(r) for r in logical),
         }
         if items[0]["partition"] == "search":
@@ -513,18 +520,56 @@ def report(root, experiment):
     if clean:
         from evolution.a3_calibration import l1_prime, stage_costs
         from evolution.a3_coreset import select_coreset
-        from evolution.behavior import standing_metrics
+        from evolution.behavior import (
+            claim_report,
+            claimed_without_ran,
+            standing_metrics,
+        )
+        from evolution.sanitize import sanitized_events
 
         assert not halts
+        admissions = rows(run / "stage-admissions.jsonl")
+        assert admissions and all(r["admitted"] for r in admissions)
+        assert all(
+            r["used_usd"] + r["projected_stage_usd"] <= r["cap_usd"] == 60
+            for r in admissions
+        )
+        projection = clean["projection"]
+        assert projection["admitted"] and projection["projected_usd"] <= 55
+        assert projection["created_at"] < min(r["ts"] for r in intents)
         assert not any(phase_censored(r) for r in trials)
+        trial_ids = {r["id"] for r in trials}
+        host_admissions = [
+            r
+            for path in (
+                root / "logs/evolution-admission/admissions.jsonl",
+                root / "logs/evolution-admission" / experiment
+                / "admissions.jsonl",
+            )
+            for r in rows(path)
+            if r["trial_id"] in trial_ids
+        ]
+        assert {r["trial_id"] for r in host_admissions} == trial_ids
+        assert all(
+            r["available_gib"] >= 6 and r["global_limit"] <= 4
+            for r in host_admissions
+        )
+        atomic_json(run / "host-admissions.json", host_admissions)
         assert set(export_versions) == {"v3"}
         assert core["embedding"]["model"] == "text-embedding-3-large"
         assert core["seed"] == manifest["seed"] == 1
         assert core["tasks"] == select_coreset(
             core["descriptions"], core["vectors"], seed=core["seed"]
         )
-        assert all(p["status"] == "valid" for p in summary["candidates"])
-        assert all(p["complete"] for p in completed["selection"].values())
+        assert all(
+            p["eligible"] == p["complete"]
+            for p in completed["selection"].values()
+        )
+        assert all(
+            p["status_counts"]["censored"] == 0
+            and p["status_counts"]["unscored-budget"] == 0
+            for p in completed["selection"].values()
+        )
         assert completed["search_preferences"]["complete"]
         assert completed["endpoint_eligible"]
         for row in trials:
@@ -548,9 +593,88 @@ def report(root, experiment):
             + audit["costs"]["reserved_unresolved_usd"]
         )
         assert abs(total - costs_total) < 1e-8
+        # Shared runtime revisions sometimes classify an empty filter-metadata
+        # key as a refusal. Use the actual final response for the diagnostic
+        # category; raw artifacts and L1' failure labels remain unchanged.
+        latest_calls = {}
+        for call in sorted(ledger, key=lambda r: r.get("ts", "")):
+            if call["role"] == "a3-resolve":
+                latest_calls[call["task"]] = call
+        behavior_corrections = []
+        for trial in trials:
+            call = latest_calls.get(trial.get("replacement_id", trial["id"]))
+            if (
+                not call
+                or trial.get("execution", {}).get("reason") == "normal_finish"
+            ):
+                continue
+            response_path = Path(call["raw_dir"]) / "response.json"
+            if not response_path.exists():
+                continue
+            response = json.loads(response_path.read_text())
+            choices = response.get("choices", [])
+            if (
+                choices
+                and not response.get("error")
+                and all(
+                    c.get("finish_reason") == "length"
+                    and not c.get("message", {}).get("refusal")
+                    for c in choices
+                )
+            ):
+                original = trial.get("execution", {}).get("reason")
+                if original != "token_step_budget_exhaustion":
+                    behavior_corrections.append(
+                        {
+                            "id": trial["id"],
+                            "original": original,
+                            "corrected": "token_step_budget_exhaustion",
+                            "response_sha256": file_hash(response_path),
+                            "oracle_label_changed": False,
+                        }
+                    )
+                assert trial.get("oracle") in (0, None)
+                trial["execution"] = {
+                    **trial.get("execution", {}),
+                    "reason": "token_step_budget_exhaustion",
+                }
+                trial["behavior"] = {
+                    **trial.get("behavior", {}),
+                    "exhaustion": True,
+                }
+        atomic_json(
+            private / "standing-metric-corrections.json", behavior_corrections
+        )
         logical_trials = [
             r for r in trials if not r.get("_physical_infrastructure_attempt")
         ]
+        # Launch and later worker versions wrote different detector schemas.
+        # Recompute only this offline diagnostic from full sanitized traces;
+        # never substitute the capped ranking export or alter frozen labels.
+        detectors = []
+        for trial in logical_trials:
+            if trial.get("excluded"):
+                continue
+            source = Path(trial["source"])
+            trace = source.parent / "agent/trace.jsonl"
+            events, _, _ = sanitized_events(
+                rows(trace),
+                result=json.loads(source.read_text()),
+                execution=trial.get("execution", {}),
+            )
+            detector = claimed_without_ran(events, window=5)
+            detectors.append(detector)
+            atomic_json(
+                private / "behavior-recomputed" / f"{trial['id']}.json",
+                {
+                    "id": trial["id"],
+                    "source_sha256": file_hash(trace),
+                    "claimed_without_ran": detector,
+                    "oracle_label_changed": False,
+                },
+            )
+        claims = claim_report(detectors)
+        atomic_json(private / "claimed-without-ran-clean.json", claims)
         completed.update(
             censoring="none",
             pass_label="L1-prime",
@@ -558,15 +682,41 @@ def report(root, experiment):
             costs_by_stage=cost_stages,
             total_usd=total,
             standing_metrics=standing_metrics(logical_trials),
+            claimed_without_ran=claims,
             embedding=core["embedding"],
             seed=core["seed"],
+            diagnoses_completed=sum(
+                p.name.startswith("diagnose-")
+                and json.loads(p.read_text()).get("result") is not None
+                for p in (logs / "a3/i01").glob("**/operators/*.json")
+            ),
+            valid_proposals=sum(
+                p["status"] == "valid" for p in summary["candidates"]
+            ),
+            runtime_amendments=[
+                str(p.relative_to(root))
+                for p in sorted(run.parent.glob("runtime-amendment-*.json"))
+            ],
+            preprocessing_retry_deviation=json.loads(
+                (run.parent / "preprocessing-retry-deviation.json").read_text()
+            )
+            if (run.parent / "preprocessing-retry-deviation.json").exists()
+            else None,
         )
+        assert completed["diagnoses_completed"] == 10
         audit.update(
             costs_by_stage=cost_stages,
             total_usd=total,
             censoring="none",
             pass_label="L1-prime",
             standing_metrics=completed["standing_metrics"],
+            standing_metric_category_corrections=len(behavior_corrections),
+            stage_admissions_verified=len(admissions),
+            predispatch_projection_usd=projection["projected_usd"],
+            host_admissions_verified=len(host_admissions),
+            minimum_admitted_memory_gib=min(
+                r["available_gib"] for r in host_admissions
+            ),
         )
         atomic_json(
             private / "search-avg2.json",

@@ -194,8 +194,16 @@ def main():
                 "ratification": "docs/decisions-260912.md AD1/AD10/AD14/AD15",
             }
             value["a3_native_budget"]["status"] = "authorized_AD14"
-    manifest = resolve(root, value, dotenv_values(root / ".env"))
-    freeze_manifest(root, manifest)
+    if args.resume:
+        from evolution.sanitize import canonical, digest
+
+        unsigned = {k: v for k, v in value.items() if k != "resolved_sha256"}
+        if digest(canonical(unsigned)) != value.get("resolved_sha256"):
+            raise ValueError("Frozen native manifest hash mismatch")
+        manifest = value
+    else:
+        manifest = resolve(root, value, dotenv_values(root / ".env"))
+        freeze_manifest(root, manifest)
     atomic_json(
         root / "runs" / args.experiment / "authorization.json",
         {

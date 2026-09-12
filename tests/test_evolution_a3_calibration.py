@@ -123,3 +123,143 @@ async def test_clean_round_measures_full_search_avg2(tmp_path, monkeypatch):
         assert (loop.evaluator.private / "a3/i01/measurement.json").exists()
     finally:
         loop.close()
+
+
+async def test_inspection_replays_prefix_without_paid_call_or_command(
+    tmp_path,
+):
+    from evolution.a3_inspection import ReplayBackend, ReplayWorkspace
+    from harness.backends import Completion
+    from harness.ledger import CallTags
+    from harness.seed import API_SYSTEM, run_seed
+
+    instruction = "Read evidence, then finish."
+    prompt = (
+        API_SYSTEM
+        + "\nConversation:\n"
+        + json.dumps([{"role": "user", "content": instruction}])
+    )
+    call = tmp_path / "paid-call"
+    call.mkdir()
+    (call / "request.json").write_text(
+        json.dumps({"messages": [{"role": "user", "content": prompt}]})
+    )
+    prefix = [
+        {
+            "kind": "assistant",
+            "step": 0,
+            "call_id": "paid-call",
+            "ok": True,
+            "text": json.dumps(
+                {"action": "terminal", "command": "cat evidence"}
+            ),
+        },
+        {
+            "kind": "observation",
+            "step": 0,
+            "command": "cat evidence",
+            "stdout": "recorded evidence",
+            "stderr": "",
+            "return_code": 0,
+        },
+    ]
+    calls = []
+
+    async def complete(prompt, tags):
+        calls.append(prompt)
+        assert "recorded evidence" in prompt
+        return Completion(
+            '{"action":"finish","answer":"done"}',
+            {
+                "call_id": "new-call",
+                "ok": True,
+            },
+        )
+
+    backend = ReplayBackend(
+        SimpleNamespace(
+            logs_dir=tmp_path,
+            is_api=True,
+            complete=complete,
+        ),
+        prefix,
+    )
+    workspace = object.__new__(ReplayWorkspace)
+    workspace.prefix, workspace.index = [prefix[1]], 0
+    result = await run_seed(
+        instruction,
+        workspace,
+        backend,
+        CallTags("test", "test", "A3-native", 1, "task", "a3-diagnose"),
+        tmp_path / "continuation.jsonl",
+        max_steps=2,
+    )
+    assert result == "done" and len(calls) == 1
+    assert backend.index == workspace.index == 1
+    changed = ReplayBackend(backend.backend, prefix)
+    with pytest.raises(ValueError, match="changed a paid prompt"):
+        await changed.complete("changed", None)
+    assert len(calls) == 1
+
+
+async def test_operator_batch_settles_peers_before_raising():
+    import asyncio
+
+    from evolution.a3 import bounded_map
+
+    finished = []
+
+    async def operator(value):
+        if value == 0:
+            raise ValueError("local admission failed")
+        await asyncio.sleep(0.01)
+        finished.append(value)
+        return value
+
+    with pytest.raises(ValueError, match="local admission failed"):
+        await bounded_map(operator, [0, 1, 2])
+    assert sorted(finished) == [1, 2]
+
+
+@pytest.mark.parametrize("finish", ["length", "content_filter"])
+async def test_operator_distinguishes_token_exhaustion_from_refusal(
+    tmp_path, monkeypatch, finish
+):
+    from evolution.a3_operators import A3Backend
+    from evolution.accounting import AccountedBackend
+    from harness.backends import Completion
+
+    (tmp_path / "response.json").write_text(
+        json.dumps(
+            {
+                "choices": [
+                    {
+                        "finish_reason": finish,
+                        "message": {"content": "", "refusal": None},
+                        "content_filter_results": {},
+                    }
+                ],
+            }
+        )
+    )
+    record = {
+        "ok": False,
+        "raw_dir": str(tmp_path),
+        "termination_category": "content_policy_rejection",
+        "note": "Provider content-policy rejection",
+    }
+
+    async def complete(*args):
+        return Completion("", record)
+
+    monkeypatch.setattr(AccountedBackend, "complete", complete)
+    backend = object.__new__(A3Backend)
+    result = await backend.complete("prompt", None)
+    assert not result.record["ok"]
+    if finish == "length":
+        assert "termination_category" not in result.record
+        assert "token exhaustion" in result.record["note"]
+    else:
+        assert (
+            result.record["termination_category"] == "content_policy_rejection"
+        )

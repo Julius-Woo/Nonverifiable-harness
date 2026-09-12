@@ -349,6 +349,8 @@ Exit criteria: one TB2 task completed end-to-end by the seed harness with an ora
 
 - 2026-09-12 (R10 done): 4 blocking findings (grading executes solver-controlled files; snapshot grading breaks live services; grader failures labelled as negatives; sealed failures leak through public totals) and 7 deviations. Qualification run stopped and discarded (USD 1.64 spent). W9e launched to fix the blockers and cheap deviations, add adversarial grading controls, re-freeze, and re-run the qualification. W13 (A3 calibration) continues.
 
+- 2026-09-12 (W13 done): clean A3-native calibration (terra-low-8k, Azure text-embedding-3-large coreset, evidence v3, L1'): uncensored; all three proposals ineligible (13 selection slots unscored by failures), seed retained; self-preference J = +0.036; search avg@2 6/36 = 16.7%; sealed avg@2 0/12; USD 25.03 of the USD 60 cap; 68 A3 tests. This is the 'RHO reproduced' anchor for the paper. W9e2 (qualification re-run after the R10 fixes) in progress: A0 done, A1 confirmation 11/12, USD 13.72.
+
 ### 9.7 Proposed Amendments to Sections 1-8 (pending user approval)
 
 Sources: the literature digest `docs/background.md` (Part B deltas; independent review R2 pending) and the GDPevo assessment `docs/gdpevo_assessment.md` with its independent review R1 (`docs/reviews.md`). Sections 1-8 are unchanged until the user approves. Review R2 of the digest is complete; its dispositions are in `docs/reviews.md`.

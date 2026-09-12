@@ -47,7 +47,9 @@ def annotate_measurement(row):
 def pair_record(row):
     """Public pair table: no oracle labels or trusted execution internals."""
     status = row.get("pair_status")
-    if phase_censored(row) or row.get("reference_censored"):
+    if row.get("excluded") or row.get("reference_excluded"):
+        status = "unscored-failure"
+    elif phase_censored(row) or row.get("reference_censored"):
         status = "censored"
     elif status not in STATUSES:
         status = (
