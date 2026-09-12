@@ -203,7 +203,9 @@ def test_oracle_pass_uses_explicit_reward_and_timeout_rule():
     result = {"verifier_result": {"rewards": {"reward": 1}}}
     assert oracle_label(result, {"status": "finished"}, [])[0] == 1
     assert oracle_label(result, {"status": "timeout_or_cancelled"}, [])[0] == 0
-    assert oracle_label(result, {"tool_failed": True}, [])[0] == 1
+    assert oracle_label(
+        result, {"tool_failed": True, "status": "finished"}, []
+    )[0] == 1
     assert oracle_label({}, {}, [])[0] is None
 
 

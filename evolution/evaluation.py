@@ -8,6 +8,11 @@ import time
 from pathlib import Path
 
 from evolution.accounting import AccountedBackend, BudgetHalt
+from evolution.behavior import (
+    behavior_flags,
+    claimed_without_ran,
+    standing_metrics,
+)
 from evolution.candidates import atomic_json
 from evolution.judge_queue import (
     Endpoint,
@@ -16,6 +21,8 @@ from evolution.judge_queue import (
     export_trace,
 )
 from evolution.judges import mixture
+from evolution.outcomes import api_timeout_only, termination
+from evolution.sanitize import sanitized_events
 from evolution.workspace import docker
 from harness.ledger import CallTags, append_jsonl, utc_now
 
@@ -28,24 +35,20 @@ def available_gib():
     )
 
 
-def oracle_label(result, execution, records, tool_failure_reading="executor"):
-    """Derive once from trusted execution evidence and the frozen policy."""
+def oracle_label(result, execution, records):
+    """AD10 L1': outcome label, independent of recovered process events."""
     from evolution.outcomes import termination
 
-    if tool_failure_reading not in {"executor", "strict"}:
-        raise ValueError("Unknown tool failure reading")
     reward = ((result.get("verifier_result") or {}).get("rewards") or {}).get(
         "reward"
     )
-    flags = termination(records, result=result, execution=execution)
-    if flags["agent_timeout"]:
+    outcome = termination(records, result=result, execution=execution)
+    if outcome["agent_timeout"]:
         return 0, reward, "agent_timeout"
-    if flags["executor_failure"] or flags["protocol_failure"]:
-        return 0, reward, "executor_failure"
-    if tool_failure_reading == "strict" and (
-        flags["nonzero_exit"] or execution.get("tool_failed")
-    ):
-        return 0, reward, "strict_tool_failure"
+    if outcome["reason"] == "unknown" and reward is None:
+        return None, reward, "missing_or_invalid_verifier"
+    if outcome["reason"] not in {"normal_finish", "no_tools_or_inability"}:
+        return 0, reward, outcome["reason"]
     if type(reward) not in (int, float) or reward not in (0, 1):
         return None, reward, "missing_or_invalid_verifier"
     return int(reward == 1), reward, "valid_verifier"
@@ -125,8 +128,16 @@ def aggregate(rows, expected=None):
         {k: mean([r["oracle"] for r in v]) for k, v in complete.items()}
     )
     return {
+        "standing_metrics": standing_metrics(rows),
         "J": equal_seeds(block_j),
-        "O": equal_seeds(block_o),
+        "O": equal_seeds(
+            {
+                k: mean(
+                    [r.get("oracle") or 0 for r in v if not r.get("excluded")]
+                )
+                for k, v in blocks.items()
+            }
+        ),
         "O_fixed_denominator": equal_seeds(block_o),
         "J_observed_attempts": mean(scores),
         "O_observed_attempts": mean(labels),
@@ -218,24 +229,27 @@ class Evaluator:
             if execution_path.exists()
             else {}
         )
-        label, raw, reason = oracle_label(
-            result,
-            execution,
-            records,
-            self.config.get("tool_failure_reading", "executor"),
+        outcome = termination(records, result=result, execution=execution)
+        execution = {
+            **execution,
+            **{k: v for k, v in outcome.items() if k != "kind"},
+        }
+        execution["api_timeout_only"] = api_timeout_only(execution, records)
+        label, raw, reason = oracle_label(result, execution, records)
+        if execution["api_timeout_only"]:
+            label, reason = None, "api_timeout_infrastructure"
+        full_events, _, _ = sanitized_events(
+            records, result=result, execution=execution
         )
-        if (
-            execution.get("api_timeout")
-            and execution.get("calls") == 1
-            and not execution.get("action_executed")
-        ):
-            if (
-                self.config.get("api_timeout_policy", "infrastructure")
-                == "failure"
-            ):
-                label, reason = 0, "api_timeout_failure"
-            else:
-                label, reason = None, "api_timeout_infrastructure"
+        detector = claimed_without_ran(full_events, window=5)
+        atomic_json(
+            self.private / "behavior" / f"{identity}.json",
+            {
+                "id": identity,
+                **spec,
+                "claimed_without_ran": detector,
+            },
+        )
         row = {
             "id": identity,
             **spec,
@@ -246,6 +260,7 @@ class Evaluator:
             "score": None,
             "source": str(result_path),
             "execution": execution,
+            "behavior": behavior_flags(records, outcome, result=result),
             "exception_info": result.get("exception_info"),
         }
         atomic_json(self.private / f"{identity}.json", row)
@@ -295,17 +310,13 @@ class Evaluator:
                 self.state.finish(row["id"], row)
             return row
         execution = row.get("execution", {})
-        api_only = (
-            execution.get("api_timeout")
-            and execution.get("calls") == 1
-            and not execution.get("action_executed")
+        if execution.get("reason") == "content_policy_rejection":
+            return row
+        api_only = execution.get(
+            "api_timeout_only", api_timeout_only(execution)
         )
         infra = row.get("status") in {"infrastructure_failed", "interrupted"}
-        infra = infra or (
-            api_only
-            and self.config.get("api_timeout_policy", "infrastructure")
-            == "infrastructure"
-        )
+        infra = infra or api_only
         if not infra:
             return row
         # The new attempt is linked before dispatch and is never a new task.
@@ -325,13 +336,18 @@ class Evaluator:
             },
         )
         replacement = await self._one_once(candidate, replacement_spec)
-        excluded = replacement.get("status") in {
-            "infrastructure_failed",
-            "interrupted",
-        } or (
-            replacement.get("execution", {}).get("api_timeout")
-            and replacement.get("execution", {}).get("calls") == 1
-            and not replacement.get("execution", {}).get("action_executed")
+        replacement_execution = replacement.get("execution", {})
+        excluded = replacement_execution.get(
+            "reason"
+        ) != "content_policy_rejection" and (
+            replacement.get("status")
+            in {
+                "infrastructure_failed",
+                "interrupted",
+            }
+            or replacement_execution.get(
+                "api_timeout_only", api_timeout_only(replacement_execution)
+            )
         )
         result = {
             **replacement,
@@ -339,6 +355,7 @@ class Evaluator:
             **spec,
             "replacement_id": replacement_id,
             "retried": True,
+            "infrastructure_attempt": spec.get("infrastructure_attempt", 0),
             "excluded": excluded,
             "exclusion_reason": "infrastructure_retry_exhausted"
             if excluded
@@ -652,7 +669,7 @@ class Evaluator:
         async def source():
             async for row in rows:
                 by_rollout[row["id"]] = row
-                if row.get("evidence"):
+                if row.get("evidence") and not row.get("excluded"):
                     evidence = JudgeInput.from_dict(
                         json.loads(Path(row["evidence"]).read_text())
                     )
@@ -693,7 +710,7 @@ class Evaluator:
 
     def export_feedback(self, rows):
         for row in rows:
-            if not row.get("evidence"):
+            if not row.get("evidence") or row.get("excluded"):
                 continue
             evidence = json.loads(Path(row["evidence"]).read_text())
             # Hard allowlist: no oracle, result path, partition, or rationale.

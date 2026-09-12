@@ -435,7 +435,12 @@ class Operators:
                 atomic_json(path, record)
                 try:
                     if workspace_mode:
-                        async with asyncio.timeout(300):
+                        attempt_timeout = (
+                            getattr(self.loop, "manifest", {})
+                            .get("clean_calibration", {})
+                            .get("operator_attempt_timeout_s", 300)
+                        )
+                        async with asyncio.timeout(attempt_timeout):
                             answer = await inspect(
                                 self,
                                 kind,

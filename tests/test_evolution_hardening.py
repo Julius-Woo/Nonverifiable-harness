@@ -379,7 +379,7 @@ def test_pilot_main_blocks_before_loop_or_paid_backend(tmp_path, monkeypatch):
     monkeypatch.setattr(sys, "argv", ["run_pilot", "--manifest", str(path)])
     assert run_pilot.main() == 2
     report = json.loads(
-        (tmp_path / "runs/blocked/entry_gates.json").read_text()
+        (tmp_path / "logs/evolution/blocked/entry_gates.json").read_text()
     )
     assert not report["passed"] and report["paid_calls"] == 0
 

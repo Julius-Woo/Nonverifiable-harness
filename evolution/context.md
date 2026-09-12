@@ -1,3 +1,63 @@
+# Ratified evolution contracts — 2026-09-12 handoff
+
+The requested implementation is complete and uncommitted. Binding source:
+`docs/decisions-260912.md`. No model calls, Docker, commit, or push were made.
+PREREG, calibration files, and evolution/a3*.py were not edited by this worker;
+other workers changed some of those files concurrently.
+
+## Current implementation
+
+- L1' alone: exact valid reward 1, no agent timeout, normal terminal finish;
+  recovered command/parse failures and nonzero exits are diagnostic only.
+- API-timeout-only attempts get one durable linked replacement, then exclusion.
+  Provider content-policy rejection terminates at the host, fails the task,
+  stays in the denominator, and cannot be retried by candidate code.
+- Standing rollout metrics reach public and oracle per-arm/iteration reports.
+  Feedback is identical to judge v3 evidence; N=5 claim detection consumes the
+  full sanitized trace and reports only under oracle/.
+- Portable manifests and source hashes: runs/manifests/pilot-t1-260912.json and
+  runs/manifests/qualification-t1-260912.json. Both are ready for review;
+  runs/ is gitignored, so eventual staging requires git add -f. No staging done.
+- --check is read-only apart from its logs, never resolves endpoints or uses
+  Docker, never arms/resets a guard, and prints schedule/cost before refusing.
+- First-five-session re-estimation is durable, includes unresolved reserves,
+  and retains the original guard/deadline. C-TTS matches logical slots and
+  reports physical retries separately. A3 modules were left to their owner.
+
+## Verification and launch blockers
+
+`uv run pytest -q`: 685 passed, 6 skipped in 52.33 seconds.
+Ruff passed changed Python files; git diff --check passed.
+Full result: logs/ratified-full-final.txt. Required regressions are primarily
+in tests/test_evolution_ratified.py, with superseded expectations corrected in
+the followup, hardening, and loop suites.
+
+Both --check commands exit 2 with paid_calls=0 and docker_calls=0. W12's Frozen
+state table is recognized as a frozen specification; R10 remains pending.
+Both lack linked P1.8/P1.9/P1.11 evidence and an armed budget guard. The pilot
+also lacks a passed qualification. Manifest/split/tau/Section 5 checks pass;
+provider cache enforcement is a ratified limitation, not a blocking seventh
+row. A3-native calibration is not a pilot gate.
+
+Actual implemented nominal schedules: qualification 1,296 logical slots /
+$145.152 solver-only against $30; pilot 13,872 / $1,553.664 against $650.
+No task/arm/replicate reduction or budget increase was invented. W12's newly
+reconciled feedback-reuse/anchor-monitoring schedule is not implemented here;
+even that schedule exceeds the ratified guard. Resolve this funding/schedule
+conflict explicitly before launch; guard-censored partial data are not a pilot.
+Cross-judge settings are frozen as Kimi-K2.6/A1-only; this change does not add a
+new cross-judge dispatch schedule to the existing controller.
+
+Archive stdout: logs/qualification-t1-260912-check.txt and
+logs/pilot-t1-260912-check.txt; structured reports live under
+logs/evolution/<experiment>/entry_gates.json. After an explicit pre-start
+condition change, update evidence references and reseal with
+`evolution.pilot.seal_inputs`, regenerating the qualification reference in the
+pilot. Never silently refresh hashes on check/resume. docs/evolution.md is the
+current operator guide; the preceding historical handoff is retained below.
+
+---
+
 # Evolution infrastructure handoff
 
 The requested P1.3/P1.6 evolution loop and C-TTS implementation are complete.

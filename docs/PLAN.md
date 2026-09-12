@@ -345,6 +345,8 @@ Exit criteria: one TB2 task completed end-to-end by the seed harness with an ora
 
 - 2026-09-12 (W12, W5g done): PREREG reconciled and marked frozen pending R10 (25 decision ids mapped; R4 11/12 resolved; `docs/prereg_reconciliation.md`); PLAN Sections 1-8 and 9.1 aligned. Unapplied: the full nominal rollout schedule for the ratified arm set costs about USD 1,421-1,486 for solver calls alone, above the USD 650 guard; a design or budget decision is needed before the pilot launch. Calibration recomputed under L1' with AD13 exclusions: terra-low-8k 18/56 (32.1%; equal-task mean 34.5%) selected as nearest the band centre; standing metrics: command-timeout rate 25%, exhaustion 3.6%, no-action 0%; 628 tests. W9c and W13 in progress.
 
+- 2026-09-12 (W9c done): loop implements L1' and the AD13 categories, standing metrics, shared v3 evolver view, full-trace claimed-without-ran (N = 5, oracle-side); pilot and qualification manifests written; launcher `--check` recognizes the frozen PREREG and blocks on pending R10, missing P1.8/P1.9/P1.11 evidence, unarmed guards, and schedules above caps (qualification as written: 1,296 rollouts, USD 145 vs the USD 30 cap; pilot 13,872 rollouts, USD 1,554 solver). 685 tests. R10 launched. Budget decision REC-01 pending with the user.
+
 ### 9.7 Proposed Amendments to Sections 1-8 (pending user approval)
 
 Sources: the literature digest `docs/background.md` (Part B deltas; independent review R2 pending) and the GDPevo assessment `docs/gdpevo_assessment.md` with its independent review R1 (`docs/reviews.md`). Sections 1-8 are unchanged until the user approves. Review R2 of the digest is complete; its dispositions are in `docs/reviews.md`.

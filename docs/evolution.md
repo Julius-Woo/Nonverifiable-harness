@@ -1,109 +1,166 @@
-# Evolution loop and fail-closed pilot entry
+# Evolution loop and ratified pilot entry
 
-This document distinguishes infrastructure validation from pilot data. The
-Phase 2 pilot has **not** been run. Pending addendum decisions are manifest
-parameters, not ratified study facts. The pilot launcher refuses paid dispatch
-while preregistration, calibration, isolation, or budget entry gates are missing.
+The Phase 2 pilot has not been launched. The binding contract is
+[decisions-260912.md](decisions-260912.md); the older validation results below
+are historical infrastructure evidence. The two reviewable input manifests
+are [pilot-t1-260912.json](../runs/manifests/pilot-t1-260912.json) and
+[qualification-t1-260912.json](../runs/manifests/qualification-t1-260912.json).
+Checks make no model calls, invoke no Docker commands, and never create or
+reset a budget guard. A failed check exits 2.
 
-## R8b follow-up
+## Changes by decision
 
-| Finding | Change and regression coverage | Status |
-| --- | --- | --- |
-| 1 — Section 5 | Actual evolver container environment and mounts are archived; peer probes target the other real arm root. Solver processes are paused before filesystem snapshotting; a fresh grader container receives tests and a grader-only canary. The machine-readable matrix audits actual requests, exports, acceptance-cycle feedback, and these live boundaries. The concrete Harbor factory has a regression test. | 6/7 rows passed on the completed real run. Row 7 is blocked: provider cache partitioning is unverified. Finding 1 is not closed. |
-| 2 — pass labels / A9 | `oracle_label` applies reward 1, no executor/protocol failure, and no agent timeout. `executor` and `strict` readings are explicit. Raw reward is separate. Post-hoc relabelling raises and cannot update feedback. One linked clean-state infrastructure replacement and one identical-snapshot grader retry are durable. | Implemented; executor/strict, timeout, missing-label, and immutable-feedback regressions pass. |
-| 3 — pilot launcher | `scripts/run_pilot.py` resolves/freezes a manifest, checks entry gates before evaluation, and schedules independent seeds and iterations with a shared phase guard. Seed sealed t=0 precedes proposals. Controls match their own comparator. A3-loop dispatches the separately documented [RHO hook](a3.md); pilot entry gates remain binding. | Implemented and deliberately blocked. No pilot calls. |
-| 4 — C-TTS v2 | Held-out control scoring uses full v2 exports and trusted termination metadata. The obsolete 12,000-character export argument is gone. | Full mocked A1/A2 control paths preserve observations exceeding 16,000 characters. No paid control run was requested. |
-| 5 — wire prompt | Exact wire messages are hashed; transport adds no system message. Cache identifiers are API metadata. The real wire audit compares paid judge payloads with queued v2 evidence and evolver instructions with the common template. | All 809 real wire requests have exact message hashes and no injected system message; 42 actual A1 judge exports also pass oracle-injection comparison. |
-| 6 — control resume | Explicit replicate indices and durable expected index lists replace completed-row counts. Resume fills missing identities; selected pools report K and missing slots with fixed denominators. Comparator/selection-signal mismatches and duplicate identities fail. | A1/A2 out-of-order resume regressions pass, including replicate 1 completing before 0. |
-| 7 — iteration recovery | Recovery and cleanup inspect only the active iteration. The parent is its checkpoint, including after a previous acceptance and sealed evaluation. | Regression recovers a second-iteration source write with the accepted first-iteration parent. |
-| 8 — aggregation | Oracle rates average fixed-allocation task blocks and seeds equally. Missing counts, observed-attempt diagnostics, complete common-cohort gaps, and incomplete blocks are separate. J retains missing judge scores as missing, as PREREG requires; a fixed-allocation zero-score sensitivity is separate. | Unequal task sizes, missing observations, duplicate identities, and missing control slots covered. |
-| 9 — condition freeze | Resolved endpoints, deployments, effective sampling/allowances, tau, prompts, evidence implementation, seed, split, prices, controller source, cached task descriptors, actual image IDs, launchers, harness runtime, and dependency lock are hashed. Resume re-resolves and rejects changes. Served-version drift persists a phase halt. | Implemented; v1 tau is never silently substituted for v2. |
-| 10 — accounting | Reservation and intent precede dispatch. Transport writes a durable response and accounting receipt before settlement or backend ledger append. Reconciliation repairs lost ledger rows from receipts, or receipts from archived responses, and explicitly lists unmatched/unknown items. | Crash-window, damaged-ledger, partial-503, exact-wire, and orphan-reservation regressions pass. All 855 reservations/intents map to ledger entries; 18 charges remain explicitly unresolved. |
-| 11 — investigator blinding | Sealed/anchor Harbor results, state values, batches, and checkpoint metrics live under `oracle/`. Public state contains private references. Public summaries/stdout expose search J/O and decisions only. A separate oracle report is produced at run end. | Private-state and public-summary regressions pass. |
-| 12 — durable evolver cap | A SQLite reservation counts each dispatched request against its session before dispatch. Restart checks durable counts, not just assistant traces; recovery can replay a response archived before its trace append. | Receipt-before-trace restart regression passes; the original 24-call cap remains binding. |
-
-The public interfaces of `evolution.judges`, `judge_queue`, `sanitize`, and
-`acceptance` are retained. Candidate source still runs in a networkless peer;
-only its own working harness is writable and its own feedback is mounted read
-only. Credentials remain on the host. Candidate code is never imported into the
-credential-bearing controller. English source/comments and the original JSON
-action protocol are retained.
-
-## Manifest schema
-
-`evolution.manifest.defaults()` produces a **draft**, not approval. The resolved
-manifest is written to `runs/<experiment>/manifest.json` and compared byte for
-byte on resume. Input examples are retained under `runs/`.
-
-| Fields | Meaning / proposed default |
+| Decision | Implemented contract |
 | --- | --- |
-| `schema_version`, `experiment`, `purpose` | Version 1; stable ID; `pilot` or separately authorized `infrastructure`. |
-| `budget_experiment` | Optional shared cost-directory identity; validation diagnostics and the final run share the same guard. No budget or deadline reset on resume. |
-| `prereg_frozen`, `ratifications` | Explicit false defaults. AD1/AD7/AD10–AD14 remain pending. The launcher also rejects the current PREREG draft text. |
-| `task_model.name`, `.deployment`, `.endpoint_prefix` | Proposed `gpt-5.6-terra`, `gpt56terra`, `TASK_ALT2`. Endpoint URLs are resolved; API keys are never serialized. |
-| `.reasoning_effort`, `.completion_allowance`, `.tool_protocol` | Proposed `low`, `8192`, `json`, per pending AD1/AD11/AD12. |
-| `.max_calls`, `.api_timeout_s` | 24 model calls and 180 seconds per request. Tool commands remain bounded at 30 seconds. |
-| `tool_failure_reading` | `executor` default, or `strict`; the latter also vetoes chosen commands' nonzero exit codes. Executor exceptions, timeouts and action-protocol failures veto both. |
-| `api_timeout_policy` | Proposed `infrastructure`, or `failure`, per pending AD13. Only an attempt whose sole API call timed out without an executed action qualifies for the infrastructure replacement. |
-| `tau`, `tau_evidence`, `epsilon`, `acceptance` | Tau per judge and its evidence (`path`/`sha256`, five finite aggregate scores under v2 and the frozen prompt, provider, task-provider, seed, and split hashes/settings); A0 is 0, uncalibrated judge defaults are null. Epsilon defaults to 0. Pilot acceptance is ordinary strict improvement; infrastructure can exercise the private anchor gate. |
-| `arms`, `a3_loop_hook` | A0/A1/A2, A3-loop via `evolution.a3:A3Round`, and matched C-TTS variants. See [A3 recipe and native calibration](a3.md); native runs only through its infrastructure launcher. |
-| `seeds`, `T`, `candidates_per_arm` | Proposed seeds 1/2, T=6, ordinary arms 2 proposals, A3-loop 3 per pending AD7. Distinct seed workspaces share one phase budget. |
-| `partition_limits`, resolved `tasks` | Empty for pilot; validation takes the first 6 search, 3 anchor, and 3 sealed task IDs. Full split hash remains frozen. |
-| `evidence_version`, `prompt_version` | `sanitized-trajectory-v2`, `judge-v2`; historical v1 tau does not calibrate this condition. |
-| `budget` | Proposed estimate $400, hard guard $600, 120 hours per pending AD14; $1 per solver rollout and $5 per evolver session. Validation uses $15 total. |
-| `concurrency` | Exactly 4; a shared process admission guard also requires at least 6 GiB **MemAvailable**. |
-| `cache_policy`, `cache_partition_attestation` | Unique metadata identifiers; provider enforcement is an explicit unresolved gate, not an inferred guarantee. |
-| `entry_evidence`, `section5_artifact` | Paths and SHA-256 values for required entry evidence and the real seven-row matrix. Missing, changed, fixture, or blocked evidence refuses entry. |
-| resolved `providers`, `hashes`, `host_runtime`, `runtime_images`, `task_images`, `split_sha256`, `resolved_sha256` | Actual settings and content/image identities, rechecked before dispatch. Local sampling identities do not imply provider determinism; unsupported seed controls are disclosed. |
+| AD1 | Terra `gpt56terra` on `TASK_ALT2`, low reasoning, JSON, 8,192 task completion allowance, 24 calls, 30-second commands; standing behavior metrics for every arm. |
+| AD5 / AD7 | Epsilon 0; two proposals for A0/A1/A2, three for A3-loop. Each C-TTS variant matches its own comparator's logical allocation, with physical infrastructure replacements reported separately. |
+| AD9 | Score range validation precedes tolerance/acceptance; the ordinary strict-improvement path now validates unit-range scores too. |
+| AD10 | L1′ is the only oracle label. Recovered observations do not veto a verifier pass. Raw reward stays separate. |
+| AD11 / AD12 | JSON protocol remains fixed. Task solvers and the ordinary evolver use 8,192 completion tokens. Protocol errors are rollout-level standing metrics, including recovered errors. Judge sampling/allowances retain the measured v3 condition: Flash 2,048 and Kimi 8,192. |
+| AD13 | A sole API call timing out without response is infrastructure: one durable clean-state replacement, then logged exclusion. HTTP content-policy rejections are task failures with a distinct category, never retried/excluded. Failed empty API responses do not create spurious parse errors. |
+| AD14 | Pilot estimate $450, hard guard $650, 120 hours; qualification $30. $1 per rollout and $5 per evolver session. The first five distinct completed evolver sessions produce a durable re-estimate; guards/deadline do not reset. A3-native calibration is concurrent and is not a pilot input/gate. |
+| AD15 | Judge and evolver receive the identical v3 capped evidence. Claim matching uses the full sanitized event stream, N=5, and writes only oracle-side diagnostics. Tau A1=0.006022079, A2=0.017391640. |
+| AD8 / review rule | Content hashes reject condition drift; `--check` never silently re-freezes changed inputs. Changes after start require timestamped deviations and a new explicitly reviewed condition. R10 reviews the frozen manifest, PREREG and Section 5 log. Provider cache enforcement is the ratified six-of-seven-row limitation. |
 
-The infrastructure manifest uses tau(A1)=0 **only to exercise the acceptance
-plumbing**, not as a calibrated threshold. Pilot manifests require v2 variance
-evidence. Resolving a manifest requires cached task descriptors matching the
-split and locally available task image digests; it does not make model calls.
+AD2's reverse-keyed item 5 remains in the judge contract. AD3's multi-label
+edit analysis, AD4's score-unit judge-repeat comparator, and AD6's exploratory
+pilot interpretation are specified in PREREG; these changes do not introduce
+new analysis results. A4 remains excluded: PREREG does not state the requested
+`tau_A4 = 0.5 * (tau_A1 + tau_A2)` derivation. The manifest records its potential
+0.5/0.5 component weights without adding it to the arm schedule.
 
-## Launching, gates, and blinding
+## L1′ and infrastructure accounting
 
-Prepare and inspect a pilot without running it:
+Pass is **a valid numeric verifier reward exactly 1, no Harbor agent timeout,
+and a normal terminal finish**. Terminal token/step/budget exhaustion,
+unrecovered executor failure, trial exception, or provider policy rejection
+fails even if the verifier produced 1. A normal final answer expressing
+inability remains an outcome decision: the answer alone cannot veto or confer
+credit. Missing/invalid verifier rewards remain unlabelled, with their
+missingness reported; raw reward is never rewritten.
+
+An observed command timeout followed by continued execution and normal finish,
+a recovered parse error, and any nonzero command exit are ordinary observations.
+They affect the operational metrics, never L1′. An unrecovered failure and a
+recovered event are distinguished by trusted terminal evidence. The old
+`executor`/`strict` choices are rejected. Common defaults retain a compatibility
+field fixed to `L1'` for the separate T2 caller; pilot files use `pass_label`
+only. Historical labels/feedback are not silently relabelled.
+
+API-timeout-only requires one call, no response (an empty failed assistant
+record is not a response), and no executed action. Retry identity is persisted
+before dispatch. A second infrastructure failure excludes that logical slot;
+its original and replacement evidence/costs remain archived. The replacement
+cannot inherit a physical-attempt index into the logical record or gain another
+retry after restart. A response-bearing attempt, or timeout after multiple
+calls/actions, is not this exception. Provider `cyber_policy`/content-policy
+errors propagate a fixed termination category from the private HTTP response
+archive, keeping provider text out of feedback. Policy rejections count as 0
+in the denominator even when the verifier reward is absent.
+
+`aggregate().O` excludes explicitly logged infrastructure slots, averaging
+remaining attempts within tasks and then tasks/seeds equally.
+`O_fixed_denominator` retains the exclusion-as-failure sensitivity. Missing
+paired blocks remain incomplete; no replacement task ID is invented.
+
+## Standing metrics and evidence isolation
+
+Public per-arm/per-iteration summaries and the private oracle report contain
+`standing_metrics`: no-action, inability-claim, exhaustion, protocol-error and
+command-timeout rates, their numerators/denominator, missing diagnostic counts,
+retry counts, infrastructure-exclusion counts/reasons, and policy-rejection
+counts. Each rate counts affected logical rollouts, not individual events;
+recovered errors count. Inability means a no-action terminal answer claiming
+inability/no tools. A command merely emitted by the model does not establish
+an executed action. Public summaries aggregate all partitions without task
+identities, verifier values, or sealed scores. The oracle-side
+`behavior-i<iteration>.json` additionally breaks down partitions. Ordinary seed
+batches already carry these same metrics in their private/public batch artifacts;
+no extra solver batch is introduced for diagnostics.
+
+`feedback/<arm>/<experiment>/<rollout>.json` embeds the exact `JudgeInput`
+export used by its scorer. V3 keeps the first/last 4,000 observation characters
+and caps the canonical trajectory at 200,000 characters, using explicit
+elision markers and longest-middle-first reduction. The historical filename
+`sanitized-full.json` is a compatibility alias for that **capped** export;
+it is never the claim detector's input.
+
+The detector consumes `sanitized_events()` before any cap. It links claims
+within five solver steps to observed checks, preserves negated/quoted claims
+and ambiguous objects for review, and distinguishes successful, failed, and
+unobserved checks. A failed executed check is not "unrun." Matching is a
+mechanical diagnostic, not an assertion of deception. Outputs are under
+`oracle/<experiment>/<arm>/behavior/`; per-iteration oracle reports include
+trace-level and conditional claim-level prevalence. Detector outputs, full
+uncapped traces and verifier diagnostics never enter feedback or public reports.
+
+## Manifest and launch gates
+
+The two files contain the same condition except experiment identity, `T`,
+seeds, and phase budget. Qualification uses T=1, seed 1, estimate/guard $30;
+pilot uses T=6, seeds 1/2, estimate $450 and guard $650. Both retain the complete
+18 search / 6 anchor / 6 sealed split and 120-hour maximum. The ratified
+five-day limit is not reset when checking or resuming.
+
+| Manifest fields | Frozen value / meaning |
+| --- | --- |
+| `task_model` | `gpt-5.6-terra`, `gpt56terra`, `TASK_ALT2`, low, JSON, 8192, 24 calls, 30 s commands, 180 s API timeout. |
+| `evolver_model`, `judge_model`, `cross_judge` | DeepSeek-V4-Pro; DeepSeek-V4-Flash; Kimi-K2.6 with A1 only, oracle-side diagnostics, never selection. |
+| `arms` | A0, A1, A2, A3-loop, C-TTS-A0, C-TTS-A1, C-TTS-A2, C-TTS-A3-loop. |
+| `candidates_per_arm`, `a3` | Ordinary 2; A3 3 and its existing v3 native recipe. No A3 module is edited by this task. |
+| `pass_label`, `api_timeout_policy` | `L1'`; `infrastructure`, with one replacement and explicit exclusion. |
+| `tau`, `tau_evidence`, `judge_calibration` | Ratified rounded A1/A2 SDs and hashed actual five-repeat v3 artifacts. The SD comparison permits only rounding at the ninth decimal. A3 noise readiness is separate from the non-gating native calibration. |
+| `split`, `split_sha256` | `data/tb2_split.json`; `a3796dd7ed0a7f384e5474d684f38762306eb795e7d52a5abce79e3080b340c2`. |
+| `evidence_version`, `evidence_caps`, `prompt_version` | `v3`, 4000/4000/200000, `judge-v3`. |
+| `budget`, `reestimate_rule` | Ratified estimates/guards; $1 solver, $5 session, re-estimate after 5 completed sessions. Forecasts exclude unpriced extra roles explicitly. |
+| `concurrency`, `memory_min_available_gib` | 4, with the existing 6 GiB MemAvailable guard; foreign TB2 containers reduce own concurrency to 2. |
+| `blinding` | True; separate public summaries and oracle report. |
+| `input_hashes`, `manifest_sha256` | SHA-256 over PREREG, decisions, split, seed/harness, prices, lock, controller sources and launchers, plus a canonical whole-manifest digest. No API credentials. |
+| `section5_evidence`, `entry_evidence` | Hashed real T1 Section 5 matrix and P1.8/P1.9/P1.11 evidence; missing or changed evidence blocks. Row 7's documented provider limitation is accepted; missing evidence for the other rows is not. |
+| `qualification` | Pilot binds the qualification manifest digest and expected completion-report path. Qualification cannot certify itself before running. |
+
+`--check` verifies the portable input manifest. It reads only the explicit
+**Frozen state** section of PREREG; absence/unfrozen state reports exactly
+`PREREG not frozen`. W12's version-table declaration "frozen pending R10" is
+recognized as a frozen specification; its pending R10 row is a separate
+entry error, not an R10 certification. Administrative
+freeze-commit updates still change the PREREG hash and require an explicit
+pre-start reseal. Hash changes never take effect merely by running `--check`.
+
+The budget check opens an existing guard read-only and verifies amount,
+duration, halt state, expenditure and deadline. It does not arm one implicitly.
+Arm a matching `PhaseGuard` only when launch is authorized and ready, using
+the manifest's estimate/guard/hours at `costs/<experiment>/budget.sqlite`.
+Launch-time resolution then freezes actual endpoints, served-condition
+settings, local image IDs and host runtime in `runs/<experiment>/manifest.json`.
+Resume re-resolves and refuses drift. `run_evolution` remains infrastructure-only.
 
 ```bash
-uv run python -m scripts.run_pilot \
-  --manifest runs/example/input_manifest.json --prepare example
-uv run python -m scripts.run_pilot \
-  --manifest runs/example/input_manifest.json --check
+uv run python scripts/run_pilot.py --manifest runs/manifests/qualification-t1-260912.json --check
+uv run python scripts/run_pilot.py --manifest runs/manifests/pilot-t1-260912.json --check
+
+# Only after the gates and R10 are satisfied and launch is authorized:
+uv run python scripts/run_pilot.py --manifest runs/manifests/qualification-t1-260912.json
+uv run python scripts/run_pilot.py --manifest runs/manifests/pilot-t1-260912.json
+# Add --resume to continue the same frozen run.
 ```
 
-The second command checks the frozen preregistration flag and text, pending
-ratification flags, manifest and split hashes, v2 tau evidence, the Section 5
-artifact and its evidence hashes, P1.8/P1.9/P1.11/P1.5 artifacts, the armed phase
-guard with matching estimate/ceiling/duration, supported arms, hashed provider
-cache attestation, and nominal schedule cost. An existing
-condition mismatch fails before paid dispatch. A3-loop dispatches its RHO
-round hook, including three proposals and signed-preference acceptance; it
-cannot fall through to an ordinary arm. C-TTS(A3) uses paired self-preference. `run_evolution` rejects pilot manifests; its manifest path is
-for explicitly authorized infrastructure validation. The legacy ungated
-command-line path is removed; `--manifest` is required. `--recover-sessions`
-explicitly resumes eligible unfinished sessions within their durable limits.
+The launcher prints the entire per-arm schedule and solver cost projection
+before refusing. The current implementation includes ordinary baseline and
+smoke allocations and does not yet implement W12's reconciled reuse/monitoring
+schedule. Its nominal **13,872** pilot rollouts cost **$1,553.664** at $0.112
+before judges, evolvers, retries or cross-judging. Qualification uses **1,296**
+slots, projecting **$145.152**. Neither fits its ratified guard. PREREG's
+reconciled 12,648–13,224-slot schedule also exceeds the pilot guard. These are
+explicit feasibility blockers, not permission to reduce tasks/arms or increase
+spending. No complete paid pilot is claimed.
 
-The final unpaid preflight is archived in
-`runs/r8b-pilot-proposal/entry_gates.json` and
-`logs/r8b-pilot-proposal.stdout`; its input manifest references the completed
-real Section 5 artifact. It is **blocked**, exited 2, and made zero model calls.
-The earlier preflight remains under `runs/r8b-pilot-preflight/`.
-The default ordinary/control schedule already allocates **11,520 rollouts**
-across three ordinary arms, matched controls, and two seeds, including t=0.
-At the proposed $0.112 unit rate that is **$1,290.24 for solvers alone**,
-before A3, judges, evolvers, retries, or cross-judging. The pending $400/$600
-proposal cannot fund this implemented schedule. Ratification must resolve this
-mismatch rather than allowing the guard to stop a purported complete pilot.
-
-The ordinary loop freezes the seed, completes a sealed avg@2 checkpoint at
-`t=0`, then obtains search feedback and proposals. Candidate screening uses one
-attempt per search task; confirmation uses fresh paired avg@2 attempts; final
-search measurement uses one attempt, and sealed measurement uses avg@2. An
-incomplete arm never substitutes its latest checkpoint for T. Public reports
-contain J, search O, acceptance decisions and operational counts. The separate
-`oracle/<experiment>/final_report.json` contains sealed checkpoint metrics.
-Private fields are not returned by the public loop summary.
+`runs/` and `logs/` are ignored by the repository. The manifest files are ready
+for review/staging with `git add -f runs/manifests/*-t1-260912.json`; this task
+does not stage, commit or push. The check artifacts are archived under
+`logs/evolution/<experiment>/entry_gates.json`, with stdout in
+`logs/{qualification,pilot}-t1-260912-check.txt`. Regression coverage is in
+`tests/test_evolution_ratified.py` and the updated evolution suites.
 
 ## Real validation (infrastructure evidence only)
 
@@ -209,7 +266,20 @@ old validation was refused before any paid request:
 the tests nor read-only replay are represented as a second paid validation or
 as permission to reuse the earlier condition's matrix.
 
-## Verification and remaining entry requirements
+## Ratified-contract verification (2026-09-12)
+
+`uv run pytest -q` passes: **685 passed, 6 skipped in 52.33 seconds**;
+see `logs/ratified-full-final.txt`. Ruff passes the changed Python files and
+`git diff --check` passes. No paid calls or Docker commands were executed.
+
+Both final `--check` runs exit **2** and report `prereg_frozen: true`,
+`paid_calls: 0`, and `docker_calls: 0`. Manifest/source/split/tau and Section 5
+checks have no errors. Both report pending R10, missing P1.8/P1.9/P1.11 evidence,
+an unarmed guard, and the over-budget nominal schedule. Pilot additionally
+reports `Qualification has not passed`. The full stdout and JSON paths above
+preserve the per-arm schedules and exact errors.
+
+## Historical R8b verification and entry requirements
 
 `uv run pytest -q`: **451 passed, 5 skipped** in 20.11 seconds, archived in
 `logs/evolution-followup-pytest-final.txt`. Focused R8b tests include the complete
@@ -219,10 +289,10 @@ manifest/matrix checks. Ruff passes evolution modules, both launchers, and the
 changed evolution tests; `git diff --check` passes.
 The actual unpaid Docker grading check passed before corrected paid validation.
 
-Open pilot dependencies are ratification of the pending decisions, frozen
-PREREG, v2 tau calibration, native A3 calibration/implementation, compatible
-P1.8/P1.9/P1.11 entry evidence, a realistic complete-schedule budget, provider
-cache enforcement, and qualification of the final controller hash.
+The R8b-era pending-decision, v2-calibration, native-A3 and provider-cache
+blockers are superseded by the ratification and the current gates above.
+Qualification must still demonstrate the final controller/evidence/pass label
+condition; the historical matrix alone does not certify these code changes.
 Fresh-process grading also requires qualification
 for tasks whose intended result depends on surviving solver-created services;
 filesystem isolation alone does not establish unchanged benchmark semantics.

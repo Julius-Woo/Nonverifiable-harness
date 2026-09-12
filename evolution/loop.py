@@ -66,7 +66,8 @@ def acceptance_decision(
         else None
     )
     if rule == "improve":
-        return signed.gain > 0 if signed is not None else proposed > baseline
+        checked = signed or SearchEvaluation(baseline, proposed)
+        return checked.gain > 0
     if baseline_anchor is None or proposed_anchor is None:
         return False
     threshold = TAU.get(arm) if tau is None else tau
@@ -292,7 +293,7 @@ class EvolutionLoop:
                 ledger=self.accounting / "ledger.jsonl",
                 logs_dir=session / "calls",
                 effort=None,
-                max_completion_tokens=4096,
+                max_completion_tokens=8192,
                 extra_params={
                     "temperature": 0.6,
                     "top_p": 0.95,
@@ -407,12 +408,29 @@ class EvolutionLoop:
                 {
                     "ts": utc_now(),
                     "kind": "evolver",
+                    "experiment": self.experiment,
                     "arm": self.arm,
                     "iteration": self.iteration,
                     **result,
                 },
             )
+            self.reestimate()
         return result
+
+    def reestimate(self):
+        from evolution.accounting import reestimate_after_sessions
+
+        estimate = reestimate_after_sessions(
+            self.root, self.manifest, self.accounting
+        )
+        if estimate and (
+            estimate["status"] != "estimated"
+            or estimate["projected_solver_plus_evolver_usd"]
+            > self.manifest["budget"]["guard_usd"]
+        ):
+            reason = "First-five-session re-estimate requires budget review"
+            self.guard.persist_halt(reason)
+            raise BudgetHalt(reason, phase=True)
 
     async def batch(self, candidate, partition, stage, attempts=1, **kwargs):
         key = f"batch-{self.iteration}-{candidate.name}-{partition}-{stage}"
@@ -426,6 +444,7 @@ class EvolutionLoop:
         return rows
 
     async def run(self):
+        self.reestimate()
         if self.arm in {"A3-native", "A3-loop"}:
             from evolution.a3 import A3Round
 
@@ -640,6 +659,44 @@ class EvolutionLoop:
         return summary
 
     def write_summary(self, summary):
+        from evolution.behavior import standing_metrics
+
+        rows = [
+            self.state.decode(r["result"])
+            for r in self.state.db.execute(
+                "SELECT spec,result FROM trials WHERE result IS NOT NULL"
+            )
+            if json.loads(r["spec"])["iteration"] == self.iteration
+        ]
+        summary["standing_metrics"] = standing_metrics(rows)
+        self.state.stage(f"finished-{self.iteration}", summary)
+        from evolution.behavior import claim_report
+
+        claims = []
+        for row in rows:
+            if row.get("excluded") or row.get("infrastructure_attempt"):
+                continue
+            identity = row.get("replacement_id", row["id"])
+            path = self.evaluator.private / "behavior" / f"{identity}.json"
+            if path.is_file():
+                claims.append(
+                    json.loads(path.read_text())["claimed_without_ran"]
+                )
+        atomic_json(
+            self.evaluator.private / f"behavior-i{self.iteration}.json",
+            {
+                "arm": self.arm,
+                "iteration": self.iteration,
+                "standing_metrics": summary["standing_metrics"],
+                "claimed_without_ran": claim_report(claims),
+                "partitions": {
+                    part: standing_metrics(
+                        [r for r in rows if r.get("partition") == part]
+                    )
+                    for part in ("search", "anchor", "sealed")
+                },
+            },
+        )
         path = self.directory / "evolution_summary.jsonl"
         existing = (
             [json.loads(s) for s in path.read_text().splitlines()]
@@ -699,7 +756,7 @@ class EvolutionLoop:
                 raise
         for row in db.db.execute("SELECT spec FROM trials"):
             spec = json.loads(row[0])
-            if signal == "A3-loop" and spec.get("infrastructure_attempt"):
+            if spec.get("infrastructure_attempt"):
                 continue
             if spec["iteration"] <= self.iteration:
                 key = (spec["partition"], spec["task"])
@@ -741,8 +798,7 @@ class EvolutionLoop:
                         == (partition, task)
                     ]
                     physical = sum(
-                        signal != "A3-loop"
-                        or not item.get("infrastructure_attempt")
+                        not item.get("infrastructure_attempt")
                         for item in scheduled_specs
                     )
                     already_scheduled = any(
@@ -770,10 +826,7 @@ class EvolutionLoop:
                 produced.append(existing[index])
             physical = sum(
                 (spec["partition"], spec["task"]) == (partition, task)
-                and (
-                    signal != "A3-loop"
-                    or not spec.get("infrastructure_attempt")
-                )
+                and (not spec.get("infrastructure_attempt"))
                 for stored in self.state.db.execute("SELECT spec FROM trials")
                 if (spec := json.loads(stored["spec"]))
             )
@@ -802,11 +855,7 @@ class EvolutionLoop:
                 for row in produced:
                     trace = (
                         self.evaluator.jobs
-                        / (
-                            row.get("replacement_id", row["id"])
-                            if signal == "A3-loop"
-                            else row["id"]
-                        )
+                        / (row.get("replacement_id", row["id"]))
                         / "agent/trace.jsonl"
                     )
                     if trace.exists():

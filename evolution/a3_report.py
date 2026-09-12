@@ -148,6 +148,39 @@ def completion_markdown(value):
         lines.extend(
             ["", f"Status counts: {value[name]['status_counts']}", ""]
         )
+    if "costs_by_stage" in value:
+        lines.extend(
+            [
+                "## Cost and completion",
+                "",
+                f"Censoring: **{value['censoring']}**. "
+                f"Pass label: {value['pass_label']}.",
+                "",
+                "| Stage | HTTP requests | Conservative USD |",
+                "| --- | ---: | ---: |",
+            ]
+        )
+        lines.extend(
+            f"| {stage} | {cost['requests']} | {cost['usd']:.8f} |"
+            for stage, cost in value["costs_by_stage"].items()
+        )
+        total_requests = sum(
+            c["requests"] for c in value["costs_by_stage"].values()
+        )
+        lines.extend(
+            [
+                f"| Total | {total_requests} | {value['total_usd']:.8f} |",
+                "",
+                "Uncached API-equivalent receipts plus unresolved "
+                "reservations; "
+                "not an Azure invoice.",
+                "",
+                "Standing metrics: `"
+                + json.dumps(value["standing_metrics"])
+                + "`",
+                "",
+            ]
+        )
     return "\n".join(lines)
 
 
@@ -155,6 +188,10 @@ def report(root, experiment):
     root = Path(root).resolve()
     arm = "A3-native"
     run = root / "runs" / experiment / arm
+    manifest = json.loads((run.parent / "manifest.json").read_text())
+    clean = manifest.get("clean_calibration", {})
+    search_attempts = clean.get("search_measurement_attempts", 1)
+    private = root / "oracle" / experiment / arm
     state = sqlite3.connect(
         f"{(run / 'state.sqlite').as_uri()}?mode=ro", uri=True
     )
@@ -219,7 +256,7 @@ def report(root, experiment):
     ]
     for stage, partition, expected in (
         ("a3-prior", "search", 18),
-        ("measurement", "search", 18),
+        ("measurement", "search", 18 * search_attempts),
         ("measurement", "sealed", 12),
     ):
         assert (
@@ -230,10 +267,15 @@ def report(root, experiment):
             == expected
         )
     logs = root / "logs/evolution" / experiment / arm
-    search = json.loads((logs / "a3/i01/measurement.json").read_text())["rows"]
+    pair_logs = private if clean else logs
+    search = json.loads((pair_logs / "a3/i01/measurement.json").read_text())[
+        "rows"
+    ]
     selection = {
         proposal["id"]: json.loads(
-            (logs / "a3/i01" / f"selection-{proposal['id']}.json").read_text()
+            (
+                pair_logs / "a3/i01" / f"selection-{proposal['id']}.json"
+            ).read_text()
         )["rows"]
         for proposal in summary["candidates"]
         if "pair_scores" in proposal
@@ -246,7 +288,8 @@ def report(root, experiment):
         core["tasks"],
         refs,
     )
-    exports = list((logs / "exports").glob("*/evidence.json"))
+    export_logs = private / "evaluation" if clean else logs
+    exports = list((export_logs / "exports").glob("*/evidence.json"))
     export_versions = Counter()
     for path in exports:
         value = json.loads(path.read_text())
@@ -467,6 +510,74 @@ def report(root, experiment):
             (accounting / "ledger.jsonl").read_bytes()
         ).hexdigest(),
     }
+    if clean:
+        from evolution.a3_calibration import l1_prime, stage_costs
+        from evolution.a3_coreset import select_coreset
+        from evolution.behavior import standing_metrics
+
+        assert not halts
+        assert not any(phase_censored(r) for r in trials)
+        assert set(export_versions) == {"v3"}
+        assert core["embedding"]["model"] == "text-embedding-3-large"
+        assert core["seed"] == manifest["seed"] == 1
+        assert core["tasks"] == select_coreset(
+            core["descriptions"], core["vectors"], seed=core["seed"]
+        )
+        assert all(p["status"] == "valid" for p in summary["candidates"])
+        assert all(p["complete"] for p in completed["selection"].values())
+        assert completed["search_preferences"]["complete"]
+        assert completed["endpoint_eligible"]
+        for row in trials:
+            source = Path(row.get("source", ""))
+            if not source.is_file():
+                continue
+            result = json.loads(source.read_text())
+            trace = source.parent / "agent/trace.jsonl"
+            records = rows(trace)
+            expected = l1_prime(result, row.get("execution", {}), records)[0]
+            if (
+                not row.get("excluded")
+                and row.get("reason") != "api_timeout_infrastructure"
+            ):
+                assert row["oracle"] == expected
+        cost_stages = stage_costs(root, experiment)
+        total = sum(s["usd"] for s in cost_stages.values())
+        assert total <= 60
+        costs_total = (
+            audit["costs"]["uncached_upper_usd"]
+            + audit["costs"]["reserved_unresolved_usd"]
+        )
+        assert abs(total - costs_total) < 1e-8
+        logical_trials = [
+            r for r in trials if not r.get("_physical_infrastructure_attempt")
+        ]
+        completed.update(
+            censoring="none",
+            pass_label="L1-prime",
+            search_measurement_attempts=search_attempts,
+            costs_by_stage=cost_stages,
+            total_usd=total,
+            standing_metrics=standing_metrics(logical_trials),
+            embedding=core["embedding"],
+            seed=core["seed"],
+        )
+        audit.update(
+            costs_by_stage=cost_stages,
+            total_usd=total,
+            censoring="none",
+            pass_label="L1-prime",
+            standing_metrics=completed["standing_metrics"],
+        )
+        atomic_json(
+            private / "search-avg2.json",
+            {
+                "incumbent": summary["incumbent"],
+                "attempts_per_task": search_attempts,
+                "pass_label": "L1-prime",
+                "metrics": metrics(search),
+                "rows": search,
+            },
+        )
     atomic_json(run / "infrastructure-audit.json", audit)
     atomic_json(run / "completion-report.json", completed)
     (run / "completion-report.md").write_text(completion_markdown(completed))

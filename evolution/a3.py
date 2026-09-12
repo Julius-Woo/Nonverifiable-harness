@@ -136,6 +136,10 @@ class A3Round:
         self.feedback.mkdir(parents=True, exist_ok=True)
         self.loop.a3 = self
 
+    def boundary(self, stage, units):
+        if hasattr(self.loop, "stage_boundary"):
+            self.loop.stage_boundary(stage, units)
+
     async def coreset(self, seed):
         loop = self.loop
         fixed = loop.state.stage("a3-coreset")
@@ -184,11 +188,13 @@ class A3Round:
                 raise ValueError("Coreset difficulty failed after A9 retry")
             return {"task": task, **result}
 
+        self.boundary("difficulty", len(tasks))
         descriptions = await bounded_map(describe, tasks)
         fingerprints = [item["abstract_fingerprint"] for item in descriptions]
         if azure and self.embedder is None:
             from evolution.a3_embeddings import embed_azure
 
+            self.boundary("embeddings", 1)
             vectors, embedding = await embed_azure(loop, fingerprints)
         else:
             vectors, embedding = await asyncio.to_thread(
@@ -214,10 +220,18 @@ class A3Round:
             "prior": prior,
         }
         loop.state.stage("a3-coreset", fixed)
-        atomic_json(loop.directory / "a3-coreset.json", fixed)
+        public_core = fixed
+        if loop.manifest.get("clean_calibration"):
+            private_core = loop.evaluator.private / "a3-coreset.json"
+            atomic_json(private_core, fixed)
+            public_core = {k: v for k, v in fixed.items() if k != "prior"}
+            public_core["prior_private_ref"] = str(private_core)
+        atomic_json(loop.directory / "a3-coreset.json", public_core)
         return fixed
 
     async def diagnoses(self, parent, tasks, groups):
+        self.boundary("diagnosis", len(tasks))
+
         async def diagnose(task):
             rows = sorted(
                 [r for r in groups if r["task"] == task],
@@ -253,6 +267,8 @@ class A3Round:
         return diagnosed
 
     async def rank_rows(self, stage, rows, references, candidate, baseline):
+        self.boundary("a3-rank", len(rows))
+
         async def rank(row):
             reference = references.get(row["task"])
             row = annotate_measurement(row)
@@ -292,7 +308,11 @@ class A3Round:
 
         scored = await bounded_map(rank, rows)
         path = (
-            self.loop.logs
+            (
+                self.loop.evaluator.private
+                if self.loop.manifest.get("clean_calibration")
+                else self.loop.logs
+            )
             / "a3"
             / f"i{self.loop.iteration:02}"
             / f"{stage}.json"
@@ -462,7 +482,12 @@ class A3Round:
         }
         loop.state.stage("incumbent", update)
         atomic_json(loop.directory / "incumbent.json", update)
-        measured = await loop.batch(incumbent, "search", "measurement")
+        measurement_attempts = loop.manifest.get("clean_calibration", {}).get(
+            "search_measurement_attempts", 1
+        )
+        measured = await loop.batch(
+            incumbent, "search", "measurement", measurement_attempts
+        )
         measured = await self.rank_rows(
             "measurement", measured, seed_references, incumbent, seed
         )
@@ -515,7 +540,7 @@ class A3Round:
             ),
             "cost_upper_usd": costs["uncached_upper_usd"]
             + costs["reserved_unresolved_usd"],
-            "search_measurement_attempts": 1,
+            "search_measurement_attempts": measurement_attempts,
             "diff_class": None,
         }
         atomic_json(

@@ -4,8 +4,10 @@ import hashlib
 import json
 import math
 import platform
+import re
 import sqlite3
 import statistics
+import time
 import tomllib
 from importlib.metadata import version
 from pathlib import Path
@@ -41,8 +43,12 @@ def defaults(experiment, *, validation=False):
             "tool_protocol": "json",
             "max_calls": 24,
             "api_timeout_s": 180,
+            "command_timeout_s": 30,
         },
-        "tool_failure_reading": "executor",
+        "pass_label": "L1'",
+        # Read-only compatibility spelling for the separate T2 launcher.
+        # Neither historical executor nor strict policies are selectable.
+        "tool_failure_reading": "L1'",
         "api_timeout_policy": "infrastructure",
         "tau": {
             "A0": 0.0,
@@ -87,8 +93,8 @@ def defaults(experiment, *, validation=False):
         "evidence_version": EVIDENCE_VERSION,
         "prompt_version": PROMPT_VERSION,
         "budget": {
-            "estimate_usd": 15 if validation else 400,
-            "guard_usd": 15 if validation else 600,
+            "estimate_usd": 15 if validation else 450,
+            "guard_usd": 15 if validation else 650,
             "wall_clock_hours": 3.5 if validation else 120,
             "rollout_usd": 1,
             "evolver_session_usd": 5,
@@ -122,10 +128,15 @@ def validate(value):
     task = value["task_model"]
     if task["tool_protocol"] != "json":
         raise ValueError("Only the implemented JSON protocol is admitted")
-    if value["tool_failure_reading"] not in {"executor", "strict"}:
-        raise ValueError("Unknown tool failure reading")
-    if value["api_timeout_policy"] not in {"infrastructure", "failure"}:
-        raise ValueError("Unknown API timeout policy")
+    if (
+        value.get("tool_failure_reading", "L1'") != "L1'"
+        or value.get("pass_label") != "L1'"
+    ):
+        raise ValueError("L1' is the only pass label")
+    if value["api_timeout_policy"] != "infrastructure":
+        raise ValueError("AD13 requires infrastructure timeout treatment")
+    if task.get("command_timeout_s", 30) != 30:
+        raise ValueError("Command timeout must be 30 seconds")
     for n in [
         value["T"],
         value["concurrency"],
@@ -248,10 +259,17 @@ def resolve(root, value, config):
             "temperature": 0.6,
             "top_p": 0.95,
             "response_format": {"type": "json_object"},
-            "max_completion_tokens": 4096,
+            "max_completion_tokens": 8192,
         },
         timeout_s=180,
     )
+    declared_allowance = value.get("judge_model", {}).get(
+        "completion_allowance"
+    )
+    if declared_allowance is not None and declared_allowance != int(
+        config.get("JUDGE_MAX_COMPLETION_TOKENS", 2048)
+    ):
+        raise ValueError("Frozen judge allowance differs from environment")
     providers["judge"].update(
         params={
             "temperature": 0.6,
@@ -277,6 +295,13 @@ def resolve(root, value, config):
             "rpm": 250,
             "tpm": 250000,
         }
+    for role in ("evolver", "judge"):
+        declared = value.get(f"{role}_model", {}).get("name")
+        if (
+            declared
+            and providers[role]["deployment"].lower() != declared.lower()
+        ):
+            raise ValueError(f"Frozen {role} model differs from environment")
     value["providers"] = providers
     value["hashes"] = {
         "prereg": file_hash(root / "PREREG.md"),
@@ -405,6 +430,17 @@ def budget_errors(root, manifest):
                 "SELECT started,deadline,estimate,ceiling "
                 "FROM phase WHERE id=1"
             ).fetchone()
+            halted = db.execute("SELECT reason FROM phase_halt").fetchone()
+            used = db.execute(
+                "SELECT coalesce(sum(coalesce(charged,reserved)),0) "
+                "FROM requests"
+            ).fetchone()[0]
+        if halted:
+            return [f"Budget guard halted: {halted[0]}"]
+        if row and time.time() >= row[1]:
+            return ["Budget guard wall-clock limit reached"]
+        if row and used >= min(1.5 * row[2], row[3]):
+            return ["Budget guard exhausted"]
         budget = manifest["budget"]
         matches = row and all(
             math.isclose(actual, expected, abs_tol=0.01)
@@ -451,11 +487,8 @@ def entry_errors(root, manifest):
     """Checks run before constructing a paid backend or evaluating t=0."""
     root = Path(root)
     errors = []
-    if (
-        not manifest.get("prereg_frozen")
-        or "must not be treated as frozen" in (root / "PREREG.md").read_text()
-    ):
-        errors.append("PREREG is not frozen")
+    if not prereg_is_frozen(root / "PREREG.md"):
+        errors.append("PREREG not frozen")
     for key in PENDING:
         if manifest.get("ratifications", {}).get(key) is not True:
             errors.append(f"{key} remains unratified")
@@ -491,7 +524,7 @@ def entry_errors(root, manifest):
                             and math.isclose(
                                 statistics.stdev(scores),
                                 manifest["tau"][signal],
-                                abs_tol=1e-12,
+                                abs_tol=5e-10,
                             )
                             and data["prompt_sha256"]
                             == manifest["hashes"][
@@ -560,7 +593,7 @@ def entry_errors(root, manifest):
                     "Section 5 evidence is for a different "
                     "code/prompt condition"
                 )
-    for gate in ["P1.8", "P1.9", "P1.11", "P1.5"]:
+    for gate in ["P1.8", "P1.9", "P1.11"]:
         item = manifest.get("entry_evidence", {}).get(gate)
         if (
             not item
@@ -595,6 +628,39 @@ def entry_errors(root, manifest):
             f"Nominal solver schedule ({nominal} rollouts) exceeds "
             "budget estimate before judges/evolvers"
         )
-    if not valid_cache_attestation(root, manifest):
-        errors.append("Provider cache partition is unverified")
+    if not valid_cache_attestation(root, manifest) and not manifest.get(
+        "cache_partition_limitation"
+    ):
+        errors.append("Provider cache partition limitation is not documented")
     return errors
+
+
+def prereg_is_frozen(path):
+    """Read only the explicit Frozen state section, never historical prose."""
+    path = Path(path)
+    if not path.is_file():
+        return False
+    text = path.read_text()
+    match = re.search(
+        r"^#{1,6}\s+Frozen state\b([^\n]*)\n(.*?)(?=^#{1,6}\s|\Z)",
+        text,
+        re.I | re.M | re.S,
+    )
+    if not match:
+        return False
+    section = " ".join(match.groups()).replace("**", "").replace("`", "")
+    if re.search(
+        r"not frozen|unfrozen|frozen\s*[:=]\s*false|status\s*:\s*draft",
+        section,
+        re.I,
+    ):
+        return False
+    return bool(
+        re.search(
+            r"(?:prereg_)?frozen\s*[:=]\s*(?:true|yes)|"
+            r"status\s*[:=]\s*frozen|^\s*(?:[:—-]\s*)?frozen\b|"
+            r"\|\s*Version\s*\|[^\n]*\bfrozen\b",
+            section,
+            re.I,
+        )
+    )

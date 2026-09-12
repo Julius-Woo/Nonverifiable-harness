@@ -336,7 +336,7 @@ async def recover_sessions(loop):
                     ledger=loop.accounting / "ledger.jsonl",
                     logs_dir=recovery / "calls",
                     effort=None,
-                    max_completion_tokens=4096,
+                    max_completion_tokens=8192,
                     max_retries=0,
                     extra_params={
                         "temperature": 0.6,

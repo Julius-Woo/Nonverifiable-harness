@@ -4,6 +4,7 @@ import re
 
 REASONS = {
     "normal_finish",
+    "content_policy_rejection",
     "no_tools_or_inability",
     "token_step_budget_exhaustion",
     "executor_failure",
@@ -49,7 +50,13 @@ def termination(records, *, result=None, execution=None):
         or execution.get("status") == "timeout_or_cancelled"
         or previous.get("status") == ("timeout_or_cancelled")
     )
-    api_timeout = "Backend failed: TimeoutError" in message
+    api_timeout = bool(
+        re.search(
+            r"Backend failed: (?:TimeoutError|ReadTimeout|ConnectTimeout|"
+            r"PoolTimeout|WriteTimeout)",
+            message,
+        )
+    )
     executed = any("command" in e for e in observations) or (
         in_exec
         and (
@@ -83,7 +90,34 @@ def termination(records, *, result=None, execution=None):
             re.I,
         )
     )
-    if finishes:
+    policy = content_policy_rejection(
+        records, result=result, execution=execution
+    )
+    # A terminal failure after a finish is not recovered. Historical in-rollout
+    # flags are diagnostics only; a subsequent normal finish takes precedence.
+    last_event = next(
+        (e for e in reversed(records) if e.get("kind") in {"finish", "error"}),
+        {},
+    )
+    failed_terminal = (
+        bool(error_type)
+        or last_event.get("kind") == "error"
+        or execution.get("status") in {"failed", "timeout_or_cancelled"}
+    )
+    explicit_reason = execution.get("reason", previous.get("reason"))
+    if policy:
+        reason = "content_policy_rejection"
+    elif exhausted:
+        reason = "token_step_budget_exhaustion"
+    elif failed_terminal and in_exec:
+        reason = "executor_failure"
+    elif explicit_reason in REASONS - {
+        "unknown", "normal_finish", "no_tools_or_inability"
+    }:
+        reason = explicit_reason
+    elif failed_terminal:
+        reason = "trial_exception"
+    elif finishes:
         answer = finishes[-1].get("answer", "").replace("’", "'")
         inability = not flags["action_executed"] and re.search(
             r"\b(unable|cannot|can't|couldn't|could not|no tools|"
@@ -101,8 +135,6 @@ def termination(records, *, result=None, execution=None):
         or execution.get("status") == "finished"
     ):
         reason = "normal_finish"
-    elif exhausted:
-        reason = "token_step_budget_exhaustion"
     elif flags["executor_failure"]:
         reason = "executor_failure"
     elif flags["protocol_failure"] and not (
@@ -130,3 +162,41 @@ def termination(records, *, result=None, execution=None):
         "reason": reason,
         **flags,
     }
+
+
+def content_policy_rejection(records, *, result=None, execution=None):
+    """Recognize provider refusals without exporting exception text."""
+    result, execution = result or {}, execution or {}
+    if execution.get("reason") == "content_policy_rejection":
+        return True
+    exception = result.get("exception_info") or {}
+    texts = [str(exception.get("exception_message", ""))]
+    texts.extend(
+        str(e.get("error", "")) for e in records if e.get("kind") == "error"
+    )
+    return any(
+        re.search(
+            r"cyber_policy|content[_ -]policy|content_filter|"
+            r"ResponsibleAIPolicyViolation",
+            text,
+            re.I,
+        )
+        for text in texts
+    )
+
+
+def api_timeout_only(execution, records=()):
+    """AD13: the sole call timed out without a response or executed action."""
+    return (
+        execution.get("reason") != "content_policy_rejection"
+        and execution.get("api_timeout") is True
+        and execution.get("calls") == 1
+        and not execution.get("action_executed")
+        and not any(
+            e.get("kind") == "assistant"
+            and (
+                e.get("ok") is True or e.get("text") or e.get("finish_reason")
+            )
+            for e in records
+        )
+    )

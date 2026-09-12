@@ -7,7 +7,7 @@ from pathlib import Path
 
 from dotenv import dotenv_values
 
-from evolution.a3_manifest import defaults, entry_errors, resolve
+from evolution.a3_manifest import defaults, resolve
 from evolution.accounting import PhaseGuard
 from evolution.candidates import atomic_json
 from evolution.loop import EvolutionLoop
@@ -15,12 +15,32 @@ from evolution.manifest import (
     budget_errors,
     freeze_manifest,
 )
+from evolution.pilot import preflight
 from evolution.reconcile import reconcile
 from evolution.workspace import ensure_image
 
 
 async def execute(root, manifest, *, resume=False, recover_sessions=False):
     """Infrastructure authorization is only exposed by run_evolution."""
+    if manifest.get("purpose") == "pilot":
+        portable = {
+            k: v
+            for k, v in manifest.items()
+            if k
+            not in {
+                "resolved_sha256",
+                "hashes",
+                "providers",
+                "tasks",
+                "runtime_images",
+                "task_images",
+                "sampling_seed_support",
+                "host_runtime",
+            }
+        }
+        report = preflight(root, portable)
+        if report["errors"]:
+            raise ValueError("; ".join(report["errors"]))
     budget = manifest["budget"]
     guard = PhaseGuard(
         root
@@ -136,6 +156,9 @@ async def execute(root, manifest, *, resume=False, recover_sessions=False):
                                 "J_t": result["J_t"],
                                 "O_t_search": result["O_t_search"],
                                 "decision": result["decision"],
+                                "standing_metrics": result.get(
+                                    "standing_metrics"
+                                ),
                             }
                         ),
                         flush=True,
@@ -162,6 +185,8 @@ async def execute(root, manifest, *, resume=False, recover_sessions=False):
         oracle_root = root / "oracle" / experiment
         paths = list(oracle_root.glob("*/checkpoint-t*.json"))
         paths.extend(oracle_root.glob("*/control-t*.json"))
+        paths.extend(oracle_root.glob("*/behavior-i*.json"))
+        paths.extend(oracle_root.glob("*/behavior/*.json"))
         for path in paths:
             checkpoints[str(path.relative_to(root))] = json.loads(
                 path.read_text()
@@ -185,32 +210,37 @@ def main():
     value = json.loads(args.manifest.read_text())
     if value["purpose"] != "pilot":
         raise ValueError("run_pilot accepts only pilot manifests")
+    report = preflight(root, value)
+    atomic_json(
+        root / "logs" / "evolution" / value["experiment"] / "entry_gates.json",
+        report,
+    )
+    print(json.dumps(report, indent=2))
+    if report["errors"]:
+        print("BLOCKED: " + "; ".join(report["errors"]))
+        return 2
+    if args.check:
+        print("All entry gates passed; no paid calls or Docker calls made.")
+        return 0
+    # Docker and endpoint resolution are launch-time operations, after gates.
     ensure_image(root)
     resolved = resolve(root, value, dotenv_values(root / ".env"))
     freeze_manifest(root, resolved)
-    budget = resolved["budget"]
-    guard = PhaseGuard(
-        root / "costs" / resolved["experiment"] / "budget.sqlite",
-        estimate=budget["estimate_usd"],
-        ceiling=budget["guard_usd"],
-        hours=budget["wall_clock_hours"],
-    )
-    try:
-        guard.check()
-        errors = entry_errors(root, resolved)
+    results = asyncio.run(execute(root, resolved, resume=args.resume))
+    if value.get("run_kind") == "qualification":
         atomic_json(
-            root / "runs" / resolved["experiment"] / "entry_gates.json",
-            {"passed": not errors, "errors": errors, "paid_calls": 0},
+            root
+            / "logs"
+            / "evolution"
+            / value["experiment"]
+            / "qualification.json",
+            {
+                "passed": len(results) == len(value["arms"])
+                and all(r.get("status") == "complete" for r in results),
+                "manifest_sha256": value["manifest_sha256"],
+            },
         )
-        if errors:
-            print("BLOCKED: " + "; ".join(errors))
-            return 2
-        if args.check:
-            print("All entry gates passed; no pilot calls made.")
-            return 0
-        return asyncio.run(execute(root, resolved, resume=args.resume)) and 0
-    finally:
-        guard.close()
+    return 0
 
 
 if __name__ == "__main__":

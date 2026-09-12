@@ -1,0 +1,220 @@
+{
+  "schema_version": 1,
+  "experiment": "qualification-t1-260912",
+  "purpose": "pilot",
+  "prereg_frozen": true,
+  "ratifications": {
+    "AD1": true,
+    "AD2": true,
+    "AD3": true,
+    "AD4": true,
+    "AD5": true,
+    "AD6": true,
+    "AD7": true,
+    "AD8": true,
+    "AD9": true,
+    "AD10": true,
+    "AD11": true,
+    "AD12": true,
+    "AD13": true,
+    "AD14": true,
+    "AD15": true
+  },
+  "task_model": {
+    "name": "gpt-5.6-terra",
+    "deployment": "gpt56terra",
+    "endpoint_prefix": "TASK_ALT2",
+    "reasoning_effort": "low",
+    "completion_allowance": 8192,
+    "tool_protocol": "json",
+    "max_calls": 24,
+    "api_timeout_s": 180,
+    "command_timeout_s": 30
+  },
+  "pass_label": "L1'",
+  "api_timeout_policy": "infrastructure",
+  "tau": {
+    "A0": 0.0,
+    "A1": 0.006022079,
+    "A2": 0.01739164,
+    "A3-loop": null
+  },
+  "tau_evidence": {
+    "A1": {
+      "path": "logs/judges/terra-8k-v3/metrics.json",
+      "sha256": "2cc3b1462427e4534fce6689d0602431a08eed9bbdddb042a56ad595cb7c5e96"
+    },
+    "A2": {
+      "path": "logs/judges/terra-8k-v3/metrics.json",
+      "sha256": "2cc3b1462427e4534fce6689d0602431a08eed9bbdddb042a56ad595cb7c5e96"
+    }
+  },
+  "epsilon": 0.0,
+  "acceptance": "improve",
+  "arms": [
+    "A0",
+    "A1",
+    "A2",
+    "A3-loop",
+    "C-TTS-A0",
+    "C-TTS-A1",
+    "C-TTS-A2",
+    "C-TTS-A3-loop"
+  ],
+  "a3_loop_hook": "evolution.a3:A3Round",
+  "a3": {
+    "k": 10,
+    "G": 3,
+    "N": 3,
+    "theta": 0.7,
+    "floor": 0.1,
+    "embedding": "text-embedding-3-large",
+    "embedding_revision": null,
+    "pair_order": "candidate_A_reference_B",
+    "evidence_version": "v3",
+    "floor_semantics": "raw_score_before_max_normalization"
+  },
+  "seeds": [
+    1
+  ],
+  "T": 1,
+  "candidates_per_arm": {
+    "A0": 2,
+    "A1": 2,
+    "A2": 2,
+    "A3-loop": 3
+  },
+  "partition_limits": {},
+  "evidence_version": "v3",
+  "prompt_version": "judge-v3",
+  "budget": {
+    "estimate_usd": 30,
+    "guard_usd": 30,
+    "wall_clock_hours": 120,
+    "rollout_usd": 1,
+    "evolver_session_usd": 5,
+    "unit_rollout_estimate_usd": 0.112
+  },
+  "concurrency": 4,
+  "cache_policy": "unique_user_metadata",
+  "cache_partition_attestation": null,
+  "entry_evidence": {},
+  "section5_artifact": "runs/r8b-validation-260910-final/section5_matrix.json",
+  "run_kind": "qualification",
+  "blinding": true,
+  "memory_min_available_gib": 6,
+  "claimed_without_ran_window_steps": 5,
+  "evidence_caps": {
+    "observation_head_chars": 4000,
+    "observation_tail_chars": 4000,
+    "trajectory_chars": 200000
+  },
+  "content_policy_policy": "task_failure_no_retry_no_exclusion",
+  "reestimate_rule": {
+    "after_sessions": 5,
+    "action": "archive projection; halt if over guard",
+    "retain_guard_and_deadline": true
+  },
+  "evolver_model": {
+    "name": "DeepSeek-V4-Pro",
+    "endpoint_prefix": "EVOLVER",
+    "completion_allowance": 8192
+  },
+  "judge_model": {
+    "name": "DeepSeek-V4-Flash",
+    "endpoint_prefix": "JUDGE",
+    "completion_allowance": 2048,
+    "sampling": "temperature=0.6, top_p=0.95, JSON object"
+  },
+  "cross_judge": {
+    "name": "Kimi-K2.6",
+    "endpoint_prefix": "XJUDGE",
+    "scorers": [
+      "A1"
+    ],
+    "completion_allowance": 8192,
+    "purpose": "oracle-side diagnostic; never selection"
+  },
+  "a4": {
+    "included": false,
+    "weights": {
+      "A1": 0.5,
+      "A2": 0.5
+    },
+    "reason": "PREREG does not ratify tau_A4 = 0.5*(tau_A1 + tau_A2)"
+  },
+  "cache_partition_limitation": "Provider cache partition enforcement is unobservable through the API. Section 5 demonstrates six of seven rows live; ratification accepts row 7 as a documented limitation.",
+  "judge_calibration": {
+    "path": "logs/judges/terra-8k-v3/manifest.json",
+    "sha256": "51aeefbc00f7a1be91cf15e5ec1f0f54482abd0d8e9c1fa6f3644570910aecba"
+  },
+  "section5_evidence": {
+    "path": "runs/r8b-validation-260910-final/section5_matrix.json",
+    "sha256": "48a62442c742833a80886fcaf8e8f656ca5ba6e9348e2302dcd353f9c362ece4"
+  },
+  "input_hashes": {
+    "PREREG.md": "a0b9b4ce161eacf7f7a791f042885d02ecb86478f8acf0f0c628711f9bf12d88",
+    "costs/judges_prices.json": "66746dec7f7a805586d004366418865d6f3febecf372e0016157a1a261dcd1f2",
+    "data/tb2_split.json": "a3796dd7ed0a7f384e5474d684f38762306eb795e7d52a5abce79e3080b340c2",
+    "docs/decisions-260910-addendum.md": "0a6fe6f24648a7d5d056cf22f6295c161f80582f1ba91b49540370a201a00f54",
+    "docs/decisions-260910.md": "15553343e7569f8538fbd8bc80feb6aafdb6601a3b55fcc5a8a27ef23b5c1456",
+    "docs/decisions-260912.md": "1d8a78e510fcc8a2e2ecae4ca322a5d36b40fe17922535dfd2c93d5c33b12905",
+    "evolution/__init__.py": "ef6e42282e05280b6d4bee8b6bc29c333659039f74f1de4ccbff5ca864a04340",
+    "evolution/a3.py": "78af288d88795283fbb621d55212001ade21615912a345e60ab010fd79cb4bb7",
+    "evolution/a3_calibration.py": "9f5b3bd879d3fca90fe79527d67cace2670b56affcaf6ed470272c90508041a7",
+    "evolution/a3_control.py": "628760feed53dc104525e84739a365e7c50f4443a39ce41d11ac00ba8d80d80e",
+    "evolution/a3_coreset.py": "1536c0f208d870eb355965788c881bd31ad0f15058b44bc5acdaae4b31e979e5",
+    "evolution/a3_embeddings.py": "a2a56e9c5d0f0a860c1afb34ffa7b9a1e2b4e55c38c7888e60e21c1f70c137d8",
+    "evolution/a3_inspection.py": "ffb19bc05de82bcbf4043f06ef4f556519bf4a913c03f4d58435666d027664c0",
+    "evolution/a3_manifest.py": "ca011279bef2bd2550fe3d34ed24df5f9e7f914cbf9dd74ef5ccbabef25b7ce9",
+    "evolution/a3_metrics.py": "4a74843b6efaa136c510d6c7e6088e751f9a14350c805e100c67a4ca2933de1d",
+    "evolution/a3_native.py": "72cd94bca479e802722b57055768b642f1a9b3af48a447b64fbba00e813dbdc6",
+    "evolution/a3_operators.py": "a022704da32ef265a6e05e3d0bc139073ccad4b19bdd4befd815f151879a1d18",
+    "evolution/a3_report.py": "bfdec928a0b8aae2d890c4178cab63748627a82f03003d0589b79a725c0c8f5d",
+    "evolution/a3_v2.py": "c38476f1247333fc2bde545641a58fa531804cc301eabc6bc306210dc94cd040",
+    "evolution/acceptance.py": "a2f5a45e6c485b94a42dcf4c799e2f637686cff7f1c0505409b42d553ddfa154",
+    "evolution/accounting.py": "3b19fd09944dd65a58bf5d3cf33ef294ab7131bcd6d1f13348a6854c11f3a65c",
+    "evolution/admission.py": "61ea8d2b2464217d2d789ddf263ca3e7fcaaea53927d84fe753f1975491ef0fc",
+    "evolution/audit.py": "23202d9984e61819686feb2480b2e3a2aeadd914fc4d80aa3ee6fa8b777b1d52",
+    "evolution/behavior.py": "ffff40d74dfb4dab8d369fbc8bc273fccd93f7c374af5c307788f0ecc0e2fd52",
+    "evolution/calibration.py": "bf6dd4c67ae0f35f548656d4411e753ed49b043cf6ed6a01421519ff531b8de7",
+    "evolution/candidates.py": "98a86973967aeda31cff2929a75085c7df21ce50a6aa6b1def90f4c408aba04b",
+    "evolution/evaluation.py": "074f1383a15c7f30214898116271ad6b6ec13557172d236681eed16cd7c0bbcf",
+    "evolution/grading.py": "042a9d1e47f7febdff46320382ec1b25736dd63182be8e14433a3d2e7b33ed79",
+    "evolution/harbor_agent.py": "c5eadb54cb0cb7c536827e8bc120d7c2d892d06a156d47b56dd881701f7117e2",
+    "evolution/isolation.py": "2294e4d9a3ffbd5498d736b959eadf4817e3d8c9dff15591b90ba8ee1af7868a",
+    "evolution/iteration_report.py": "f6841b617089da26a32c6ab7c0bb1133abf3426b34d65bee9b63397c8ae3e2f4",
+    "evolution/judge_queue.py": "f900a5e4d47a887b95f851210a5901e8781f875a9ee420c33a5b74ac1e6ffe16",
+    "evolution/judges.py": "7a8b9ecb0b83c28af9ccf2d0a8a085de24042e89db3f32800f773517b494b596",
+    "evolution/loop.py": "03093b65431caab1719906166377c475a32da21b929cae71b6b1156b55111c2f",
+    "evolution/manifest.py": "ffdf2c7ddaac314b5be864a44add0ebe76427f8cd9dee2be7621622345226604",
+    "evolution/outcomes.py": "0135754757948ad4f9d206a06515caf7376a2b441ef6afe8379a77754631b90e",
+    "evolution/pilot.py": "7ac00978b0240930d8cbfa5895be1c6e7371e15fa94356af3f401dde7389eb0d",
+    "evolution/prompts.py": "c2eb3c625ae7feb421ea06e3fdca0bf4d602633d946c638a13da1cabbec695e6",
+    "evolution/reanalyze_judges.py": "f6c3898e7d1a2d0281e5edacd4515e837803d4b6511b0c1f18cbde9300f816c6",
+    "evolution/reconcile.py": "2eb03104dccf4ae88c6b4d2ccf599b5b1ccbf7cfa432dede9eacd7d11e95df48",
+    "evolution/recovery.py": "2252fefc0e040b0de5fad609ff50e6b9d55347f4a48b5b8e12dca5ddd443dc6a",
+    "evolution/report.py": "5d89e2d388c3ca864d1004b74a206978a9a7431c22d204c938573e928d87cdd2",
+    "evolution/runtime/worker.py": "ef5a73fe543101f8cf7428d13705eb2c7f65632371cdaa2e9989a7ca85f2ae31",
+    "evolution/sanitize.py": "5b8f1f163356f81c58de8840dd39829e1f64882a3424b1a74109e9fd6eecbe1a",
+    "evolution/state.py": "f311056de106f88a8b5cbdddcdf86c2273d2443ce7fc0c5df115cb9f146f2bab",
+    "evolution/trial_worker.py": "c38b3a738461073bd13578c14dcb0c82b9ded393a9876c038f38d60bc4c4fd6f",
+    "evolution/workspace.py": "c97006a3900f5b65449e83596296f69b0bfb37e117c8b5ce786a80d12637ae04",
+    "harness/__init__.py": "ab839a5e23fb49f0bd34db9f412125408bea9e63bbff32132ac2793d3ee890c8",
+    "harness/backends.py": "2cbe7a17e0a5fb794c89f6db13df07424d258a4ddc06824f8409c73e6ed875f7",
+    "harness/budget.py": "32bc616122477cab694d079df8f798a20ca76da6effec07247deca4bed301f27",
+    "harness/harbor_agent.py": "d537ba6cba64e335baee437ccbe3ed5f88e2e6e535aa901cbc09831f9b03e258",
+    "harness/ledger.py": "1df8414286521e05668f46a97a3b6c02c794a1d919cc550684b4ec2960b73a84",
+    "harness/openai_api.py": "b0c102c2b5c60c5b3404a4e656884c6df6ba2c596a43cbda4c97964117ab064e",
+    "harness/seed.py": "ee65e9e7eb486bf81c505bf1276e0ce2f4dd0c0eb361ec783b4744e9adf4a4a0",
+    "scripts/run_evolution.py": "3f6093295272ad00b47ca5a4b261e2136d78591cce12ef2f87a34ab41a98bb8b",
+    "scripts/run_pilot.py": "99dcfa4d322fb6c2ffa30f76037c3941006eaed8393ac0ff9fc4b4dc87f7d50f",
+    "uv.lock": "44c8b9cc6ee09f6f6aa19e7fb785d320a3c82744ecebebf9a883ad80168cd1d9"
+  },
+  "split": {
+    "path": "data/tb2_split.json",
+    "sha256": "a3796dd7ed0a7f384e5474d684f38762306eb795e7d52a5abce79e3080b340c2"
+  },
+  "split_sha256": "a3796dd7ed0a7f384e5474d684f38762306eb795e7d52a5abce79e3080b340c2",
+  "manifest_sha256": "e65d52781a0f29d1aeb65e79df9add52e84593d1218509023deabb934886a047"
+}

@@ -419,14 +419,12 @@ def cap_observations(
     return SanitizedTrajectory.from_dict(envelope())
 
 
-def sanitize(
+def sanitized_events(
     records,
     *,
     hidden_values=(),
     result=None,
     execution=None,
-    observation_chars=DEFAULT_OBSERVATION_CHARS,
-    trajectory_chars=DEFAULT_TRAJECTORY_CHARS,
 ):
     """Strip forbidden events/fields and linked results, preserving order.
 
@@ -510,14 +508,33 @@ def sanitize(
                 clean[key] = value
         output.append(clean)
     output.append(outcome)
+    return output, canonical(logs), digest(source)
+
+
+def sanitize(
+    records,
+    *,
+    hidden_values=(),
+    result=None,
+    execution=None,
+    observation_chars=DEFAULT_OBSERVATION_CHARS,
+    trajectory_chars=DEFAULT_TRAJECTORY_CHARS,
+):
+    """Apply the v3 export caps after full-trace sanitization."""
+    output, logs, source_hash = sanitized_events(
+        records,
+        hidden_values=hidden_values,
+        result=result,
+        execution=execution,
+    )
     return SanitizationResult(
         cap_observations(
             output,
             observation_chars=observation_chars,
             trajectory_chars=trajectory_chars,
         ),
-        canonical(logs),
-        digest(source),
+        logs,
+        source_hash,
     )
 
 

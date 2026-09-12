@@ -445,6 +445,19 @@ class AccountedBackend(OpenAIAPIBackend):
             raise BudgetHalt(
                 "Phase wall-clock limit reached", phase=True
             ) from exc
+        if not result.record.get("ok"):
+            from evolution.outcomes import content_policy_rejection
+
+            response_path = Path(result.record["raw_dir"]) / "response.json"
+            if response_path.is_file() and content_policy_rejection(
+                [{"kind": "error", "error": response_path.read_text()}]
+            ):
+                # Preserve raw provider diagnostics privately; propagate only
+                # the fixed category to the trusted agent terminal record.
+                result.record["termination_category"] = (
+                    "content_policy_rejection"
+                )
+                result.record["note"] = "Provider content-policy rejection"
         note = result.record.get("note", "").lower()
         if any(
             reason in note
@@ -646,3 +659,91 @@ def cost_summary(ledger, audit, *, arm=None, iteration=None, run_id=None):
             )
         },
     }
+
+
+def reestimate_after_sessions(root, manifest, accounting):
+    """AD14: persist one estimate after five distinct completed sessions.
+
+    Recompute from the append-only timing/receipt evidence on resume. The
+    original phase ceiling and deadline are never changed by this estimate.
+    """
+    rule = manifest.get("reestimate_rule")
+    if not rule:
+        return None
+    root, accounting = Path(root), Path(accounting)
+    output = accounting / "first-five-session-reestimate.json"
+    if output.exists():
+        return json.loads(output.read_text())
+    timings = accounting / "timings.jsonl"
+    if not timings.exists():
+        return None
+    sessions = {}
+    for line in timings.read_text().splitlines():
+        row = json.loads(line)
+        if row.get("kind") == "evolver":
+            key = (
+                row.get("experiment", row.get("run_id")),
+                row["arm"],
+                row["iteration"],
+                row["id"],
+            )
+            sessions.setdefault(key, row)
+    count = rule["after_sessions"]
+    if len(sessions) < count:
+        return None
+    # Scopes identify sessions across arms and independent seeds; settled
+    # charges and unresolved reservations are both included.
+    audit = accounting / "requests.jsonl"
+    completed = list(sessions)[:count]
+    scopes_by_session = {key: set() for key in completed}
+    if audit.exists():
+        for line in audit.read_text().splitlines():
+            event = json.loads(line)
+            key = tuple(
+                event.get(k) for k in ("run_id", "arm", "iteration", "task")
+            )
+            if (
+                event.get("event") == "request_intent"
+                and event.get("role") in {"evolver", "a3-propose"}
+                and key in scopes_by_session
+            ):
+                scopes_by_session[key].add(event["scope"])
+    scopes = sorted({s for group in scopes_by_session.values() for s in group})
+    with sqlite3.connect(accounting / "budget.sqlite") as db:
+        costs = [
+            sum(
+                db.execute(
+                    "SELECT coalesce(sum(coalesce(charged,reserved)),0) "
+                    "FROM requests WHERE scope=?",
+                    (scope,),
+                ).fetchone()[0]
+                for scope in scopes_by_session[key]
+            )
+            for key in completed
+        ]
+    planned = sum(
+        manifest["candidates_per_arm"].get(a, 0)
+        for a in manifest["arms"]
+        if not a.startswith("C-TTS-")
+    )
+    planned *= manifest["T"] * len(manifest["seeds"])
+    from evolution.pilot import schedule
+
+    projection = schedule(root, manifest)["solver_projection_usd"]
+    mean = sum(costs) / len(costs) if costs else None
+    result = {
+        "after_sessions": count,
+        "completed_sessions": len(sessions),
+        "observed_session_scopes": scopes[:count],
+        "mean_session_upper_usd": mean,
+        "planned_sessions": planned,
+        "projected_solver_plus_evolver_usd": (
+            projection + mean * planned if mean is not None else None
+        ),
+        "guard_usd": manifest["budget"]["guard_usd"],
+        "guard_and_deadline_unchanged": True,
+        "unpriced_roles": ["judges", "cross-judge", "A3 operators"],
+        "status": "estimated" if len(costs) == count else "incomplete",
+    }
+    atomic_json(output, result)
+    return result

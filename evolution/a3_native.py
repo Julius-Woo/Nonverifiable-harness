@@ -107,7 +107,12 @@ def native_manifest(
 async def execute(root, manifest, *, resume=False):
     validate(manifest)
     budget = manifest["budget"]
-    loop = EvolutionLoop(
+    loop_class = EvolutionLoop
+    if manifest.get("clean_calibration"):
+        from evolution.a3_calibration import CleanLoop
+
+        loop_class = CleanLoop
+    loop = loop_class(
         root,
         manifest["experiment"],
         "A3-native",
@@ -130,6 +135,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--experiment", default="a3-native-260910")
     parser.add_argument("--resume", action="store_true")
+    parser.add_argument("--clean-calibration", action="store_true")
     parser.add_argument(
         "--embedding", choices=("azure", "bge"), default="azure"
     )
@@ -164,6 +170,30 @@ def main():
             estimate_usd=args.native_estimate_usd,
             hours=args.native_hours,
         )
+        if args.clean_calibration:
+            from evolution.a3_calibration import project_round
+
+            projection = project_round(root)
+            atomic_json(
+                root / "runs" / args.experiment / "cost-projection.json",
+                projection,
+            )
+            if not projection["admitted"]:
+                raise ValueError(
+                    "Full-round projection exceeds USD 55; refusing dispatch"
+                )
+            if args.embedding != "azure" or args.native_budget_usd != 60:
+                raise ValueError(
+                    "Clean calibration requires Azure and USD 60 cap"
+                )
+            value["clean_calibration"] = {
+                "pass_label": "L1-prime",
+                "search_measurement_attempts": 2,
+                "operator_attempt_timeout_s": 900,
+                "projection": projection,
+                "ratification": "docs/decisions-260912.md AD1/AD10/AD14/AD15",
+            }
+            value["a3_native_budget"]["status"] = "authorized_AD14"
     manifest = resolve(root, value, dotenv_values(root / ".env"))
     freeze_manifest(root, manifest)
     atomic_json(

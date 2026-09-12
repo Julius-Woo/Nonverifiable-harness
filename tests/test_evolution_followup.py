@@ -24,27 +24,20 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 @pytest.mark.parametrize(
-    "records,reading,expected",
+    "observation",
     [
-        ([{"kind": "observation", "error": "command timeout"}], "executor", 0),
-        (
-            [{"kind": "observation", "protocol_error": "bad JSON"}],
-            "executor",
-            0,
-        ),
-        ([{"kind": "observation", "return_code": 2}], "executor", 1),
-        ([{"kind": "observation", "return_code": 2}], "strict", 0),
+        {"kind": "observation", "error": "command timeout"},
+        {"kind": "observation", "protocol_error": "bad JSON"},
+        {"kind": "observation", "return_code": 2},
     ],
 )
-def test_r8b2_executor_and_strict_policy(records, reading, expected):
-    label, raw, reason = oracle_label(
+def test_ad10_recovered_observations_do_not_veto_pass(observation):
+    label, raw, _ = oracle_label(
         {"verifier_result": {"rewards": {"reward": 1}}},
         {},
-        records,
-        reading,
+        [observation, {"kind": "finish", "answer": "Done"}],
     )
-    assert label == expected
-    assert raw == 1
+    assert label == raw == 1
 
 
 def test_r8b2_timeout_veto_even_when_verifier_missing():
@@ -141,7 +134,7 @@ def test_r8b9_manifest_hash_freezes_resolved_condition(tmp_path):
         ("api_timeout_policy", "failure"),
     ],
 )
-def test_r8b9_pending_policies_are_manifest_parameters(field, new_value):
+def test_ad10_ad13_reject_superseded_manifest_policies(field, new_value):
     m = defaults("x", validation=True)
     assert m["task_model"]["deployment"] == "gpt56terra"
     assert m["task_model"]["completion_allowance"] == 8192
@@ -149,7 +142,8 @@ def test_r8b9_pending_policies_are_manifest_parameters(field, new_value):
     m[field] = new_value
     from evolution.manifest import validate
 
-    validate(m)
+    with pytest.raises(ValueError):
+        validate(m)
 
 
 def backend(tmp_path, transport, max_calls=24):

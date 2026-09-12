@@ -166,6 +166,13 @@ class CandidateAgent(BaseAgent):
                 raise ValueError("Invalid/oversized candidate API prompt")
             self.step += 1
             reply = await self.backend.complete(prompt, self.tags)
+            if (
+                reply.record.get("termination_category")
+                == "content_policy_rejection"
+            ):
+                raise NonZeroAgentExitCodeError(
+                    "Provider content-policy rejection"
+                )
             self.event(
                 {
                     "kind": "assistant",
@@ -186,24 +193,25 @@ class CandidateAgent(BaseAgent):
                     (getattr(context, attr, 0) or 0)
                     + (reply.record.get(key) or 0),
                 )
-            try:
-                action = json.loads(reply.text)
-                if not isinstance(action, dict):
-                    raise ValueError("Expected a JSON object")
-                if action.get("action") == "finish":
-                    if not isinstance(action.get("answer"), str):
-                        raise ValueError("answer must be a string")
-                else:
-                    action_command(action)
-            except (ValueError, KeyError, TypeError) as exc:
-                self.tool_failed = True
-                self.event(
-                    {
-                        "kind": "observation",
-                        "step": self.step,
-                        "protocol_error": str(exc),
-                    }
-                )
+            if reply.record["ok"]:
+                try:
+                    action = json.loads(reply.text)
+                    if not isinstance(action, dict):
+                        raise ValueError("Expected a JSON object")
+                    if action.get("action") == "finish":
+                        if not isinstance(action.get("answer"), str):
+                            raise ValueError("answer must be a string")
+                    else:
+                        action_command(action)
+                except (ValueError, KeyError, TypeError) as exc:
+                    self.tool_failed = True
+                    self.event(
+                        {
+                            "kind": "observation",
+                            "step": self.step,
+                            "protocol_error": str(exc),
+                        }
+                    )
             # Candidate never receives host paths, accounting, model settings,
             # trial identity, or API credentials from a Completion record.
             return {
@@ -234,7 +242,7 @@ class CandidateAgent(BaseAgent):
                     self.tool_failed = True
             except Exception as exc:
                 self.tool_failed = True
-                row = {"error": str(exc)}
+                row = {"error": f"{type(exc).__name__}: {exc}"}
             self.event(
                 {
                     "kind": "observation",
