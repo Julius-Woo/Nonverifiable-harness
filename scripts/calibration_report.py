@@ -123,11 +123,15 @@ def collect(label, ledger, split, manifest=None):
         error = exception.get("exception_type")
         timing = data.get("agent_execution")
         exception_path = path.parent / "exception.txt"
+        api_error_paths = sorted(
+            path.parent.glob("agent/calls/*/http_error_*.json")
+        )
         outcome = classify_attempt(
             data,
             trace,
             rows,
             exception_path.read_text() if exception_path.exists() else "",
+            [json.loads(p.read_text()) for p in api_error_paths],
         )
         trial = {
             "task": name,
@@ -172,6 +176,9 @@ def collect(label, ledger, split, manifest=None):
             "result_sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
             "call_ids": sorted(ids),
             "ledger_without_trace": sorted(ids - trace_ids),
+            "api_error_paths": [
+                str(p.relative_to(ROOT)) for p in api_error_paths
+            ],
         }
         trial.update(outcome)
         trial["job_name"] = path.parent.parent.name
@@ -216,8 +223,10 @@ def collect(label, ledger, split, manifest=None):
     boots = sorted(mean(rng.choices(values, k=30)) for _ in range(10000))
     labels = {
         key: label_metrics(trials, split, key)
-        for key in ("pass_l1", "pass_l2")
+        for key in ("pass_l1", "pass_l1_prime", "pass_l2")
     }
+    from scripts.calibration_ratified import standing_metrics
+
     return {
         "configuration": label,
         "cohort": next(
@@ -229,6 +238,7 @@ def collect(label, ledger, split, manifest=None):
         .get("kwargs", {})
         .get("max_completion_tokens", 4096),
         "labels": labels,
+        "standing_metrics": standing_metrics(trials),
         "raw_reward_ones": sum(t["reward"] == 1 for t in trials),
         "termination_counts": dict(Counter(t["termination"] for t in trials)),
         "no_action_reasons": dict(
@@ -304,6 +314,10 @@ def collect(label, ledger, split, manifest=None):
 
 
 def label_metrics(trials, split, label):
+    if label == "pass_l1_prime":
+        from scripts.calibration_ratified import retained_label_metrics
+
+        return retained_label_metrics(trials, split, label)
     names = sorted(t["name"] for ts in split["splits"].values() for t in ts)
     rates = {
         name: sum(t[label] for t in trials if t["task"] == name) / 2
@@ -328,6 +342,16 @@ def label_metrics(trials, split, label):
 
 def eligible(row, label):
     metrics = row["labels"][label]
+    if label == "pass_l1_prime":
+        return (
+            row["n_results"] == 60
+            and row["response_calls"] > 0
+            and row["max_completion_tokens"] == 8192
+            and "-json" in row["configuration"]
+            and metrics["pass_rate"] is not None
+            and 0.15 <= metrics["pass_rate"] <= 0.45
+            and row["standing_metrics"]["no_action"]["rate"] < 0.05
+        )
     return (
         row["n_results"] == 60
         and row["response_calls"] > 0
@@ -654,7 +678,7 @@ def render(results, split, manifest=None, accounting=None, comparisons=None):
                 *[
                     f"{r['termination_counts'].get(k, 0)} "
                     f"({r['no_action_reasons'].get(k, 0)})"
-                    for k in TERMINATIONS
+                    for k in TERMINATIONS[:6]
                 ],
             ]
             for r in results
@@ -1106,6 +1130,12 @@ def render(results, split, manifest=None, accounting=None, comparisons=None):
 
 
 def main():
+    from scripts.calibration_ratified import (
+        provenance_manifest,
+        render_ratified,
+        update_document,
+    )
+
     manifest = load_manifest()
     ledger = read_ledger(ROOT / "costs/ledger.jsonl")
     split = json.loads((ROOT / "data/tb2_split.json").read_text())
@@ -1118,44 +1148,25 @@ def main():
         for r in results
     )
     accounting = account(ledger, manifest, results, ROOT)
-    comparisons = contrasts(results)
-    archive = ROOT / "logs/calibration-8k-followup-260910"
-    archive.mkdir(exist_ok=True)
-    for name, value in (
-        ("accounting.json", accounting),
-        ("contrasts.json", comparisons),
-    ):
-        (archive / name).write_text(json.dumps(value, indent=2) + "\n")
-    (archive / "attempts.jsonl").write_text(
-        "".join(
-            json.dumps(
-                {
-                    "configuration": r["configuration"],
-                    "cohort": r["cohort"],
-                    **t,
-                }
-            )
-            + "\n"
-            for r in results
-            for t in r["trials"]
-        )
+    path = ROOT / "docs/calibration.md"
+    document = update_document(path.read_text(), render_ratified(results))
+    provenance = provenance_manifest(results, ROOT)
+    # Prepare all outputs before mutating the permitted derived artifacts.
+    costs = render_costs(ledger, manifest, accounting)
+    path.write_text(document)
+    (ROOT / "data/calibration_ratified_manifest.json").write_text(
+        json.dumps(provenance, indent=2) + "\n"
     )
-    (ROOT / "costs/calibration_results.json").write_text(
-        json.dumps(results, indent=2) + "\n"
-    )
-    (ROOT / "docs/calibration.md").write_text(
-        render(results, split, manifest, accounting, comparisons)
-    )
-    (ROOT / "costs/summary.md").write_text(
-        render_costs(ledger, manifest, accounting)
-    )
+    (ROOT / "costs/summary.md").write_text(costs)
     print(
         json.dumps(
             [
                 {
                     "configuration": r["configuration"],
                     "L1": r["labels"]["pass_l1"]["successes"],
+                    "L1_prime": r["labels"]["pass_l1_prime"],
                     "L2": r["labels"]["pass_l2"]["successes"],
+                    "standing_metrics": r["standing_metrics"],
                     "no_action": r["no_action_count"],
                     "reasons": r["termination_counts"],
                     "no_action_reasons": r["no_action_reasons"],

@@ -1,6 +1,6 @@
 # Terminal-Bench 2 task-model and protocol calibration
 
-Date: 2026-09-10. **P1.2 allowance experiment (W5f), reported under the W5e/R7 corrected contracts.** Three new 8,192-token jobs extend the eight historical 4,096-token configurations. All rewards use saved, unmodified Harbor 0.22 verifier evidence. This is AD12 evidence; AD10–AD12 remain pending decisions.
+Updated: 2026-09-12. **Offline recomputation under ratified L1′/AD13 contracts.** All 11 archived configurations are reported below; earlier W5e/R7 and W5f sections remain as history.
 
 ## Setup and reproducibility
 
@@ -17,6 +17,130 @@ Sampling seed 260910; sorted tasks, one Python RNG with per-stratum shuffles, Ha
 Every configuration has 30 tasks × 2 finalized attempts. Shared settings: 4,096 completion tokens historically and 8,192 for rows ending `-8k` (reasoning plus output), 24 model calls, 30 seconds per command, 180 seconds per API call, $1 per-rollout guard, and task-defined Harbor timeouts. Temperature and generation seed were omitted. The original six rows use low reasoning; W5d adds Mini/JSON and Luna/JSON at medium. No Terra/medium row exists. W5f repeats Terra/low, Mini/medium, and Luna/medium with the shared 8,192-token allowance, concurrency 3, a separate $15 cohort guard, and the unchanged $1 rollout guard. Native means Chat Completions function tools, with `parallel_tool_calls=false`, terminal/read_file/write_file, and a plain final answer. JSON uses the same common serialized history and prompt across deployments. There is no model-specific prompt, planning, self-verification, or rescue.
 
 Regenerate all corrected results, all cohorts, and costs with `uv run python -m scripts.calibration_report`; validate with `uv run python -m scripts.audit_calibration`. These are offline reducers. The earlier medium-only extension script is superseded; use this unified entry point.
+
+<!-- BEGIN RATIFIED CALIBRATION -->
+## Ratified contracts (2026-09-12)
+
+This section supersedes the historical measurement, eligibility and pending-decision statements below. Recomputed offline from all 660 archived finalized attempts in 11 configurations (six low, two medium, three 8k), with no new runs or model calls. Authority: [decisions, Sections 1–2](decisions-260912.md). Regenerate with `uv run python -m scripts.calibration_report`; the reducer writes this document, `costs/summary.md`, and the [ratified provenance manifest](../data/calibration_ratified_manifest.json). Historical derived JSON and logs remain unchanged. `uv run python -m scripts.audit_calibration` performs read-only verification.
+
+**L1′ (AD10):** numeric verifier reward exactly 1, no Harbor agent timeout, and a normal terminal finish. Exhaustion (AD12), unrecovered executor failures, protocol failures and trial exceptions fail. Recovered parse errors, observed command timeouts followed by recovery, and every nonzero command exit are observations and never veto a normal verifier pass. L1 retains the earlier process penalties for comparison; **L2 is rejected by decision** and retained only as history.
+
+**AD13 taxonomy:** `content_policy_rejection` (**content-policy rejection**) is a task failure, retained in the denominator and never retried. `api_timeout_infrastructure` (**API timeout (infrastructure)**) requires the attempt's only model call to time out without a response or executed action. It is excluded from outcome and standing-metric denominators. A later API timeout after successful responses/actions remains a trial exception under this narrow contract. The other six terminal categories retain their meanings; independent recovered-event flags do not override a normal finish.
+
+**Retry discrepancy:** AD13 prescribes one retry before exclusion. The four archived timeout-only attempts each have one dispatch and zero retries (`api_max_retries=0`); there is no archived replacement lineage for them. This offline reanalysis excludes those four with a logged historical missing-retry deviation; it does not claim the retry requirement was fulfilled or treat a task's second planned attempt as a retry. No retry was performed in this recomputation.
+
+### L1, L1′ and rejected L2: attempt accounting
+
+L1/L2 use all 60 historical slots. L1′ shows the retained-attempt fraction here; the equal-task avg@2 and intervals follow. Infrastructure exclusions never remove associated costs.
+
+| Configuration | Archived / excluded / retained | L1 (history) | L1′ passes / retained | L2 (rejected) |
+| --- | --- | --- | --- | --- |
+| mini-json | 60 / 0 / 60 | 5/60 (8.3%) | 5/60 (8.3%) | 3/60 (5.0%) |
+| mini-native | 60 / 0 / 60 | 5/60 (8.3%) | 5/60 (8.3%) | 4/60 (6.7%) |
+| luna-json | 60 / 0 / 60 | 9/60 (15.0%) | 14/60 (23.3%) | 4/60 (6.7%) |
+| luna-native | 60 / 0 / 60 | 0/60 (0.0%) | 0/60 (0.0%) | 0/60 (0.0%) |
+| terra-native | 60 / 0 / 60 | 0/60 (0.0%) | 0/60 (0.0%) | 0/60 (0.0%) |
+| terra-json | 60 / 0 / 60 | 17/60 (28.3%) | 17/60 (28.3%) | 7/60 (11.7%) |
+| mini-json-medium | 60 / 0 / 60 | 8/60 (13.3%) | 8/60 (13.3%) | 6/60 (10.0%) |
+| luna-json-medium | 60 / 0 / 60 | 9/60 (15.0%) | 20/60 (33.3%) | 4/60 (6.7%) |
+| terra-json-8k | 60 / 4 / 56 | 18/60 (30.0%) | 18/56 (32.1%) | 8/60 (13.3%) |
+| mini-json-medium-8k | 60 / 0 / 60 | 7/60 (11.7%) | 9/60 (15.0%) | 5/60 (8.3%) |
+| luna-json-medium-8k | 60 / 0 / 60 | 5/60 (8.3%) | 15/60 (25.0%) | 3/60 (5.0%) |
+
+### L1′ avg@2 overall and per split
+
+Cells: **equal-task mean [95% task-bootstrap interval]; passes / retained attempts; exclusions**. For complete pairs, avg@2 is the mean of two labels per task, then tasks equally. After exclusion, use each task's available attempts; omit tasks with neither attempt, without imputing failure. Terra 8k therefore has 27 complete pairs, two single-attempt tasks and one unobserved task: its available-attempt task mean differs from its pooled attempt fraction. Its original complete 30-task avg@2 is not identifiable under AD13 without new observations.
+
+Percentile bootstrap: 10,000 draws, Python RNG seed 260910, sorted task names, endpoints at sorted draw indices 250 and 9750. Resample tasks within each displayed scope, carrying both attempts and their exclusion mask together; each retained task has equal weight. Intervals condition on observed tasks and do not quantify missing-task outcomes or rerun variability. Native API rejection rows show operational zero intervals; generated model capability remains unmeasured.
+
+| Configuration | Overall | Search | Anchor | Sealed |
+| --- | --- | --- | --- | --- |
+| mini-json | 8.3% [1.7%–16.7%]; 5/60; excl 0 | 8.3% [0.0%–16.7%]; 3/36; excl 0 | 16.7% [0.0%–50.0%]; 2/12; excl 0 | 0.0% [0.0%–0.0%]; 0/12; excl 0 |
+| mini-native | 8.3% [1.7%–16.7%]; 5/60; excl 0 | 5.6% [0.0%–13.9%]; 2/36; excl 0 | 8.3% [0.0%–25.0%]; 1/12; excl 0 | 16.7% [0.0%–50.0%]; 2/12; excl 0 |
+| luna-json | 23.3% [11.7%–36.7%]; 14/60; excl 0 | 27.8% [13.9%–44.4%]; 10/36; excl 0 | 25.0% [0.0%–58.3%]; 3/12; excl 0 | 8.3% [0.0%–25.0%]; 1/12; excl 0 |
+| luna-native | 0.0% [0.0%–0.0%]; 0/60; excl 0 | 0.0% [0.0%–0.0%]; 0/36; excl 0 | 0.0% [0.0%–0.0%]; 0/12; excl 0 | 0.0% [0.0%–0.0%]; 0/12; excl 0 |
+| terra-native | 0.0% [0.0%–0.0%]; 0/60; excl 0 | 0.0% [0.0%–0.0%]; 0/36; excl 0 | 0.0% [0.0%–0.0%]; 0/12; excl 0 | 0.0% [0.0%–0.0%]; 0/12; excl 0 |
+| terra-json | 28.3% [13.3%–43.3%]; 17/60; excl 0 | 38.9% [19.4%–61.1%]; 14/36; excl 0 | 16.7% [0.0%–50.0%]; 2/12; excl 0 | 8.3% [0.0%–25.0%]; 1/12; excl 0 |
+| mini-json-medium | 13.3% [5.0%–23.3%]; 8/60; excl 0 | 16.7% [5.6%–30.6%]; 6/36; excl 0 | 8.3% [0.0%–25.0%]; 1/12; excl 0 | 8.3% [0.0%–25.0%]; 1/12; excl 0 |
+| luna-json-medium | 33.3% [18.3%–50.0%]; 20/60; excl 0 | 38.9% [19.4%–58.3%]; 14/36; excl 0 | 33.3% [0.0%–66.7%]; 4/12; excl 0 | 16.7% [0.0%–50.0%]; 2/12; excl 0 |
+| terra-json-8k | 34.5% [19.0%–51.7%]; 18/56; excl 4 | 38.2% [17.6%–61.8%]; 12/33; excl 3 | 41.7% [8.3%–83.3%]; 4/11; excl 1 | 16.7% [0.0%–50.0%]; 2/12; excl 0 |
+| mini-json-medium-8k | 15.0% [5.0%–26.7%]; 9/60; excl 0 | 16.7% [2.8%–33.3%]; 6/36; excl 0 | 8.3% [0.0%–25.0%]; 1/12; excl 0 | 16.7% [0.0%–50.0%]; 2/12; excl 0 |
+| luna-json-medium-8k | 25.0% [11.7%–40.0%]; 15/60; excl 0 | 27.8% [11.1%–47.2%]; 10/36; excl 0 | 25.0% [0.0%–58.3%]; 3/12; excl 0 | 16.7% [0.0%–50.0%]; 2/12; excl 0 |
+
+### Standing seed-behaviour metrics
+
+Every cell is affected rollouts / retained rollouts (rate), with the same AD13 exclusions as L1′. Protocol-error and command-timeout rates are incidence per rollout (at least one event), including recovered events. No action requires no executed action evidence; subprocess output-collection tracebacks count as execution. Inability is the established explicit no-tools/inability final-answer detector among no-action attempts. Exhaustion includes token, 24-call and rollout-budget stops. Native rejection rows are operational counts, with generated behaviour unassessed.
+
+| Configuration | No action | Inability claim | Exhaustion | Protocol error / rollout | Command timeout / rollout |
+| --- | --- | --- | --- | --- | --- |
+| mini-json | 1/60 (1.7%) | 0/60 (0.0%) | 2/60 (3.3%) | 7/60 (11.7%) | 7/60 (11.7%) |
+| mini-native | 3/60 (5.0%) | 2/60 (3.3%) | 2/60 (3.3%) | 1/60 (1.7%) | 6/60 (10.0%) |
+| luna-json | 7/60 (11.7%) | 6/60 (10.0%) | 2/60 (3.3%) | 16/60 (26.7%) | 8/60 (13.3%) |
+| luna-native | 60/60 (100.0%) | 0/60 (0.0%) | 0/60 (0.0%) | 0/60 (0.0%) | 0/60 (0.0%) |
+| terra-native | 60/60 (100.0%) | 0/60 (0.0%) | 0/60 (0.0%) | 0/60 (0.0%) | 0/60 (0.0%) |
+| terra-json | 9/60 (15.0%) | 0/60 (0.0%) | 14/60 (23.3%) | 1/60 (1.7%) | 11/60 (18.3%) |
+| mini-json-medium | 5/60 (8.3%) | 0/60 (0.0%) | 18/60 (30.0%) | 4/60 (6.7%) | 5/60 (8.3%) |
+| luna-json-medium | 7/60 (11.7%) | 7/60 (11.7%) | 6/60 (10.0%) | 27/60 (45.0%) | 10/60 (16.7%) |
+| terra-json-8k | 0/56 (0.0%) | 0/56 (0.0%) | 2/56 (3.6%) | 0/56 (0.0%) | 14/56 (25.0%) |
+| mini-json-medium-8k | 2/60 (3.3%) | 0/60 (0.0%) | 6/60 (10.0%) | 9/60 (15.0%) | 7/60 (11.7%) |
+| luna-json-medium-8k | 9/60 (15.0%) | 7/60 (11.7%) | 4/60 (6.7%) | 28/60 (46.7%) | 9/60 (15.0%) |
+
+### Ratified termination taxonomy counts
+
+| Configuration | Normal finish | No-tools / inability | Exhaustion | Protocol / parse terminal | Executor failure | Trial exception | Content-policy rejection | API timeout (infrastructure) |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| mini-json | 51 | 0 | 2 | 0 | 7 | 0 | 0 | 0 |
+| mini-native | 46 | 2 | 2 | 0 | 6 | 4 | 0 | 0 |
+| luna-json | 44 | 6 | 2 | 0 | 8 | 0 | 0 | 0 |
+| luna-native | 0 | 0 | 0 | 0 | 0 | 60 | 0 | 0 |
+| terra-native | 0 | 0 | 0 | 0 | 0 | 60 | 0 | 0 |
+| terra-json | 35 | 0 | 14 | 0 | 11 | 0 | 0 | 0 |
+| mini-json-medium | 37 | 0 | 18 | 0 | 5 | 0 | 0 | 0 |
+| luna-json-medium | 37 | 7 | 6 | 0 | 10 | 0 | 0 | 0 |
+| terra-json-8k | 37 | 0 | 2 | 0 | 14 | 2 | 1 | 4 |
+| mini-json-medium-8k | 47 | 0 | 6 | 0 | 7 | 0 | 0 | 0 |
+| luna-json-medium-8k | 40 | 7 | 4 | 0 | 9 | 0 | 0 | 0 |
+
+Rows sum to all 60 archived attempts, including exclusions.
+
+### Infrastructure exclusions and content-policy evidence
+
+| Configuration | Attempt | Category | Disposition | Evidence |
+| --- | --- | --- | --- | --- |
+| terra-json-8k | break-filter-js-from-html__iRo55Ld | content_policy_rejection | retained; no retry | [result](../logs/harbor/calibration-terra-json-8k-260910/break-filter-js-from-html__iRo55Ld/result.json), [trace](../logs/harbor/calibration-terra-json-8k-260910/break-filter-js-from-html__iRo55Ld/agent/trace.jsonl), [HTTP body](../logs/harbor/calibration-terra-json-8k-260910/break-filter-js-from-html__iRo55Ld/agent/calls/55c3db38978e452aad0b3e2425671d89/http_error_1.json) |
+| terra-json-8k | configure-git-webserver__qNEvZcd | api_timeout_infrastructure | excluded; 0 retries archived; deviation logged | [result](../logs/harbor/calibration-terra-json-8k-260910/configure-git-webserver__qNEvZcd/result.json), [trace](../logs/harbor/calibration-terra-json-8k-260910/configure-git-webserver__qNEvZcd/agent/trace.jsonl) |
+| terra-json-8k | make-doom-for-mips__3ta2eK8 | api_timeout_infrastructure | excluded; 0 retries archived; deviation logged | [result](../logs/harbor/calibration-terra-json-8k-260910/make-doom-for-mips__3ta2eK8/result.json), [trace](../logs/harbor/calibration-terra-json-8k-260910/make-doom-for-mips__3ta2eK8/agent/trace.jsonl) |
+| terra-json-8k | make-doom-for-mips__CPUZNYU | api_timeout_infrastructure | excluded; 0 retries archived; deviation logged | [result](../logs/harbor/calibration-terra-json-8k-260910/make-doom-for-mips__CPUZNYU/result.json), [trace](../logs/harbor/calibration-terra-json-8k-260910/make-doom-for-mips__CPUZNYU/agent/trace.jsonl) |
+| terra-json-8k | pytorch-model-cli__WRs7VtP | api_timeout_infrastructure | excluded; 0 retries archived; deviation logged | [result](../logs/harbor/calibration-terra-json-8k-260910/pytorch-model-cli__WRs7VtP/result.json), [trace](../logs/harbor/calibration-terra-json-8k-260910/pytorch-model-cli__WRs7VtP/agent/trace.jsonl) |
+
+### L1′ eligibility and selection
+
+Apply the inclusive 15–45% band to the available-attempt task mean, no action strictly below 5%, a usable API and common prompt, plus ratified JSON and 8,192 tokens (AD11/AD12). All archived cohorts meet their cost guards; cost retains every call and reservation. Among eligible rows, prefer the one nearest **30%**, then lower known cost within the guard. Missing retry observations remain the stated limitation on Terra's estimate, not invented successful retries.
+
+| Configuration | L1′ task mean / band | No-action gate | JSON / 8k | Usable API | Eligible | Distance to 30% (pp) |
+| --- | --- | --- | --- | --- | --- | --- |
+| mini-json | 8.3% / fail | pass | fail | yes | no | 21.7 |
+| mini-native | 8.3% / fail | fail | fail | yes | no | 21.7 |
+| luna-json | 23.3% / pass | fail | fail | yes | no | 6.7 |
+| luna-native | 0.0% / fail | fail | fail | no | no | 30.0 |
+| terra-native | 0.0% / fail | fail | fail | no | no | 30.0 |
+| terra-json | 28.3% / pass | fail | fail | yes | no | 1.7 |
+| mini-json-medium | 13.3% / fail | fail | fail | yes | no | 16.7 |
+| luna-json-medium | 33.3% / pass | fail | fail | yes | no | 3.3 |
+| terra-json-8k | 34.5% / pass | pass | pass | yes | yes; selected | 4.5 |
+| mini-json-medium-8k | 15.0% / pass | pass | pass | yes | yes | 15.0 |
+| luna-json-medium-8k | 25.0% / pass | fail | pass | yes | no | 5.0 |
+
+**Selected: terra-json-8k** (Terra/low/JSON/8k, called `terra-low-8k` in the decision). Selection is unchanged using the pooled retained-attempt fraction instead of the task mean.
+
+**Decision check — Terra:** the archived numerator is 18, confirming 18/60 = 30.0% on the original scheduled-slot basis. After four AD13 exclusions the fraction is 18/56 (32.1%), and the available-attempt task mean is 34.5% [19.0%–51.7%]. `make-doom-for-mips` has no retained attempt; `configure-git-webserver` and `pytorch-model-cli` each retain one passing attempt. Agent no-action numerator **0** is confirmed, but its measured denominator is **56**, not 60 (the four no-response outages had no actions). The two API timeouts after actions (`dna-assembly`, `write-compressor`) remain failures, as does the `cyber_policy` HTTP 400. Mean known cost remains $0.112336 per archived rollout, including excluded work.
+
+**Decision check — Mini medium 8k:** 9/60 (15.0%) and no action 2/60 (3.3%) confirm the decision. It is eligible at the floor. Its 6 passing search attempts cover 4 distinct search tasks. Luna remains excluded by no-action rates at every setting. The earlier L1/L2 eligibility and pending-decision prose below is historical.
+
+<!-- END RATIFIED CALIBRATION -->
+## Historical W5e/R7 report (superseded by ratified contracts)
+
+The following sections are preserved as historical evidence; their pending decisions and measurement contracts are superseded by the ratified section above.
 
 ## Corrected measurement contracts
 

@@ -202,6 +202,27 @@ def audit(root=ROOT):
             assert trial["pass_l2"] == int(
                 trial["pass_l1"] and not trial["nonzero_commands"]
             )
+            assert trial["pass_l1_prime"] == int(
+                type(trial["reward"]) in (int, float)
+                and trial["reward"] == 1
+                and not trial["agent_timeout"]
+                and trial["termination"] == "normal_finish"
+                and not trial["token_exhaustion"]
+                and not trial["step_exhaustion"]
+                and not trial["budget_exhaustion"]
+            )
+            assert trial["infrastructure_excluded"] == (
+                trial["termination"] == "api_timeout_infrastructure"
+            )
+            if trial["termination"] == "content_policy_rejection":
+                assert not trial["infrastructure_excluded"]
+                assert trial["pass_l1_prime"] == 0
+        metrics = result["labels"]["pass_l1_prime"]
+        assert metrics["denominator"] + metrics["excluded"] == 60
+        assert all(
+            m["denominator"] == metrics["denominator"]
+            for m in result["standing_metrics"].values()
+        )
     accounting = account(ledger, manifest, results, root)
     for cohort, totals in accounting.items():
         assert (
@@ -228,6 +249,17 @@ def audit(root=ROOT):
         "total_request_artifacts": len(request_ids),
         "interrupted_attempts": interrupted,
         "two_finalized_attempts_per_task": True,
+        "ratified_labels_and_denominators": True,
+        "infrastructure_exclusions": {
+            r["configuration"]: r["labels"]["pass_l1_prime"]["excluded"]
+            for r in results
+        },
+        "missing_infrastructure_retry_deviations": [
+            t["result_path"]
+            for r in results
+            for t in r["trials"]
+            if t["infrastructure_excluded"] and not t["api_retries_observed"]
+        ],
         "payload_prompt_and_budget_checks": True,
         "response_usage_and_cost_checks": True,
         "action_presence_uncertain_attempts": 0,
@@ -246,9 +278,6 @@ def audit(root=ROOT):
 
 def main():
     report = audit()
-    path = ROOT / "logs/calibration-8k-followup-260910/audit.json"
-    path.parent.mkdir(exist_ok=True)
-    path.write_text(json.dumps(report, indent=2) + "\n")
     print(json.dumps(report, indent=2))
 
 

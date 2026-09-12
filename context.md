@@ -84,6 +84,11 @@ Phase 2 (pilot on T1) starts only after P1.8 is committed and P1.6, P1.9, and P1
 
 All Phase 1 engineering is implemented and independently reviewed (R1-R9; dispositions in `docs/reviews.md`): seed harness and backends, cost ledger, stratified split and calibration (docs/calibration.md), judge layer with evidence contract v3 and terra tau (docs/judges.md), isolated evolution loop with fail-closed pilot launcher (docs/evolution.md), A3-native/A3-loop/C-TTS(A3) (docs/a3.md), GDPevo adapter with T2 acceptance matrix (docs/gdpevo_adapter.md). Tests: 581 passing.
 
-Blocked on the user: ratification of `docs/decisions-260910-addendum.md` AD1-AD15. After ratification, in order: (1) PREREG/PLAN reconciliation and freeze (Codex, R4 items 3-12); (2) clean A3-native calibration with Azure embeddings (USD 40-60); (3) final controller qualification run with the frozen manifest (T = 1, all arms, about USD 30); (4) Phase 2 pilot (estimate USD 400 if terra, guard USD 600 / 5 days per AD14).
+Ratified 2026-09-12 (`docs/decisions-260912.md`). PREREG frozen pending R10 (W12); calibration recomputed under L1' (W5g). Open budget question: the reconciled full schedule costs about USD 1,421-1,486 in solver calls alone versus the USD 650 guard (see PLAN 9.6 entry of 2026-09-12). After ratification, in order: (1) PREREG/PLAN reconciliation and freeze (Codex, R4 items 3-12); (2) clean A3-native calibration with Azure embeddings (USD 40-60); (3) final controller qualification run with the frozen manifest (T = 1, all arms, about USD 30); (4) Phase 2 pilot (estimate USD 400 if terra, guard USD 600 / 5 days per AD14).
 
 Costs to date (API, conservative): smoke 0.54; calibration 8.85 + 1.70 + 9.87; judges 3.24 (+ earlier mini calibration about 4); evolution runs 6.69 + 14.49; A3 19.74; GDPevo 0.02 + 9.80; total about USD 90. Codex usage: about 200M input tokens (almost all cached) and 1.4M output tokens across W1-W11; Copilot: 9 reviews plus probes.
+
+
+## A3-native clean calibration worker (2026-09-12)
+
+Active task and handoff: `runs/a3-native-260912/context.md`. Own $60 cap; projected $48.95493134 before dispatch. Only A3 module/test code is edited. Historical run stays immutable. Raw oracle data stays under oracle/.
