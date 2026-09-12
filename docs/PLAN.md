@@ -347,6 +347,8 @@ Exit criteria: one TB2 task completed end-to-end by the seed harness with an ora
 
 - 2026-09-12 (W9c done): loop implements L1' and the AD13 categories, standing metrics, shared v3 evolver view, full-trace claimed-without-ran (N = 5, oracle-side); pilot and qualification manifests written; launcher `--check` recognizes the frozen PREREG and blocks on pending R10, missing P1.8/P1.9/P1.11 evidence, unarmed guards, and schedules above caps (qualification as written: 1,296 rollouts, USD 145 vs the USD 30 cap; pilot 13,872 rollouts, USD 1,554 solver). 685 tests. R10 launched. Budget decision REC-01 pending with the user.
 
+- 2026-09-12 (R10 done): 4 blocking findings (grading executes solver-controlled files; snapshot grading breaks live services; grader failures labelled as negatives; sealed failures leak through public totals) and 7 deviations. Qualification run stopped and discarded (USD 1.64 spent). W9e launched to fix the blockers and cheap deviations, add adversarial grading controls, re-freeze, and re-run the qualification. W13 (A3 calibration) continues.
+
 ### 9.7 Proposed Amendments to Sections 1-8 (pending user approval)
 
 Sources: the literature digest `docs/background.md` (Part B deltas; independent review R2 pending) and the GDPevo assessment `docs/gdpevo_assessment.md` with its independent review R1 (`docs/reviews.md`). Sections 1-8 are unchanged until the user approves. Review R2 of the digest is complete; its dispositions are in `docs/reviews.md`.
