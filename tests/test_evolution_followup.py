@@ -382,7 +382,10 @@ async def test_r8b4_r8b6_control_current_contract_out_of_order_resume(
     )
     loop.evaluator.calls.clear()
     result = await loop.control(comparator)
-    assert result["rollouts"] == 6
+    assert "rollouts" not in result
+    assert json.loads(
+        (loop.evaluator.private / "summary-i1.json").read_text()
+    )["rollouts"] == 6
     sealed_calls = [r for r in loop.evaluator.calls if r[1] == "sealed"]
     assert sealed_calls == [("seed", "sealed", "control-task-0", 1)]
     private = json.loads(

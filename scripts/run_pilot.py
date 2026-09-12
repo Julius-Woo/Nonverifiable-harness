@@ -3,6 +3,8 @@
 import argparse
 import asyncio
 import json
+import os
+import sys
 from pathlib import Path
 
 from dotenv import dotenv_values
@@ -13,14 +15,23 @@ from evolution.candidates import atomic_json
 from evolution.loop import EvolutionLoop
 from evolution.manifest import (
     budget_errors,
+    file_hash,
     freeze_manifest,
 )
-from evolution.pilot import preflight
+from evolution.pilot import preflight, qualification_reports, seal_inputs
 from evolution.reconcile import reconcile
 from evolution.workspace import ensure_image
+from harness.ledger import utc_now
 
 
-async def execute(root, manifest, *, resume=False, recover_sessions=False):
+async def execute(
+    root,
+    manifest,
+    *,
+    resume=False,
+    recover_sessions=False,
+    allow_pending_review=False,
+):
     """Infrastructure authorization is only exposed by run_evolution."""
     if manifest.get("purpose") == "pilot":
         portable = {
@@ -38,7 +49,9 @@ async def execute(root, manifest, *, resume=False, recover_sessions=False):
                 "host_runtime",
             }
         }
-        report = preflight(root, portable)
+        report = preflight(
+            root, portable, allow_pending_review=allow_pending_review
+        )
         if report["errors"]:
             raise ValueError("; ".join(report["errors"]))
     budget = manifest["budget"]
@@ -192,6 +205,8 @@ async def execute(root, manifest, *, resume=False, recover_sessions=False):
                 path.read_text()
             )
     atomic_json(private / "final_report.json", checkpoints)
+    if manifest.get("run_kind") == "qualification":
+        qualification_reports(root, manifest, results)
     return results
 
 
@@ -201,6 +216,7 @@ def main():
     parser.add_argument("--prepare", metavar="EXPERIMENT")
     parser.add_argument("--check", action="store_true")
     parser.add_argument("--resume", action="store_true")
+    parser.add_argument("--allow-pending-review", action="store_true")
     args = parser.parse_args()
     root = Path(__file__).resolve().parents[1]
     if args.prepare:
@@ -208,9 +224,58 @@ def main():
         print("Draft manifest written; no pilot calls made.")
         return 0
     value = json.loads(args.manifest.read_text())
+    if value.get("controller_root"):
+        controller = (root / value["controller_root"]).resolve()
+        if controller != root.resolve():
+            script = controller / "scripts/run_pilot.py"
+            if not controller.is_dir() or file_hash(script) != value.get(
+                "input_hashes", {}
+            ).get("scripts/run_pilot.py"):
+                raise ValueError(
+                    "Frozen controller source is missing or changed"
+                )
+            arguments = list(sys.argv[1:])
+            index = arguments.index("--manifest") + 1
+            arguments[index] = str(args.manifest.resolve())
+            os.chdir(controller)
+            os.execv(
+                sys.executable,
+                [sys.executable, "-m", "scripts.run_pilot", *arguments],
+            )
     if value["purpose"] != "pilot":
         raise ValueError("run_pilot accepts only pilot manifests")
     report = preflight(root, value)
+    if args.allow_pending_review and not args.check:
+        if value.get("run_kind") != "qualification":
+            raise ValueError("Pending-review exception is qualification-only")
+        other_errors = [
+            error
+            for error in report["errors"]
+            if error != "R10 re-check pending"
+        ]
+        if not other_errors:
+            if not value.get("review_deviation"):
+                timestamp = utc_now()
+                record = (
+                    f"\n\n**{timestamp} / QUAL-R10:** Leader-authorized "
+                    "qualification launch while R10 is pending, using "
+                    "`--allow-pending-review`; original ordering required "
+                    "completed review. Schedule pressure; affects all eight "
+                    "qualification arms only. Discard these results if R10 "
+                    "reports an isolation- or label-blocking finding. No "
+                    "qualification results observed at authorization.\n"
+                )
+                with (root / "PREREG.md").open("a") as handle:
+                    handle.write(record)
+                value["review_deviation"] = {
+                    "timestamp": timestamp,
+                    "flag": "--allow-pending-review",
+                    "discard_on_blocking_finding": True,
+                    "prereg_record": "QUAL-R10",
+                }
+                value = seal_inputs(root, value)
+                atomic_json(args.manifest, value)
+            report = preflight(root, value, allow_pending_review=True)
     atomic_json(
         root / "logs" / "evolution" / value["experiment"] / "entry_gates.json",
         report,
@@ -226,7 +291,14 @@ def main():
     ensure_image(root)
     resolved = resolve(root, value, dotenv_values(root / ".env"))
     freeze_manifest(root, resolved)
-    results = asyncio.run(execute(root, resolved, resume=args.resume))
+    results = asyncio.run(
+        execute(
+            root,
+            resolved,
+            resume=args.resume,
+            allow_pending_review=args.allow_pending_review,
+        )
+    )
     if value.get("run_kind") == "qualification":
         atomic_json(
             root

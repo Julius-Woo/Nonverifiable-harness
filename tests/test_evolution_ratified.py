@@ -384,6 +384,52 @@ def test_manifest_input_drift_fails_before_launch():
     )
 
 
+def test_pending_review_exception_is_explicit_and_qualification_only():
+    from evolution.pilot import seal_inputs
+
+    value = ratified_manifest(ROOT, "review-exception", qualification=True)
+    value["review_deviation"] = {"discard_on_blocking_finding": True}
+    value = seal_inputs(ROOT, value)
+    strict = preflight(ROOT, value)
+    allowed = preflight(ROOT, value, allow_pending_review=True)
+    assert "R10 re-check pending" in strict["errors"]
+    assert "R10 re-check pending" not in allowed["errors"]
+    assert "Budget guard is not armed" in allowed["errors"]
+    assert allowed["pending_review_allowed"]
+    value["run_kind"] = "pilot"
+    assert (
+        "R10 re-check pending"
+        in preflight(ROOT, value, allow_pending_review=True)["errors"]
+    )
+
+
+def test_entry_bundle_checks_nested_artifact_hashes(tmp_path):
+    from evolution.pilot import reference, seal_inputs
+
+    evidence = tmp_path / "evidence.txt"
+    evidence.write_text("historical verification")
+    bundle = tmp_path / "bundle.json"
+    bundle.write_text(
+        json.dumps(
+            {
+                "kind": "qualification_entry_evidence",
+                "artifacts": [reference(ROOT, str(evidence))],
+            }
+        )
+    )
+    value = ratified_manifest(ROOT, "bundle", qualification=True)
+    value["entry_evidence"]["P1.9"] = reference(ROOT, str(bundle))
+    value = seal_inputs(ROOT, value)
+    assert (
+        "P1.9 evidence missing or changed"
+        not in preflight(ROOT, value)["errors"]
+    )
+    evidence.write_text("changed")
+    assert (
+        "P1.9 evidence missing or changed" in preflight(ROOT, value)["errors"]
+    )
+
+
 async def test_provider_policy_survives_generic_http_400(tmp_path):
     import httpx
     from test_evolution_followup import backend
@@ -575,8 +621,10 @@ def test_each_arm_public_and_oracle_summary_has_standing_metrics(
     loop.write_summary(summary)
     public = json.loads((loop.logs / "iteration-1.json").read_text())
     private = json.loads((ev.private / "behavior-i1.json").read_text())
-    assert public["standing_metrics"] == private["standing_metrics"]
-    assert public["standing_metrics"]["no_action_rate"] == 1
+    assert public["standing_metrics"]["scheduled"] == 0
+    assert public["standing_metrics"]["no_action_rate"] is None
+    assert private["standing_metrics"]["scheduled"] == 1
+    assert private["standing_metrics"]["no_action_rate"] == 1
     assert "oracle" not in public and "raw_reward" not in public
     assert "claimed_without_ran" not in json.dumps(public)
     assert "hidden" not in json.dumps(public)
@@ -642,3 +690,114 @@ def test_manifest_condition_gates_reject_changed_evidence(field):
     assert any(
         expected in error for error in preflight(ROOT, manifest)["errors"]
     )
+
+
+def test_qualification_accepts_shared_host_concurrency_only():
+    from evolution.a3_manifest import validate
+
+    value = ratified_manifest(ROOT, "shared-host", qualification=True)
+    value["concurrency"] = 3
+    validate(value)
+    value["run_kind"] = "pilot"
+    with pytest.raises(ValueError, match="Harbor concurrency"):
+        validate(value)
+
+
+def test_qualification_coreset_does_not_change_pilot_recipe():
+    from evolution.a3_manifest import validate
+
+    value = ratified_manifest(ROOT, "small-core", qualification=True)
+    value["partition_limits"] = {"search": 6, "anchor": 3, "sealed": 3}
+    value["a3"]["k"] = 6
+    with pytest.raises(ValueError, match="A3 recipe"):
+        validate(value)
+    value["qualification_coreset"] = {
+        "k": 6,
+        "prereg_record": "QUAL-CORESET",
+    }
+    validate(value)
+    value["run_kind"] = "pilot"
+    with pytest.raises(ValueError, match="qualification coreset"):
+        validate(value)
+
+
+async def test_six_task_qualification_a3_round_and_resume(
+    tmp_path, monkeypatch
+):
+    from test_evolution_a3 import (
+        MockOperators,
+        make_loop,
+        mock_propose,
+        vectors,
+    )
+
+    from evolution.loop import EvolutionLoop
+    from evolution.pilot import QualificationA3Round
+
+    monkeypatch.setattr(EvolutionLoop, "propose", mock_propose)
+    loop = make_loop(tmp_path, "A3-loop")
+    value = ratified_manifest(ROOT, "mock-a3", qualification=True)
+    value["partition_limits"] = {"search": 6, "anchor": 3, "sealed": 3}
+    value["a3"]["k"] = 6
+    value["qualification_coreset"] = {
+        "k": 6,
+        "prereg_record": "QUAL-CORESET",
+    }
+    loop.manifest = value
+    loop.evaluator.split["splits"]["search"] = [
+        {"name": f"task-{i}"} for i in range(6)
+    ]
+    runner = QualificationA3Round(
+        loop,
+        operators=MockOperators(),
+        embedder=lambda texts: (vectors(len(texts)), {"model": "fixture"}),
+    )
+    try:
+        result = await runner.run()
+        assert result["status"] == "complete"
+        assert result["accepted"] is True
+        assert result["coreset_preference"] == pytest.approx(0.4)
+        assert len(result["coreset"]) == 6
+        calls = len(loop.evaluator.calls)
+        assert await runner.run() == result
+        assert len(loop.evaluator.calls) == calls
+    finally:
+        loop.close()
+
+
+def test_qualification_report_rejects_public_private_trial_values(tmp_path):
+    import sqlite3
+
+    from evolution.pilot import qualification_reports
+
+    directory = tmp_path / "runs/q/A0"
+    directory.mkdir(parents=True)
+    with sqlite3.connect(directory / "state.sqlite") as db:
+        db.execute("CREATE TABLE trials (spec TEXT, result TEXT)")
+        db.execute(
+            "INSERT INTO trials VALUES (?, ?)",
+            (
+                json.dumps({"partition": "sealed"}),
+                json.dumps({"oracle": 1}),
+            ),
+        )
+    guard = PhaseGuard(tmp_path / "costs/q/budget.sqlite")
+    guard.close()
+    value = {
+        "experiment": "q",
+        "arms": ["A0"],
+        "blinding": True,
+        "pass_label": "L1'",
+        "section5_evidence": {},
+        "manifest_sha256": "fixture",
+    }
+    with pytest.raises(ValueError, match="isolation audit failed"):
+        qualification_reports(tmp_path, value, [])
+    assert not (tmp_path / "runs/q/report.md").exists()
+    audit = json.loads(
+        (tmp_path / "runs/q/qualification_audit.json").read_text()
+    )
+    assert audit["isolation_or_pass_label_anomalies"] == [
+        "A0: private trial stored publicly"
+    ]
+    assert '"oracle": 1' not in json.dumps(audit)

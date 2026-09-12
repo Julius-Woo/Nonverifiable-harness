@@ -21,7 +21,7 @@ from evolution.judge_queue import (
     export_trace,
 )
 from evolution.judges import mixture
-from evolution.outcomes import api_timeout_only, termination
+from evolution.outcomes import api_timeout_only, grader_failure, termination
 from evolution.sanitize import sanitized_events
 from evolution.workspace import docker
 from harness.ledger import CallTags, append_jsonl, utc_now
@@ -49,6 +49,8 @@ def oracle_label(result, execution, records):
         return None, reward, "missing_or_invalid_verifier"
     if outcome["reason"] not in {"normal_finish", "no_tools_or_inability"}:
         return 0, reward, outcome["reason"]
+    if grader_failure(result, records, execution):
+        return None, reward, "grader_failure"
     if type(reward) not in (int, float) or reward not in (0, 1):
         return None, reward, "missing_or_invalid_verifier"
     return int(reward == 1), reward, "valid_verifier"
@@ -209,6 +211,15 @@ class Evaluator:
             "stage": stage,
             "task": task,
             "replicate": replicate,
+            **(
+                {
+                    "qualification_revision": self.config[
+                        "qualification_revision"
+                    ]
+                }
+                if self.config.get("qualification_revision")
+                else {}
+            ),
         }
 
     def collect(self, identity, spec):
@@ -262,6 +273,10 @@ class Evaluator:
             "execution": execution,
             "behavior": behavior_flags(records, outcome, result=result),
             "exception_info": result.get("exception_info"),
+            "excluded": reason == "grader_failure",
+            "exclusion_reason": "grader_failure"
+            if reason == "grader_failure"
+            else None,
         }
         atomic_json(self.private / f"{identity}.json", row)
         if trace.exists() and spec["partition"] == "search":
@@ -284,6 +299,8 @@ class Evaluator:
 
     async def one(self, candidate, spec):
         row = await self._one_once(candidate, spec)
+        if row.get("exclusion_reason") == "grader_failure":
+            return row
         if row.get("replacement_id") or spec.get("infrastructure_attempt", 0):
             return row
         boundary = self.private / "grading" / row["id"] / "boundary.json"
@@ -292,7 +309,7 @@ class Evaluator:
             or row.get("reason") == "missing_or_invalid_verifier"
         ):
             record = json.loads(boundary.read_text())
-            if record.get("snapshot_ready"):
+            if record.get("live_ready") or record.get("snapshot_ready"):
                 from evolution.grading import resume_frozen_grading
 
                 await resume_frozen_grading(
@@ -304,7 +321,10 @@ class Evaluator:
             else:
                 row.update(
                     excluded=True,
-                    exclusion_reason="interrupted_frozen_snapshot",
+                    exclusion_reason="grader_failure",
+                    reason="grader_failure",
+                    oracle=None,
+                    score=None,
                     solver_retried=False,
                 )
                 self.state.finish(row["id"], row)
@@ -349,6 +369,7 @@ class Evaluator:
                 "api_timeout_only", api_timeout_only(replacement_execution)
             )
         )
+        excluded = excluded or replacement.get("excluded", False)
         result = {
             **replacement,
             "id": row["id"],
@@ -357,7 +378,10 @@ class Evaluator:
             "retried": True,
             "infrastructure_attempt": spec.get("infrastructure_attempt", 0),
             "excluded": excluded,
-            "exclusion_reason": "infrastructure_retry_exhausted"
+            "exclusion_reason": (
+                replacement.get("exclusion_reason")
+                or "infrastructure_retry_exhausted"
+            )
             if excluded
             else None,
         }
@@ -412,6 +436,7 @@ class Evaluator:
                 ),
                 "kwargs": {
                     "candidate_path": str(candidate),
+                    "harbor_concurrency": self.concurrency,
                     "experiment": self.experiment,
                     "arm": self.arm,
                     "iteration": self.iteration,
@@ -528,9 +553,7 @@ class Evaluator:
             while not pending.empty():
                 index, spec = pending.get_nowait()
                 self.guard.check()
-                while available_gib() < 6:
-                    self.guard.check()
-                    await asyncio.sleep(30)
+                # Process-shared admission owns memory hysteresis.
                 active = docker(
                     "ps", "--format", "{{.Names}} {{.Image}}"
                 ).stdout
@@ -558,11 +581,11 @@ class Evaluator:
                 if judging:
                     await ready.put(results[index])
                 completed += 1
-                print(
-                    f"{self.arm} {stage} {partition}: "
-                    f"{completed}/{len(specs)}",
-                    flush=True,
-                )
+                if partition == "search":
+                    print(
+                        f"{self.arm} {stage} search: {completed}/{len(specs)}",
+                        flush=True,
+                    )
                 pending.task_done()
 
         try:

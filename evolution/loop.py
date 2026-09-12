@@ -93,12 +93,19 @@ def select_control(rows, signal):
     selected = []
     for task in sorted({r["task"] for r in rows}):
         available = [
-            r for r in rows if r["task"] == task and r.get("score") is not None
+            r
+            for r in rows
+            if r["task"] == task
+            and r.get("score") is not None
+            and not r.get("excluded")
         ]
         if not available:
             continue
         selected.append(
-            sorted(available, key=lambda r: (-r["score"], r["id"]))[0]
+            min(
+                available,
+                key=lambda r: (-r["score"], r.get("replicate", 0), r["id"]),
+            )
         )
     return selected
 
@@ -253,6 +260,12 @@ class EvolutionLoop:
                 path.write_text("NVH_SECRET_" + uuid.uuid4().hex)
         return paths, [p.read_text() for p in paths]
 
+    def evolver_session_id(self, identity):
+        scope = f"{self.experiment}-{self.arm}-{identity}"
+        if self.manifest.get("qualification_revision"):
+            scope += "-" + self.manifest["qualification_revision"]
+        return scope
+
     async def propose(self, parent, slot):
         identity = f"i{self.iteration:02}-c{slot}"
         key = f"proposal-{identity}"
@@ -264,7 +277,7 @@ class EvolutionLoop:
                 )
                 self.state.stage(key, previous)
             return previous
-        session_id = f"{self.experiment}-{self.arm}-{identity}"
+        session_id = self.evolver_session_id(identity)
         work = working_copy(parent, self.directory / "working" / identity)
         session = self.logs / "sessions" / identity
         session.mkdir(parents=True)
@@ -448,6 +461,10 @@ class EvolutionLoop:
         if self.arm in {"A3-native", "A3-loop"}:
             from evolution.a3 import A3Round
 
+            if self.manifest.get("qualification_coreset"):
+                from evolution.pilot import QualificationA3Round
+
+                return await QualificationA3Round(self).run()
             return await A3Round(self).run()
         finished_key = f"finished-{self.iteration}"
         previous = self.state.stage(finished_key)
@@ -652,7 +669,6 @@ class EvolutionLoop:
                 "sealed_measurement": sealed_metrics,
             },
         )
-        self.state.stage(finished_key, summary)
         # A unique durable stage prevents duplicates; resume repairs this
         # append if interrupted between the DB checkpoint and append.
         self.write_summary(summary)
@@ -668,7 +684,31 @@ class EvolutionLoop:
             )
             if json.loads(r["spec"])["iteration"] == self.iteration
         ]
-        summary["standing_metrics"] = standing_metrics(rows)
+        private_fields = {
+            "sealed_measurements",
+            "sealed_preference_status_counts",
+            "rollouts",
+            "physical_trials",
+        }
+        private_summary = dict(summary)
+        if private_fields.intersection(summary):
+            atomic_json(
+                self.evaluator.private / f"summary-i{self.iteration}.json",
+                private_summary,
+            )
+            for field in private_fields:
+                summary.pop(field, None)
+        search_rows = [r for r in rows if r.get("partition") == "search"]
+        if "rollouts" in private_summary:
+            summary["search_rollouts"] = sum(
+                not r.get("infrastructure_attempt") for r in search_rows
+            )
+        if "physical_trials" in private_summary:
+            summary["search_physical_trials"] = len(search_rows)
+        summary["standing_metrics"] = standing_metrics(
+            search_rows
+        )
+        summary["standing_metrics_partition"] = "search"
         self.state.stage(f"finished-{self.iteration}", summary)
         from evolution.behavior import claim_report
 
@@ -687,7 +727,7 @@ class EvolutionLoop:
             {
                 "arm": self.arm,
                 "iteration": self.iteration,
-                "standing_metrics": summary["standing_metrics"],
+                "standing_metrics": standing_metrics(rows),
                 "claimed_without_ran": claim_report(claims),
                 "partitions": {
                     part: standing_metrics(
@@ -785,45 +825,53 @@ class EvolutionLoop:
             if fixed_plan is not None and fixed_plan != expected:
                 raise ValueError("Control allocation changed on resume")
             self.state.stage(plan_key, expected)
-            produced = []
-            for index in expected:
-                if index not in existing:
-                    scheduled_specs = [
-                        item
-                        for stored in self.state.db.execute(
-                            "SELECT spec FROM trials"
+            control_slots = asyncio.Semaphore(
+                getattr(self.evaluator, "concurrency", 1)
+            )
+
+            async def produce(index):
+                async with control_slots:
+                    if index not in existing:
+                        scheduled_specs = [
+                            item
+                            for stored in self.state.db.execute(
+                                "SELECT spec FROM trials"
+                            )
+                            if (item := json.loads(stored["spec"]))
+                            and (item["partition"], item["task"])
+                            == (partition, task)
+                        ]
+                        physical = sum(
+                            not item.get("infrastructure_attempt")
+                            for item in scheduled_specs
                         )
-                        if (item := json.loads(stored["spec"]))
-                        and (item["partition"], item["task"])
-                        == (partition, task)
-                    ]
-                    physical = sum(
-                        not item.get("infrastructure_attempt")
-                        for item in scheduled_specs
-                    )
-                    already_scheduled = any(
-                        item["replicate"] == index
-                        and not item.get("infrastructure_attempt")
-                        for item in scheduled_specs
-                    )
-                    if physical >= count and not already_scheduled:
-                        raise ValueError(
-                            "C-TTS allocation exhausted by "
-                            "infrastructure retries"
+                        already_scheduled = any(
+                            item["replicate"] == index
+                            and not item.get("infrastructure_attempt")
+                            for item in scheduled_specs
                         )
-                    new = await self.evaluator.batch(
-                        seed,
-                        partition,
-                        f"control-{task}-{index}",
-                        1,
-                        tasks=[task],
-                        judge=partition == "search",
-                        replicate_start=index,
-                    )
-                    if len(new) != 1 or new[0]["replicate"] != index:
-                        raise ValueError("Control rollout identity mismatch")
-                    existing[index] = new[0]
-                produced.append(existing[index])
+                        if physical >= count and not already_scheduled:
+                            raise ValueError(
+                                "C-TTS allocation exhausted by "
+                                "infrastructure retries"
+                            )
+                        new = await self.evaluator.batch(
+                            seed,
+                            partition,
+                            f"control-{task}-{index}",
+                            1,
+                            tasks=[task],
+                            judge=partition == "search",
+                            replicate_start=index,
+                        )
+                        if len(new) != 1 or new[0]["replicate"] != index:
+                            raise ValueError(
+                                "Control rollout identity mismatch"
+                            )
+                        existing[index] = new[0]
+                    return existing[index]
+
+            produced = await asyncio.gather(*(produce(i) for i in expected))
             physical = sum(
                 (spec["partition"], spec["task"]) == (partition, task)
                 and (not spec.get("infrastructure_attempt"))
@@ -1008,7 +1056,6 @@ class EvolutionLoop:
             self.evaluator.private / f"control-t{self.iteration}.json",
             selected,
         )
-        self.state.stage(finished_key, summary)
         self.write_summary(summary)
         return summary
 

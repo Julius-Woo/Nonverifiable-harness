@@ -185,6 +185,7 @@ async def recover_sessions(loop):
         initial = dict(result)
         reason = result.get("reason", "")
         if reason not in {
+            "evolver_scope_collision",
             "interrupted_evolver_no_retry",
             "Backend failed: Prompt exceeds conservative short-context limit",
             "Backend failed: TimeoutError",
@@ -273,6 +274,7 @@ async def recover_sessions(loop):
         if (
             "TimeoutError" in reason
             or reason == "interrupted_evolver_no_retry"
+            or reason == "evolver_scope_collision"
         ):
             observed_steps = {r.get("step") for r in observations}
             for reply in completed:
@@ -320,6 +322,7 @@ async def recover_sessions(loop):
             if (
                 "TimeoutError" in reason
                 or reason == "interrupted_evolver_no_retry"
+                or reason == "evolver_scope_collision"
             ):
                 tags = CallTags(
                     "P1.3",

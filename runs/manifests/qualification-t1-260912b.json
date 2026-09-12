@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "experiment": "pilot-t1-260912",
+  "experiment": "qualification-t1-260912b",
   "purpose": "pilot",
   "prereg_frozen": true,
   "ratifications": {
@@ -63,7 +63,7 @@
   ],
   "a3_loop_hook": "evolution.a3:A3Round",
   "a3": {
-    "k": 10,
+    "k": 6,
     "G": 3,
     "N": 3,
     "theta": 0.7,
@@ -75,28 +75,31 @@
     "floor_semantics": "raw_score_before_max_normalization"
   },
   "seeds": [
-    1,
-    2
+    1
   ],
-  "T": 6,
+  "T": 1,
   "candidates_per_arm": {
     "A0": 2,
     "A1": 2,
     "A2": 2,
     "A3-loop": 3
   },
-  "partition_limits": {},
+  "partition_limits": {
+    "search": 6,
+    "anchor": 3,
+    "sealed": 3
+  },
   "evidence_version": "v3",
   "prompt_version": "judge-v3",
   "budget": {
-    "estimate_usd": 450,
-    "guard_usd": 650,
+    "estimate_usd": 40,
+    "guard_usd": 60,
     "wall_clock_hours": 120,
     "rollout_usd": 1,
     "evolver_session_usd": 5,
     "unit_rollout_estimate_usd": 0.112
   },
-  "concurrency": 4,
+  "concurrency": 3,
   "cache_policy": "unique_user_metadata",
   "cache_partition_attestation": null,
   "entry_evidence": {
@@ -114,7 +117,7 @@
     }
   },
   "section5_artifact": "runs/r8b-validation-260910-final/section5_matrix.json",
-  "run_kind": "pilot",
+  "run_kind": "qualification",
   "blinding": true,
   "memory_min_available_gib": 6,
   "claimed_without_ran_window_steps": 5,
@@ -232,13 +235,30 @@
     "sha256": "a3796dd7ed0a7f384e5474d684f38762306eb795e7d52a5abce79e3080b340c2"
   },
   "split_sha256": "a3796dd7ed0a7f384e5474d684f38762306eb795e7d52a5abce79e3080b340c2",
-  "qualification": {
-    "manifest_path": "runs/manifests/qualification-t1-260912b.json",
-    "manifest_sha256": "65548d26e600d115be36f511210aaeea1234babd77bade73fcca9beb0c39d164",
-    "result_path": "logs/evolution/qualification-t1-260912b/qualification.json"
+  "parent_manifest": {
+    "path": "runs/manifests/qualification-t1-260912.json",
+    "sha256": "016511fc1c4978bda89149505f0df63a9af7e819e82055b2c6f44d27fd3e397b"
   },
+  "qualification_coreset": {
+    "k": 6,
+    "G": 3,
+    "N": 3,
+    "rule": "min(10, available search tasks)",
+    "prereg_record": "QUAL-CORESET",
+    "scope": "qualification infrastructure gate only; pilot remains k=10 on 18 search tasks"
+  },
+  "review_deviation": {
+    "timestamp": "2026-09-12T04:58:28.763379+00:00",
+    "flag": "--allow-pending-review",
+    "discard_on_blocking_finding": true,
+    "prereg_record": "R10-RESTART / QUAL-R10-RECHECK",
+    "review_status": "R10 re-check pending"
+  },
+  "qualification_revision": "r10-live-v4-export-counters",
   "memory_resume_available_gib": 8,
   "grading_boundary": "live-original-image-runtime-v3",
+  "discarded_run_cost_usd_at_restart": 4.274146,
   "controller_root": "oracle/qualification-t1-260912b/controller-r10-live-v6",
-  "manifest_sha256": "c4f2e76b207cc262debc17f3d8341427f05aabcc039e5aa577b643f0bfa2569c"
+  "carried_guarded_cost_usd_at_freeze": 59.64372272,
+  "manifest_sha256": "65548d26e600d115be36f511210aaeea1234babd77bade73fcca9beb0c39d164"
 }

@@ -547,11 +547,18 @@ async def test_control_full_loop_matches_logical_allocations(
     )
     try:
         result = await loop.control(comparator)
-        assert result["rollouts"] == 12 and result["edited"] is False
+        assert "rollouts" not in result and result["edited"] is False
+        private_summary = json.loads(
+            (loop.evaluator.private / "summary-i1.json").read_text()
+        )
+        assert private_summary["rollouts"] == 12
         assert result["scale"] == "signed_preference"
         assert result["J_t"] == 0.5
         assert result["allocation_unit"] == "logical_rollouts"
-        assert result["physical_trials"] == (12 if retry_index is None else 15)
+        assert "physical_trials" not in result
+        assert private_summary["physical_trials"] == (
+            12 if retry_index is None else 15
+        )
         assert "common_gap" not in result["allocations"]["search"]["metrics"]
         assert loop.state.db.execute("SELECT count(*) FROM trials").fetchone()[
             0

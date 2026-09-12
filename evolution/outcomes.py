@@ -31,6 +31,9 @@ def termination(records, *, result=None, execution=None):
     """
     result, execution = result or {}, execution or {}
     exception = result.get("exception_info") or {}
+    if grader_failure(result, records, execution):
+        exception = {}
+        result = {**result, "exception_info": None}
     error_type = exception.get("exception_type") or ""
     message = exception.get("exception_message") or ""
     stack = exception.get("exception_traceback") or ""
@@ -112,7 +115,9 @@ def termination(records, *, result=None, execution=None):
     elif failed_terminal and in_exec:
         reason = "executor_failure"
     elif explicit_reason in REASONS - {
-        "unknown", "normal_finish", "no_tools_or_inability"
+        "unknown",
+        "normal_finish",
+        "no_tools_or_inability",
     }:
         reason = explicit_reason
     elif failed_terminal:
@@ -200,3 +205,29 @@ def api_timeout_only(execution, records=()):
             for e in records
         )
     )
+
+
+def grader_failure(result, records=(), execution=None):
+    """Identify grader failures using trusted phase provenance."""
+    execution = execution or {}
+    exception = result.get("exception_info") or {}
+    error = exception.get("exception_type", "")
+    stack = exception.get("exception_traceback", "")
+    if error == "FrozenGraderRetryExhausted":
+        return True
+    normal = execution.get("status") == "finished" or any(
+        r.get("kind") == "termination" and r.get("status") == "finished"
+        for r in records
+    )
+    verifier_phase = bool(
+        (result.get("verifier") or {}).get("started_at")
+    ) or any(
+        marker in stack
+        for marker in (
+            "verifier.verify(",
+            "_run_shared_verifier(",
+            "harbor/verifier/",
+            "evolution/grading.py",
+        )
+    )
+    return bool(normal and error and verifier_phase)

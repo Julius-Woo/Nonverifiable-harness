@@ -11,15 +11,32 @@ from harness.ledger import append_jsonl, utc_now
 
 
 class HarborAdmission:
-    def __init__(self, root, trial_id):
+    def __init__(self, root, trial_id, limit=4, scope=None):
         self.root, self.trial_id = Path(root), trial_id
-        self.directory = self.root / "logs/evolution-admission"
+        self.limit = min(4, max(1, limit))
+        self.scope = scope
+        self.shared_directory = self.root / "logs/evolution-admission"
+        self.shared_directory.mkdir(parents=True, exist_ok=True)
+        if scope and Path(scope).name != scope:
+            raise ValueError("Admission scope must be an experiment name")
+        self.directory = (
+            self.shared_directory / scope if scope else self.shared_directory
+        )
         self.directory.mkdir(parents=True, exist_ok=True)
         self.handles = [
             (self.directory / f"slot-{i}.lock").open("a+") for i in range(4)
         ]
         self.owned = None
-        self.gate = (self.directory / "admission.lock").open("a+")
+        self.gate = (self.shared_directory / "admission.lock").open("a+")
+
+    def memory_ready(self, memory):
+        """Shared hysteresis: pause below 6 GiB; resume strictly above 8."""
+        marker = self.shared_directory / "memory-paused"
+        if memory < 6:
+            marker.touch(exist_ok=True)
+        elif memory > 8:
+            marker.unlink(missing_ok=True)
+        return not marker.exists()
 
     async def __aenter__(self):
         started = time.monotonic()
@@ -51,11 +68,31 @@ class HarborAdmission:
                         claimed.add(handle.read().strip())
                     else:
                         fcntl.flock(handle, fcntl.LOCK_UN)
+                total_containers = len(own_containers)
+                if self.scope:
+                    # Other experiments have independent limits. Keep the
+                    # shared memory guard and a seven-task host ceiling for
+                    # qualification (three) plus calibration (four).
+                    configs = self.root / "logs/evolution" / self.scope
+                    own_containers = {
+                        identity
+                        for identity in own_containers
+                        if any(configs.glob(f"*/configs/{identity}.json"))
+                    }
+                    foreign = False
                 # Count earlier workers and orphaned task containers.
                 untracked = own_containers - claimed
-                limit = max(0, (2 if foreign else 4) - len(untracked))
-                if memory >= 6 and len(claimed | untracked) < (
-                    2 if foreign else 4
+                limit = max(
+                    0,
+                    (min(2, self.limit) if foreign else self.limit)
+                    - len(untracked),
+                )
+                host_ready = not self.scope or total_containers < 7
+                if (
+                    host_ready
+                    and self.memory_ready(memory)
+                    and len(claimed | untracked)
+                    < (min(2, self.limit) if foreign else self.limit)
                 ):
                     for handle in self.handles[:limit]:
                         try:
@@ -72,9 +109,12 @@ class HarborAdmission:
                             {
                                 "ts": utc_now(),
                                 "trial_id": self.trial_id,
+                                "scope": self.scope,
                                 "available_gib": memory,
                                 "foreign_tb2": foreign,
-                                "global_limit": 2 if foreign else 4,
+                                "global_limit": min(2, self.limit)
+                                if foreign
+                                else self.limit,
                                 "untracked_own_containers": len(untracked),
                                 "wait_s": time.monotonic() - started,
                             },

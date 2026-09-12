@@ -31,9 +31,17 @@ class State:
     def encode(self, identity, value):
         def contains_private(item):
             if isinstance(item, dict):
-                return item.get("partition") in {"anchor", "sealed"} or any(
-                    contains_private(v) for v in item.values()
-                )
+                return (
+                    item.get("partition") in {"anchor", "sealed"}
+                    or any(
+                        k in item
+                        for k in (
+                            "sealed_measurements",
+                            "sealed_measurement",
+                            "O_t_sealed",
+                        )
+                    )
+                ) or any(contains_private(v) for v in item.values())
             return isinstance(item, list) and any(
                 contains_private(v) for v in item
             )

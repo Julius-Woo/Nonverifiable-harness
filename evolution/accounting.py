@@ -500,6 +500,12 @@ class AccountedBackend(OpenAIAPIBackend):
 
 
 def cost_summary(ledger, audit, *, arm=None, iteration=None, run_id=None):
+    def raw_key(value):
+        return str(Path(value).resolve()) if value else None
+
+    def call_key(record):
+        return record.get("call_id") or raw_key(record.get("raw_dir"))
+
     def read_cost_rows(path):
         rows, damaged = [], 0
         lines = (
@@ -532,27 +538,28 @@ def cost_summary(ledger, audit, *, arm=None, iteration=None, run_id=None):
     receipts_by_raw = {}
     for path in (Path(audit).parent / "requests").glob("*/receipt.json"):
         receipt = json.loads(path.read_text())
-        receipts_by_raw.setdefault(receipt["backend_raw_dir"], []).append(
-            receipt["ledger_record"]
-        )
-    recorded_raw = {r.get("raw_dir") for r in records}
+        key = call_key(receipt["ledger_record"])
+        receipts_by_raw.setdefault(key, []).append(receipt["ledger_record"])
+    recorded_raw = {call_key(r) for r in records}
     records.extend(
         receipts[0]
         for raw, receipts in receipts_by_raw.items()
         if raw not in recorded_raw
     )
     for row in records:
-        receipts = receipts_by_raw.get(row.get("raw_dir"), [])
+        receipts = receipts_by_raw.get(call_key(row), [])
         if not receipts:
             continue
         known = sum(
             r.get("known_response_cost_usd") or r.get("cost_usd") or 0
             for r in receipts
         )
-        existing = (
-            row.get("cost_usd") or row.get("known_response_cost_usd") or 0
-        )
-        if known > existing:
+        if any(
+            r.get("known_response_cost_usd") is not None
+            or r.get("cost_usd") is not None
+            for r in receipts
+        ):
+            row["cost_usd"] = known
             row["known_response_cost_usd"] = known
         for key in (
             "input_tokens",
@@ -574,7 +581,7 @@ def cost_summary(ledger, audit, *, arm=None, iteration=None, run_id=None):
 
     records = list(
         {
-            r.get("raw_dir") or r.get("call_id") or str(i): r
+            call_key(r) or str(i): r
             for i, r in enumerate(records)
             if included(r)
         }.values()

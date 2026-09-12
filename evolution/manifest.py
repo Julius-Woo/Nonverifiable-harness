@@ -147,7 +147,12 @@ def validate(value):
     ]:
         if type(n) is not int or n <= 0:
             raise ValueError("Counts must be positive integers")
-    if value["concurrency"] != 4 or task["max_calls"] != 24:
+    qualification_concurrency = (
+        value.get("run_kind") == "qualification" and value["concurrency"] == 3
+    )
+    if (value["concurrency"] != 4 and not qualification_concurrency) or task[
+        "max_calls"
+    ] != 24:
         raise ValueError("Harbor concurrency must be 4 and model-call cap 24")
     if len(set(value["seeds"])) != len(value["seeds"]) or len(
         set(value["arms"])
@@ -168,6 +173,18 @@ def validate(value):
             if value.get("a3_loop_hook") != "evolution.a3:A3Round":
                 raise ValueError("Unknown A3 implementation hook")
             expected = defaults("check")["a3"]
+            if value.get("qualification_coreset"):
+                allocation = value["qualification_coreset"]
+                search_limit = value.get("partition_limits", {}).get("search")
+                if (
+                    value.get("run_kind") != "qualification"
+                    or type(search_limit) is not int
+                    or not 1 <= search_limit < 10
+                    or allocation.get("k") != search_limit
+                    or allocation.get("prereg_record") != "QUAL-CORESET"
+                ):
+                    raise ValueError("Invalid qualification coreset deviation")
+                expected["k"] = search_limit
             legacy = {
                 **expected,
                 "embedding": "BAAI/bge-large-en-v1.5",

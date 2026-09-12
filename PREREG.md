@@ -244,3 +244,163 @@ All former open/drafting choices are resolved here or in the fixed rules cited b
 **[S/D]** DEV-01/02 are mini/native lineages in [data/calibration_run_manifest.json](data/calibration_run_manifest.json), `operator_replacement_exceptions`, spanning jobs `calibration-mini-native-260910`, `-resume`, `-recovery2`. Date above is the reconciliation entry, not an invented attempt timestamp. Preserve original timestamps/costs; only finalized replacements occupy scored slots. The 260912 housekeeping decision accepts these historical exceptions with **no further action and no new retry authorization**.
 
 **[D]** R10 reviews the frozen manifest, this PREREG and Section 5 log. Qualification/hash evidence remains execution work; this document does not certify it. Archived calibration under L1/strict labels stays historical; any L1'/AD13 re-expression preserves scores/raw labels/retry history and is logged, with no retroactive feedback changes. A3's five-repeat v3 fixed-reference H5 noise control is not supplied by the censored native/BGE run; record availability separately from the clean native anchor, which is not a pilot gate. Missing noise statistics make the affected H5 threshold result non-estimable, never zero or borrowed A1/A2 tau.
+
+
+**2026-09-12T04:45:59.594273+00:00 / QUAL-SCOPE:** Leader-directed pre-start deviation: qualification remains all eight ratified arms, T=1, seed=1; full split (18 search / 6 anchor / 6 sealed, nominal USD 145.152 solver projection) becomes the first 6 search / 3 anchor / 3 sealed tasks in `data/tb2_split.json` file order. Qualification hard ceiling USD 30 becomes USD 60 inside the unchanged pre-pilot USD 120 envelope (A3 calibration 60 + qualification 60). Parent `runs/manifests/qualification-t1-260912.json` SHA-256 `016511fc1c4978bda89149505f0df63a9af7e819e82055b2c6f44d27fd3e397b`. Affects qualification only; no qualification results observed. The ten-task A3 coreset incompatibility is awaiting an explicit leader decision.
+
+**2026-09-12T04:45:59.594346+00:00 / QUAL-EVIDENCE:** Leader-directed evidence assembly: P1.8 references the exact PREREG blob at freeze commit b59a1e8 and reconciliation; P1.9 references completed-run resume, changed-condition refusal, admission/memory tests, Section 5 and an offline final-verification inventory; P1.11 references r8b receipt reconciliation and judges v3 accounting verification/report. The r8b final_verification.json filename did not exist; its inventory was generated offline from the existing validation_report.json and completed_resume.json, with no paid or Docker calls. This is historical evidence, not invented new execution. Existing unknown charges and provider-cache limitation remain disclosed. No qualification results observed.
+
+**2026-09-12T04:45:59.594350+00:00 / QUAL-RESOURCES:** Leader-directed shared-host setting: qualification Harbor concurrency 4 becomes 3 while W13 calibration may run up to four containers; retain MemAvailable admission threshold 6 GiB and pause below it. Budget/deadline reservations remain durable across resume. Applies to all qualification arms; no qualification results observed.
+
+
+**2026-09-12T04:58:19.156568+00:00 / QUAL-CORESET:** Leader-authorized qualification-only deviation: k=min(10, available search tasks)=6, with G=3 and N=3 unchanged. Retain all eight arms, T=1, seed=1, first 6 search / 3 anchor / 3 sealed tasks and USD 60 ceiling. Selection uses the existing difficulty/embedding/DPP procedure with six selected tasks and six-task preference denominators. This is an infrastructure gate, not a science run; pilot remains k=10 on 18 search tasks. Adapter lives in evolution/pilot.py; evolution/a3*.py is unchanged by this task. No qualification results observed.
+
+
+**2026-09-12T04:58:28.763379+00:00 / QUAL-R10:** Leader-authorized qualification launch while R10 is pending, using `--allow-pending-review`; original ordering required completed review. Schedule pressure; affects all eight qualification arms only. Discard these results if R10 reports an isolation- or label-blocking finding. No qualification results observed at authorization.
+
+
+**2026-09-12T05:43:03.920179+00:00 / R10-LIVE:** User-directed R10 correction before the new qualification revision: live task state with original-image read-only runtime mounts, clean environment/no shell startup hooks, new root-only hidden-test and receipt tmpfs mounts, stopped nonservice processes and logged kept services. The two failing Docker controls yield reward 0 without executing planted hooks/binaries or leaking hidden content; the reference qemu-alpine-ssh live service yields reward 1. Root/kept-service residual channels and bounded canary/descriptor auditing are documented in docs/evolution.md. Verifier-declared OS packages absent from the original image are staged separately from signed base-release packages in a controller-owned read-only dependency bundle, with content hashes; apt bootstrap consumes that bundle and Python/uv uses fresh private storage. Expired Debian mirror indices required disabling the Valid-Until check, and base-release selection avoids a missing security-mirror binary. System runtime directories remain read-only; original test assertions and reward script are unchanged. No CLI model calls.
+
+**R10-LABEL / R10-BLIND:** Following normal solver completion, exhausted verifier failures are oracle=null, excluded=true, reason=grader_failure, separately counted; no grader diagnostic becomes solver termination or judge/evolver evidence. Genuine solver failures remain failures. Public standing metrics/stdout are search-only; all-partition and held-out totals, including A3 sealed measurement counts and audit counts, remain oracle-side. Infrastructure-excluded A3 attempts and fixed references cannot be ranked or diagnosed; replicate-zero references are not replaced. C-TTS selector ties use replicate ID, then stable identity.
+
+**R10-08 / MEMORY-8:** The user explicitly specifies pause below 6 GiB and resume strictly above 8 GiB, superseding the frozen body's 10 GiB resume threshold for this correction. Shared paused-state hysteresis is persisted; qualification Harbor concurrency remains at most three while W13 runs concurrently. Guards/deadlines and the $60 qualification cap remain unchanged.
+
+**R10-06 / EXACT-SCHEDULE:** Retain and disclose the implemented schedule instead of silently rewriting measurements. Ordinary A0/A1/A2: t=0 has sealed avg@2; the iteration-1 fresh search baseline supplies the seed-search observation, without a separately materialized t=0 public checkpoint. Every iteration refreshes a one-attempt search baseline instead of reusing the preceding checkpoint, adds one smoke rollout per source-valid proposal, then candidate-search rollouts, optional fresh paired avg@2 confirmation, fresh retained-harness search, and sealed avg@2. Under acceptance=improve, no accepted-candidate anchor-monitoring batch is dispatched. A3-loop keeps its seed prior, separate seed search and sealed checkpoint, G=3 group, three proposal searches, and fresh retained search/sealed checkpoint; it also omits anchor monitoring under improve. Controls match realized logical allocations incrementally by partition, use disjoint parity pools for sealed avg@2, and have no separate t=0 checkpoint. For qualification S=6/Z=3/k=6/T=1: nominal ordinary allocation=6 + [6*(6+2)+2+6]=62 each; A3=18+[6*(3+3)+6+6]=66; four matched controls double the total to 504 logical rollouts, nominal solver projection $56.448. Source-invalid/smoke-invalid proposals or absent promotion candidates leave unused allocations, logged explicitly; no missing control observations are invented. Pilot unchanged T=6/seeds=2 nominal implemented schedule remains 13,872 rollouts before retries, unfunded under REC-01. A3 H5 remains non-estimable (R10-09).
+
+**R10-RESTART / QUAL-R10-RECHECK:** Discard the pre-R10 qualification under its existing condition. Preserve its artifacts in oracle/qualification-t1-260912b/discarded-before-r10 and its original cost ledger/guard (budget-accounted $1.82650912 at archive time, including unresolved reservations). Execute fresh revision r10-live-v1 of the same all-eight-arm, T=1, one-seed, 6/3/3, k=6, $60 blinded qualification. The existing --allow-pending-review exception is explicitly applied to the corrected condition while the launcher reports R10 re-check pending. Discard the corrected run too if the re-check establishes a remaining isolation/label blocker. This exception does not authorize a pilot launch.
+
+**R10-10 / REFREEZE:** Both active manifests are regenerated after the corrections. Their exact preceding bytes and complete previous input_hashes maps are preserved in runs/manifests/r10-before. Previous manifest hashes and every changed previously pinned input hash follow; newly introduced runtime helper modules are included in the regenerated input_hashes. The original full-split qualification manifest remains historical.
+
+Previous `qualification-t1-260912b.json`: file SHA-256 `5928d44df847e330a178ce1029595b06e7464bf9f1eb07c5b0095f6c093058f9`; embedded manifest SHA-256 `dbe22e060b76197e0a3c17456fbf2e53e7022321c773a09e58d6460c06a52640`; archive `runs/manifests/r10-before/qualification-t1-260912b.json`.
+
+| Previously pinned input | Previous SHA-256 |
+| --- | --- |
+| `PREREG.md` | `469daccc66104a3d8cf8a7ffe1c8db1e1f0575f5256634f977b91002c59c7d33` |
+| `evolution/a3.py` | `78af288d88795283fbb621d55212001ade21615912a345e60ab010fd79cb4bb7` |
+| `evolution/a3_control.py` | `628760feed53dc104525e84739a365e7c50f4443a39ce41d11ac00ba8d80d80e` |
+| `evolution/a3_inspection.py` | `ffb19bc05de82bcbf4043f06ef4f556519bf4a913c03f4d58435666d027664c0` |
+| `evolution/a3_metrics.py` | `4a74843b6efaa136c510d6c7e6088e751f9a14350c805e100c67a4ca2933de1d` |
+| `evolution/a3_native.py` | `72cd94bca479e802722b57055768b642f1a9b3af48a447b64fbba00e813dbdc6` |
+| `evolution/a3_operators.py` | `a022704da32ef265a6e05e3d0bc139073ccad4b19bdd4befd815f151879a1d18` |
+| `evolution/a3_report.py` | `748e6d16a37a09327a33befe6babc8a78e89bc46c34dbbd7a2a65f0990d72b26` |
+| `evolution/admission.py` | `61ea8d2b2464217d2d789ddf263ca3e7fcaaea53927d84fe753f1975491ef0fc` |
+| `evolution/behavior.py` | `ffff40d74dfb4dab8d369fbc8bc273fccd93f7c374af5c307788f0ecc0e2fd52` |
+| `evolution/evaluation.py` | `074f1383a15c7f30214898116271ad6b6ec13557172d236681eed16cd7c0bbcf` |
+| `evolution/grading.py` | `042a9d1e47f7febdff46320382ec1b25736dd63182be8e14433a3d2e7b33ed79` |
+| `evolution/harbor_agent.py` | `c5eadb54cb0cb7c536827e8bc120d7c2d892d06a156d47b56dd881701f7117e2` |
+| `evolution/loop.py` | `8f66a63b50eb19b525b0a4b15e6c6c24ee34e52c512a8f1728efab68e417faf1` |
+| `evolution/outcomes.py` | `0135754757948ad4f9d206a06515caf7376a2b441ef6afe8379a77754631b90e` |
+| `evolution/pilot.py` | `f558c187a915d1a299533f5f22a3d29ee0e4a878c750527a53f775d10fa129f1` |
+| `evolution/state.py` | `f311056de106f88a8b5cbdddcdf86c2273d2443ce7fc0c5df115cb9f146f2bab` |
+| `evolution/trial_worker.py` | `c38b3a738461073bd13578c14dcb0c82b9ded393a9876c038f38d60bc4c4fd6f` |
+| `scripts/run_pilot.py` | `b9bc7cfbd88c374802232336b1e4591604ea29491408eea6214c45a1596a984c` |
+
+Previous `pilot-t1-260912.json`: file SHA-256 `0b7cc8a12ba1cd8778cab6d16482a0ed65c629d7eec905f01d3ceb90cf7afa62`; embedded manifest SHA-256 `bd773d21c2dd01b045d202a4039aec77dd4243e3a95a64c479bec3da9bf9cc50`; archive `runs/manifests/r10-before/pilot-t1-260912.json`.
+
+| Previously pinned input | Previous SHA-256 |
+| --- | --- |
+| `PREREG.md` | `a0b9b4ce161eacf7f7a791f042885d02ecb86478f8acf0f0c628711f9bf12d88` |
+| `evolution/a3.py` | `78af288d88795283fbb621d55212001ade21615912a345e60ab010fd79cb4bb7` |
+| `evolution/a3_control.py` | `628760feed53dc104525e84739a365e7c50f4443a39ce41d11ac00ba8d80d80e` |
+| `evolution/a3_inspection.py` | `ffb19bc05de82bcbf4043f06ef4f556519bf4a913c03f4d58435666d027664c0` |
+| `evolution/a3_metrics.py` | `4a74843b6efaa136c510d6c7e6088e751f9a14350c805e100c67a4ca2933de1d` |
+| `evolution/a3_native.py` | `72cd94bca479e802722b57055768b642f1a9b3af48a447b64fbba00e813dbdc6` |
+| `evolution/a3_operators.py` | `a022704da32ef265a6e05e3d0bc139073ccad4b19bdd4befd815f151879a1d18` |
+| `evolution/a3_report.py` | `bfdec928a0b8aae2d890c4178cab63748627a82f03003d0589b79a725c0c8f5d` |
+| `evolution/admission.py` | `61ea8d2b2464217d2d789ddf263ca3e7fcaaea53927d84fe753f1975491ef0fc` |
+| `evolution/behavior.py` | `ffff40d74dfb4dab8d369fbc8bc273fccd93f7c374af5c307788f0ecc0e2fd52` |
+| `evolution/evaluation.py` | `074f1383a15c7f30214898116271ad6b6ec13557172d236681eed16cd7c0bbcf` |
+| `evolution/grading.py` | `042a9d1e47f7febdff46320382ec1b25736dd63182be8e14433a3d2e7b33ed79` |
+| `evolution/harbor_agent.py` | `c5eadb54cb0cb7c536827e8bc120d7c2d892d06a156d47b56dd881701f7117e2` |
+| `evolution/loop.py` | `03093b65431caab1719906166377c475a32da21b929cae71b6b1156b55111c2f` |
+| `evolution/manifest.py` | `ffdf2c7ddaac314b5be864a44add0ebe76427f8cd9dee2be7621622345226604` |
+| `evolution/outcomes.py` | `0135754757948ad4f9d206a06515caf7376a2b441ef6afe8379a77754631b90e` |
+| `evolution/pilot.py` | `7ac00978b0240930d8cbfa5895be1c6e7371e15fa94356af3f401dde7389eb0d` |
+| `evolution/state.py` | `f311056de106f88a8b5cbdddcdf86c2273d2443ce7fc0c5df115cb9f146f2bab` |
+| `evolution/trial_worker.py` | `c38b3a738461073bd13578c14dcb0c82b9ded393a9876c038f38d60bc4c4fd6f` |
+| `scripts/run_pilot.py` | `99dcfa4d322fb6c2ffa30f76037c3941006eaed8393ac0ff9fc4b4dc87f7d50f` |
+
+
+**2026-09-12T05:57:05.613393+00:00 / R10-ISOLATED-SOURCE:** W13 concurrently changed evolution/a3_report.py after the first R10 re-freeze. The v1 qualification was drained before its first search baseline; its artifacts are preserved under oracle/qualification-t1-260912b/discarded-r10-v1 and no v1 measurement is used in the replacement qualification. Separately, runtime setup found an original task image without Python. A separately staged helper interpreter now runs the controller mount helper without modifying the original-image system directories used for verification. Unpaid setup checks pass on all twelve subset images, and all eleven R10 regressions pass including newly constructed qemu live-service reward 1. The corrected replacement is revision r10-live-v2-isolated, with identical arms/T/seed/split/k/budget/blinding. Its immutable controller source copy lives under runs/qualification-t1-260912b/controller-r10-live-v2; the launcher verifies that copy and re-execs there before checks or dispatch, so concurrent development cannot alter qualified code. Public/oracle/feedback/cost paths remain in the original workspace. C-TTS now dispatches independent preassigned replicates concurrently up to the configured Harbor limit (three for qualification), retaining ordered collection, lowest-replicate ties, disjoint pools and unchanged logical allocation. Guards, deadlines, and every discarded charge remain unchanged; guarded cumulative spending at this second restart is USD 2.36176712. The --allow-pending-review exception remains qualification-only, with R10 re-check pending.
+
+Previous `qualification-t1-260912b.json` v1: file SHA-256 `8200125b6f611aa43e22b4e045cbcf70de495b95430b58a4729c5bca325eda64`; embedded SHA-256 `d9959f7e019d6dd2e370429597578f073dcff59bd510dd132b32c3070d7bf53d`; complete previous input hashes archived at `runs/manifests/r10-v1/qualification-t1-260912b.json`.
+
+| Changed input | Previous SHA-256 |
+| --- | --- |
+| `PREREG.md` | `2ea8c679078eff8a9cbbe15b0fa6fae9552c4dfce5f2f47515a0e3ec0f639111` |
+| `evolution/a3_report.py` | `b5931c5c61c1dd5d3d584177e4260469b7ab6a671aaabc7d29ea2baa88c59784` |
+| `evolution/grading.py` | `3bf69be70a251beda3de27fdef0260c51103274a168152ffc87d3deb6f837ee6` |
+| `evolution/loop.py` | `5b00c9a56a8a7c701e8c2ca30622da98777c0fa2d2e9559b9494ac045a0729f8` |
+| `evolution/verifier_dependencies.py` | `b4c708ae186ede0e365f03944308475427fbad88736fd40b4895cbf6d5175f3b` |
+| `scripts/run_pilot.py` | `4c6df9d7b5ed4b3561608fd0fe9f2eb6140a4d061cc3334e8afa40edaf77ac01` |
+
+Previous `pilot-t1-260912.json` v1: file SHA-256 `79ebd7c93fa4e692abc84b2a46bfb7a4306c326de030c1a5f5111f44a7821423`; embedded SHA-256 `ea18bb05c4c76ee3dd06163d2192c1a1f1294d05762de436df07f7b855736bfc`; complete previous input hashes archived at `runs/manifests/r10-v1/pilot-t1-260912.json`.
+
+| Changed input | Previous SHA-256 |
+| --- | --- |
+| `PREREG.md` | `2ea8c679078eff8a9cbbe15b0fa6fae9552c4dfce5f2f47515a0e3ec0f639111` |
+| `evolution/a3_report.py` | `b5931c5c61c1dd5d3d584177e4260469b7ab6a671aaabc7d29ea2baa88c59784` |
+| `evolution/grading.py` | `3bf69be70a251beda3de27fdef0260c51103274a168152ffc87d3deb6f837ee6` |
+| `evolution/loop.py` | `5b00c9a56a8a7c701e8c2ca30622da98777c0fa2d2e9559b9494ac045a0729f8` |
+| `evolution/verifier_dependencies.py` | `b4c708ae186ede0e365f03944308475427fbad88736fd40b4895cbf6d5175f3b` |
+| `scripts/run_pilot.py` | `4c6df9d7b5ed4b3561608fd0fe9f2eb6140a4d061cc3334e8afa40edaf77ac01` |
+
+
+**2026-09-12T06:17:07.306250+00:00 / R10-FINAL-EDGE:** Before candidate evaluation, drain and discard v2 (archive oracle/qualification-t1-260912b/discarded-r10-v2). A further R10-02 regression shows that a normal-finish grader exclusion must survive the outer API-infrastructure-replacement wrapper; the wrapper now preserves the replacement's excluded flag and grader_failure reason. A public-artifact audit also refuses symlinks into oracle/ or .env: the intermediate controller source copy contained workspace links under runs/, so it is archived privately, and the final immutable source is under oracle/qualification-t1-260912b/controller-r10-live-v3. No hidden outcome values were read through those links or used in a decision. The final revision r10-live-v3-isolated restarts all arms with fresh rollout identities under the same 6/3/3, T=1, seed=1, k=6, blinding and $60 ceiling. All prior spending remains charged (USD 4.27414648 at restart).
+
+**R10-GUARD-60:** The existing guard computes min(150% of estimate, ceiling); estimate=$30 and ceiling=$60 therefore enforced only $45 despite the explicitly authorized $60 qualification cap. Align the planning estimate to $40, preserving the 150% rule and making the effective cap exactly the already authorized $60. The existing guard row's estimate is updated accordingly; its original start/deadline, $60 ceiling, requests and charges are unchanged. No pilot allocation or limit is changed. This numeric alignment is frozen in both the qualification manifest and the retained guard; logs/r10-guard-alignment.json records before/after values.
+
+Previous `qualification-t1-260912b.json` v2: file SHA-256 `3ab81b1f35c1c515b231e7ba0c589f9785f87ecf2744a0322ba6d23ba80bc6b3`; embedded SHA-256 `aedc6eed41fd4910060ffe2c110e442b3d3d0d86d4312b545efb19576de39a7f`; complete previous input hashes: `runs/manifests/r10-v2/qualification-t1-260912b.json`.
+
+| Changed input | Previous SHA-256 |
+| --- | --- |
+| `PREREG.md` | `0e9c04b5fc5b0168b51ec7b2a3d961d291dc50de47bfa747ff2d10256d387a6f` |
+| `evolution/a3_report.py` | `8adcf7cf72c799e7da163de31c5a33705bb309a9d86fbdaac8490f7d217c086f` |
+| `evolution/evaluation.py` | `29b4ae50d52b7fa660a4da8d09e848fe4287b5ea6826940ed88362d36f33d79c` |
+| `evolution/pilot.py` | `5e2baad03b53e6d43c74cc7d16078697e7a49d5b39e9ca48b6a854ccf20a2bed` |
+
+Previous `pilot-t1-260912.json` v2: file SHA-256 `e5234b7b7efa9262ae13a02d39f83fddd0dcd73482b7d948e7a1fbfb1c55be08`; embedded SHA-256 `333e783db67349248acea9b7103f3870523498218391c9721b69e3649f563312`; complete previous input hashes: `runs/manifests/r10-v2/pilot-t1-260912.json`.
+
+| Changed input | Previous SHA-256 |
+| --- | --- |
+| `PREREG.md` | `0e9c04b5fc5b0168b51ec7b2a3d961d291dc50de47bfa747ff2d10256d387a6f` |
+| `evolution/a3_report.py` | `8adcf7cf72c799e7da163de31c5a33705bb309a9d86fbdaac8490f7d217c086f` |
+| `evolution/evaluation.py` | `29b4ae50d52b7fa660a4da8d09e848fe4287b5ea6826940ed88362d36f33d79c` |
+| `evolution/pilot.py` | `5e2baad03b53e6d43c74cc7d16078697e7a49d5b39e9ca48b6a854ccf20a2bed` |
+
+
+**2026-09-12T06:39:10.117501+00:00 / R10-ADMISSION-SCOPE:** The qualification waited without dispatch while W13 occupied three or four global slots. The former qualification limit of three incorrectly counted calibration workers against it. Admission now scopes the configured three-worker limit to this experiment, preserving shared 6/8 GiB hysteresis and a seven-task host ceiling (qualification three plus calibration up to four). This scheduling-only continuation retains completed initial measurements and existing trial identities; three waiting workers had no Harbor job directory and no solver dispatch, and are reset to pending. No outcome values were inspected to make this change. Immutable controller v4 copies v3 and changes only admission.py and trial_worker.py; grading, selection, tasks and budgets are identical. Resolved configuration hashes are migrated explicitly with archived before/after records. All charges and the original guard deadline remain.
+
+Previous `qualification-t1-260912b.json`: file SHA-256 `138b6a190a65ebd28d97dbdc3b93ba8970a31b322f01d22d3dbca333597a181b`; embedded SHA-256 `eb592ef5f9add8f583f64e2dd3cb99cc87dd8bdbac5006a25ab301b4c642ef01`; all previous input hashes archived at `runs/manifests/r10-v3/qualification-t1-260912b.json`. Previous admission hash `a43fb0b4e9fc0f87d5facdb07212085e0582453f70751ea7d003737533e1e87a`; previous worker hash `b2488f770e98c180c927e38c7b656303d98430d9d2752ddf004a0bcdfab43a7f`; previous PREREG hash `9b50979782486121ab1c19f57377b29987f0033a15c45eaa8c19eca9744a164f`.
+
+Previous `pilot-t1-260912.json`: file SHA-256 `523d3e97b5332a6a98d50a6a9c395dbe2ce784dbfeb098b96d4ec50130c92163`; embedded SHA-256 `65d3fba7aae89bfcc5d5ee71cac2a927821bee07ab3147efd77c426475f679e9`; all previous input hashes archived at `runs/manifests/r10-v3/pilot-t1-260912.json`. Previous admission hash `a43fb0b4e9fc0f87d5facdb07212085e0582453f70751ea7d003737533e1e87a`; previous worker hash `b2488f770e98c180c927e38c7b656303d98430d9d2752ddf004a0bcdfab43a7f`; previous PREREG hash `9b50979782486121ab1c19f57377b29987f0033a15c45eaa8c19eca9744a164f`.
+
+
+**2026-09-12T06:50:05.527464+00:00 / R10-EVOLVER-SCOPE:** A0 proposal 1 was interrupted after four current calls because twenty discarded-run calls reused its session scope and prematurely exhausted the 24-call counter. Qualification revisions now namespace ordinary evolver session IDs. Only the four current requests move to the revision scope; historical calls remain charged to the original scope and every charge stays in the unchanged phase guard. Original audit/guard records and the exact migration are archived privately. Continue this interrupted session by replaying its recorded responses and observations without repeating actions, then use only its remaining original call allowance (24 total) and $5 session cap; this is not a fresh proposal. The infrastructure reason evolver_scope_collision is explicitly eligible for existing replay recovery, whose 300-second API timeout is retained and recorded here. No candidate evaluation or sealed post-selection dispatch occurred; no heldout outcomes were consulted. V5 changes only loop.py session scoping and recovery.py eligibility relative to v4. Both source snapshots and manifests are preserved.
+
+Previous `qualification-t1-260912b.json`: file SHA-256 `4927bbdeed71ff798380338f73a73d6383debdd7b216b6b720050ebfddb9dee2`; embedded SHA-256 `539713f7e662f8fcf626c12a9fd3a3a62ef767004475e7de846add05eb093033`; all prior input hashes at `runs/manifests/r10-v4/qualification-t1-260912b.json`. Previous loop hash `16fba2e76c2307306524aeebc08b1702c2fa53c36c88fdd5eba53c7b88f5bd62`; recovery hash `2252fefc0e040b0de5fad609ff50e6b9d55347f4a48b5b8e12dca5ddd443dc6a`; PREREG hash `2331eecea310fc918c29ecea28aa1558f090561c20c4778270e939bf8f75dee5`.
+
+Previous `pilot-t1-260912.json`: file SHA-256 `b68fc0266528c40c7bf23a8190d305002ab153386ae6215c99f75921aba45027`; embedded SHA-256 `46829fb66fa1485d160185b6a17593ad18badf26ad91a7952dca4f3635b0078c`; all prior input hashes at `runs/manifests/r10-v4/pilot-t1-260912.json`. Previous loop hash `16fba2e76c2307306524aeebc08b1702c2fa53c36c88fdd5eba53c7b88f5bd62`; recovery hash `2252fefc0e040b0de5fad609ff50e6b9d55347f4a48b5b8e12dca5ddd443dc6a`; PREREG hash `2331eecea310fc918c29ecea28aa1558f090561c20c4778270e939bf8f75dee5`.
+
+
+**2026-09-12T13:49:37.727780+00:00 / R10-EXPORT-COUNTERS:** The resumed v5 qualification reached all eight arm returns, but the expanded final public-artifact audit detected a remaining R10-04 blinding defect: C-TTS summaries and finished checkpoints exported sealed preference status counters and all-partition rollout totals. The earlier narrow audit missed those fields. Under the existing QUAL-R10-RECHECK discard-on-blocking-finding rule, this run is invalidated, not a qualification result. Original artifacts are preserved privately under `oracle/qualification-t1-260912b/discarded-r10-v5`; public copies are redacted and explicitly marked discarded. No pass-label anomaly was detected. V6 strips those fields before persistence/export and audits public JSON, JSONL and finished SQLite stages; adversarial regressions cover each field and the private archive. Only accounting.py, loop.py and pilot.py change relative to v5; all A3 source stays byte-identical to v5, preserving the independent W13 workspace.
+
+**R10-COST-ALIASES:** Durable request-ID receipts correct duplicate known-cost aggregation across aliased or archived controller raw paths. V6 deduplicates by backend call identity and treats known receipt charges as authoritative. The invalidated run's known usage is USD 49.55259942; guarded accounting remains USD 59.64372272, including USD 9.44480120 of unresolved reservations. No receipt, phase charge, ceiling, deadline or sticky halt is cleared. The USD 60 guard blocked seven final search preference scores; one infrastructure-excluded search attempt independently leaves the frozen A3 completeness predicate unsatisfied. All solver rollouts finished. There are no new paid calls, undisclosed retries or outcome-dependent completion-rule changes. V6 is frozen but unexecuted: a fresh qualification requires a funding/recovery decision, and the invalidated v5 result cannot satisfy its gate. The archived v5 manifests identify the source actually executed.
+
+Previous `qualification-t1-260912b.json` v5: file SHA-256 `3b0f0f602918a66e3de6cea6a7a039864dc22da5bfad83eaa6449ce3c5cd94bd`; embedded SHA-256 `eb25d2fc36b8c160010f8ec5cfa019906830e88f22ba061caf3d3d3e4bcbdff0`; all previous input hashes: `runs/manifests/r10-v5/qualification-t1-260912b.json`.
+
+| Changed input | Previous SHA-256 |
+| --- | --- |
+| `PREREG.md` | `ebab7d891182020e2b2d0c911f721a07c94cc5c04403097e8d0e849af2741ec9` |
+| `evolution/accounting.py` | `3b19fd09944dd65a58bf5d3cf33ef294ab7131bcd6d1f13348a6854c11f3a65c` |
+| `evolution/loop.py` | `bd449314fce1e1458b5d1257eaa911d28891aeb78824b2f9e3100392c9578603` |
+| `evolution/pilot.py` | `319490ef0d38ab1d6c08b2e87be24e2f324d590bda273ed1df8e0ca8739b0c42` |
+
+Previous `pilot-t1-260912.json` v5: file SHA-256 `edb717c272c34b5e74a2ba7268a176c2309e3a6328f182663095e82ce4c4fc85`; embedded SHA-256 `fae61afe40d0333012c9c8a792c2e11ca834c773609285c31fd3c4f63aba39e3`; all previous input hashes: `runs/manifests/r10-v5/pilot-t1-260912.json`.
+
+| Changed input | Previous SHA-256 |
+| --- | --- |
+| `PREREG.md` | `ebab7d891182020e2b2d0c911f721a07c94cc5c04403097e8d0e849af2741ec9` |
+| `evolution/accounting.py` | `3b19fd09944dd65a58bf5d3cf33ef294ab7131bcd6d1f13348a6854c11f3a65c` |
+| `evolution/loop.py` | `bd449314fce1e1458b5d1257eaa911d28891aeb78824b2f9e3100392c9578603` |
+| `evolution/pilot.py` | `319490ef0d38ab1d6c08b2e87be24e2f324d590bda273ed1df8e0ca8739b0c42` |

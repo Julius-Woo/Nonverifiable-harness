@@ -134,7 +134,10 @@ async def main():
         if (config.trials_dir / config.trial_name / "result.json").exists():
             return
         async with HarborAdmission(
-            Path(__file__).resolve().parents[1], config.trial_name
+            Path(__file__).resolve().parents[1],
+            config.trial_name,
+            limit=kwargs.get("harbor_concurrency", 4),
+            scope=kwargs["experiment"],
         ):
             # A parent can disappear during a long admission wait.
             require_controller(controller_pid)

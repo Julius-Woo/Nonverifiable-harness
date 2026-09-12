@@ -1,6 +1,5 @@
 """Fail-closed recovery and provenance regressions."""
 
-import asyncio
 import json
 from pathlib import Path
 from types import SimpleNamespace
@@ -92,59 +91,59 @@ async def test_interrupted_grading_never_repeats_completed_solver(
     evaluator.state.close()
 
 
-async def test_grader_crash_resumes_next_index_on_identical_snapshot(
-    tmp_path, monkeypatch
-):
+async def test_grader_crash_retries_same_live_artifact(tmp_path, monkeypatch):
     from harbor.environments.capabilities import EnvironmentCapabilities
     from harbor.models.task.config import TaskOS
 
     import evolution.grading as grading
 
-    commits, images = [], []
+    calls = []
 
     def docker(*args, **kwargs):
-        if args[0] == "inspect":
+        assert args[0] not in {"pause", "commit", "kill"}
+        if args[:2] == ("image", "inspect"):
             return SimpleNamespace(
-                returncode=0,
-                stdout=json.dumps(
-                    [
-                        {
-                            "Image": "base",
-                            "Mounts": [],
-                            "State": {"Paused": True, "Running": True},
-                        }
-                    ]
-                ),
+                stdout=json.dumps([{"Config": {"Labels": {}}}])
             )
-        if args[0] == "commit":
-            commits.append(args)
-            return SimpleNamespace(returncode=0, stdout="sha256:frozen")
-        if args[0] == "run":
-            images.append(args[-2])
-        return SimpleNamespace(
-            returncode=1 if args[0] == "cp" else 0, stdout=""
-        )
+        return SimpleNamespace(stdout=json.dumps([{"Image": "original"}]))
 
-    monkeypatch.setattr(grading, "docker", docker)
+    class Runtime:
+        def __init__(self, container, image, *args, **kwargs):
+            calls.append((container, image))
+
+        async def start(self):
+            return {"live_state": True}
+
+        async def quiesce(self):
+            calls.append("drained")
+
+        async def close(self):
+            calls.append("released")
 
     class Verifier:
-        calls = 0
+        count = 0
 
         def __init__(self, **kwargs):
-            pass
+            calls.append(kwargs["environment"].name)
 
         async def verify(self):
-            Verifier.calls += 1
-            if Verifier.calls == 1:
-                raise asyncio.CancelledError()
+            Verifier.count += 1
+            if Verifier.count == 1:
+                raise RuntimeError("simulated verifier crash")
             return SimpleNamespace(
                 model_dump=lambda **kw: {"rewards": {"reward": 0}}
             )
 
+    async def execute(*args, **kwargs):
+        return SimpleNamespace(return_code=0)
+
+    monkeypatch.setattr(grading, "docker", docker)
+    monkeypatch.setattr(grading, "LiveRuntime", Runtime)
     monkeypatch.setattr(grading, "Verifier", Verifier)
+    monkeypatch.setattr(grading.FrozenEnvironment, "exec", execute)
 
     async def compose(args):
-        return SimpleNamespace(stdout="solver-container")
+        return SimpleNamespace(stdout="live-solver")
 
     trial = object.__new__(IsolatedTrial)
     trial._result = None
@@ -158,20 +157,23 @@ async def test_grader_crash_resumes_next_index_on_identical_snapshot(
         trial_name="one",
         verifier=SimpleNamespace(env={}),
     )
-    trial.task = SimpleNamespace()
+    trial.task = SimpleNamespace(
+        paths=SimpleNamespace(tests_dir=tmp_path / "tests")
+    )
     trial.logger = None
     trial.paths = SimpleNamespace(verifier_dir=tmp_path / "verifier")
     trial.paths.verifier_dir.mkdir()
     trial.grading_directory = lambda: tmp_path / "private"
-    with pytest.raises(asyncio.CancelledError):
-        await trial._run_shared_verifier(timeout_sec=1, user="root")
-    record = json.loads((tmp_path / "private/boundary.json").read_text())
-    assert record["attempts"][0]["status"] == "dispatched"
     await trial._run_shared_verifier(timeout_sec=1, user="root")
-    assert commits and len(commits) == 1
-    assert images == ["sha256:frozen", "sha256:frozen"]
+    assert calls == [
+        ("live-solver", "original"),
+        "live-solver",
+        "drained",
+        "live-solver",
+        "released",
+    ]
     record = json.loads((tmp_path / "private/boundary.json").read_text())
-    assert [r["index"] for r in record["attempts"]] == [0, 1]
+    assert [r["status"] for r in record["attempts"]] == ["failed", "complete"]
     assert record["complete"]
 
 

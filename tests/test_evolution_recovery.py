@@ -387,7 +387,7 @@ async def test_controller_death_during_admission_prevents_harbor_dispatch(
     created = []
 
     class Admission:
-        def __init__(self, *args):
+        def __init__(self, *args, **kwargs):
             pass
 
         async def __aenter__(self):

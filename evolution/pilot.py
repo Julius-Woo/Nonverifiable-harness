@@ -1,11 +1,13 @@
 """Portable, content-addressed pilot inputs and read-only launch preflight."""
 
+import asyncio
 import json
 import math
 import re
 import statistics
 from pathlib import Path
 
+from evolution.a3 import A3Round
 from evolution.a3_manifest import validate
 from evolution.isolation import verify_matrix
 from evolution.judges import PROMPTS
@@ -153,7 +155,7 @@ def tau_errors(root, value):
     return errors
 
 
-def preflight(root, value):
+def preflight(root, value, *, allow_pending_review=False):
     """Read-only checks without environment resolution, Docker, or network."""
     root, errors = Path(root), []
     try:
@@ -164,6 +166,14 @@ def preflight(root, value):
     if not frozen:
         errors.append("PREREG not frozen")
     errors.extend(ratified_settings_errors(value))
+    if (
+        "A3-loop" in value.get("arms", [])
+        and value.get("partition_limits", {}).get("search", 10) < 10
+        and not value.get("qualification_coreset")
+    ):
+        errors.append(
+            "A3 search subset requires an authorized coreset adapter"
+        )
     prereg_text = (
         (root / "PREREG.md").read_text()
         if (root / "PREREG.md").exists()
@@ -174,8 +184,16 @@ def preflight(root, value):
             r"\|\s*Final review\s*\|[^\n]*pending R10", prereg_text, re.I
         )
     )
-    if review_pending:
-        errors.append("R10 final review pending")
+    review_exception = (
+        allow_pending_review
+        and value.get("run_kind") == "qualification"
+        and value.get("review_deviation", {}).get(
+            "discard_on_blocking_finding"
+        )
+        is True
+    )
+    if review_pending and not review_exception:
+        errors.append("R10 re-check pending")
     unsigned = {k: v for k, v in value.items() if k != "manifest_sha256"}
     if digest(canonical(unsigned)) != value.get("manifest_sha256"):
         errors.append("Manifest hash mismatch")
@@ -231,9 +249,19 @@ def preflight(root, value):
         except (ValueError, TypeError, KeyError) as exc:
             errors.append(f"Section 5 artifact invalid: {exc}")
     for gate in ("P1.8", "P1.9", "P1.11"):
-        if not check_reference(
-            root, value.get("entry_evidence", {}).get(gate)
-        ):
+        item = value.get("entry_evidence", {}).get(gate)
+        valid = check_reference(root, item)
+        if valid:
+            try:
+                bundle = json.loads((root / item["path"]).read_text())
+                if bundle.get("kind") == "qualification_entry_evidence":
+                    valid = bool(bundle.get("artifacts")) and all(
+                        check_reference(root, artifact)
+                        for artifact in bundle["artifacts"]
+                    )
+            except (ValueError, TypeError, AttributeError):
+                valid = False
+        if not valid:
             errors.append(f"{gate} evidence missing or changed")
     errors.extend(tau_errors(root, value))
     errors.extend(budget_errors(root, value))
@@ -306,9 +334,10 @@ def preflight(root, value):
         "paid_calls": 0,
         "docker_calls": 0,
         "prereg_frozen": frozen,
-        "review_status": "pending R10"
+        "review_status": "R10 re-check pending"
         if review_pending
         else "not pending in PREREG",
+        "pending_review_allowed": bool(review_pending and review_exception),
         "schedule": projected,
         "limitations": [value["cache_partition_limitation"]]
         if value.get("cache_partition_limitation")
@@ -431,3 +460,637 @@ def ratified_settings_errors(value):
     if value.get("reestimate_rule", {}).get("after_sessions") != 5:
         errors.append("AD14 requires the first-five-session re-estimate")
     return errors
+
+
+def public_summary_errors(value):
+    """Check serialized summaries, including non-standing sealed counters."""
+    errors = []
+    forbidden = {
+        "O_t_sealed", "sealed_measurement", "sealed_measurements",
+        "sealed_preference_status_counts", "baseline_anchor",
+        "candidate_anchor", "oracle_raw",
+    }
+
+    def inspect(item):
+        if isinstance(item, dict):
+            for key in forbidden.intersection(item):
+                errors.append(f"Private value in public report: {key}")
+            if "arm" in item or "standing_metrics_partition" in item:
+                for key in {"rollouts", "physical_trials"}.intersection(item):
+                    errors.append(
+                        f"All-partition count in public report: {key}"
+                    )
+            for child in item.values():
+                inspect(child)
+        elif isinstance(item, list):
+            for child in item:
+                inspect(child)
+
+    inspect(value)
+    return errors
+
+
+def public_artifact_errors(root, directory):
+    """Reject private links and leaked fields in materialized reports."""
+    import sqlite3
+
+    root, directory = Path(root), Path(directory)
+    private = (root / "oracle").resolve()
+    secret = (root / ".env").resolve()
+    errors = []
+    for path in directory.rglob("*"):
+        if path.is_symlink():
+            target = path.resolve()
+            if (
+                target == secret
+                or target == private
+                or private in target.parents
+            ):
+                errors.append(
+                    "Public artifact links into private workspace: "
+                    + str(path.relative_to(directory))
+                )
+        elif path.name in {
+            "evolution_summary.jsonl", "public_report.json",
+            "qualification_audit.json",
+        }:
+            values = (
+                [json.loads(line) for line in path.read_text().splitlines()]
+                if path.suffix == ".jsonl"
+                else [json.loads(path.read_text())]
+            )
+            for value in values:
+                errors.extend(public_summary_errors(value))
+        elif path.name == "state.sqlite":
+            with sqlite3.connect(f"file:{path}?mode=ro", uri=True) as db:
+                if not db.execute(
+                    "SELECT 1 FROM sqlite_master "
+                    "WHERE type='table' AND name='stages'"
+                ).fetchone():
+                    continue
+                for (value,) in db.execute(
+                    "SELECT value FROM stages WHERE id LIKE 'finished-%'"
+                ):
+                    errors.extend(public_summary_errors(json.loads(value)))
+    return errors
+
+
+def qualification_reports(root, value, results):
+    """Publish public aggregates and keep checkpoint contents oracle-side."""
+    import sqlite3
+
+    from evolution.accounting import cost_summary
+    from evolution.candidates import atomic_json
+    from harness.ledger import utc_now
+
+    root = Path(root)
+    experiment = value["experiment"]
+    directory = root / "runs" / experiment
+    accounting = root / "costs" / value.get("budget_experiment", experiment)
+    costs = cost_summary(
+        accounting / "ledger.jsonl", accounting / "requests.jsonl"
+    )
+    anomalies = public_artifact_errors(root, directory)
+    for path in (root / "logs/evolution" / experiment).glob(
+        "*/iteration-*.json"
+    ):
+        anomalies.extend(public_summary_errors(json.loads(path.read_text())))
+    private_rows = 0
+    for arm in value["arms"]:
+        database = directory / arm / "state.sqlite"
+        with sqlite3.connect(f"file:{database}?mode=ro", uri=True) as db:
+            for spec, result in db.execute(
+                "SELECT spec,result FROM trials WHERE result IS NOT NULL"
+            ):
+                if json.loads(spec)["partition"] in {"anchor", "sealed"}:
+                    private_rows += 1
+                    if set(json.loads(result)) != {"private_ref"}:
+                        anomalies.append(
+                            f"{arm}: private trial stored publicly"
+                        )
+    sessions = list(
+        (root / "logs/evolution" / experiment).glob(
+            "*/sessions/*/validation.json"
+        )
+    )
+    for path in sessions:
+        session = json.loads(path.read_text())
+        if session.get("canary_ok") is False:
+            anomalies.append(
+                f"Boundary canary failure: {path.relative_to(root)}"
+            )
+    anomalies.extend(public_summary_errors(results))
+    from evolution.state import State
+
+    grader_exclusions = 0
+    for arm in value["arms"]:
+        state = State(directory / arm / "state.sqlite")
+        try:
+            for stored in state.db.execute(
+                "SELECT result FROM trials WHERE result IS NOT NULL"
+            ):
+                row = state.decode(stored[0])
+                if row.get("exclusion_reason") == "grader_failure":
+                    grader_exclusions += 1
+                    if row.get("oracle") is not None or not row.get(
+                        "excluded"
+                    ):
+                        anomalies.append(
+                            f"{arm}: grader failure label anomaly"
+                        )
+                if row.get("execution", {}).get("reason") == "grader_failure":
+                    anomalies.append(
+                        f"{arm}: grader status entered solver termination"
+                    )
+        finally:
+            state.close()
+        for boundary in (root / "oracle" / experiment / arm / "grading").glob(
+            "*/boundary.json"
+        ):
+            record = json.loads(boundary.read_text())
+            if "snapshot_image" in record:
+                anomalies.append(f"{arm}: filesystem snapshot grader used")
+            runtime_path = boundary.parent / "runtime/runtime.json"
+            if runtime_path.exists():
+                runtime = json.loads(runtime_path.read_text())
+                if (
+                    runtime.get("canary_leaks")
+                    or runtime.get("sensitive_service_fds")
+                    or runtime.get("cleanup_errors")
+                    or not runtime.get("released")
+                ):
+                    anomalies.append(f"{arm}: live runtime audit anomaly")
+    audit = {
+        "created_at": utc_now(),
+        "blinding": value["blinding"],
+        "pass_label": value["pass_label"],
+        "private_trial_references_checked": private_rows,
+        "all_partition_grader_exclusions": grader_exclusions,
+        "evolver_sessions_checked": len(sessions),
+        "isolation_or_pass_label_anomalies": sorted(set(anomalies)),
+        "section5_evidence": value["section5_evidence"],
+        "provider_cache_limitation": value.get("cache_partition_limitation"),
+        "review_status": "pending R10; discard on isolation/label finding",
+        "costs": costs,
+        "manifest_sha256": value["manifest_sha256"],
+    }
+    atomic_json(
+        root / "oracle" / experiment / "qualification_audit.json", audit
+    )
+    public_audit = {
+        k: v
+        for k, v in audit.items()
+        if k
+        not in {
+            "private_trial_references_checked",
+            "all_partition_grader_exclusions",
+        }
+    }
+    atomic_json(directory / "qualification_audit.json", public_audit)
+    if anomalies:
+        raise ValueError("Qualification isolation audit failed; see audit")
+
+    def number(item):
+        return "undefined" if item is None else f"{item:.6f}"
+
+    lines = [
+        "# Qualification t1-260912b",
+        "",
+        "All eight arms; T=1; seed=1; first 6 search / 3 anchor / 3 sealed "
+        "tasks in split file order. Blinding enabled; sealed values are "
+        "available only in the oracle-side report.",
+        "",
+        "Results remain provisional pending R10 and must be discarded for "
+        "an isolation- or label-blocking finding.",
+        "",
+        "| Arm | J | Search O | Decision | Guarded USD | Wall seconds |",
+        "| --- | ---: | ---: | --- | ---: | ---: |",
+    ]
+    for result in results:
+        arm_costs = cost_summary(
+            accounting / "ledger.jsonl",
+            accounting / "requests.jsonl",
+            arm=result["arm"],
+            run_id=experiment,
+        )
+        lines.append(
+            f"| {result['arm']} | {number(result['J_t'])} | "
+            f"{number(result['O_t_search'])} | {result['decision']} | "
+            f"{number(arm_costs['budget_accounted_usd'])} | "
+            f"{number(result.get('wall_s'))} |"
+        )
+    lines += [
+        "",
+        "Standing metrics cover search-partition logical rollouts only.",
+        "",
+        "| Arm | N | No action | Inability | Exhaustion | Protocol error "
+        "| Command timeout | Infrastructure retries / exclusions |",
+        "| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |",
+    ]
+    for result in results:
+        metric = result.get("standing_metrics") or {}
+        counts = metric.get("counts", {})
+        values = [
+            str(counts.get(k, "undefined"))
+            for k in (
+                "no_action",
+                "inability_claim",
+                "exhaustion",
+                "protocol_error",
+                "command_timeout",
+            )
+        ]
+        lines.append(
+            f"| {result['arm']} | {metric.get('denominator', 'undefined')} | "
+            + " | ".join(values)
+            + f" | {metric.get('infrastructure_retries', 'undefined')} / "
+            f"{metric.get('infrastructure_exclusions', 'undefined')} |"
+        )
+    lines += [
+        "",
+        f"Budget-accounted cost: USD {costs['budget_accounted_usd']:.6f}; "
+        f"known cost USD {costs['known_usd']:.6f}; unresolved reservations "
+        f"USD {costs['reserved_unresolved_usd']:.6f} across "
+        f"{costs['unresolved_requests']} requests. Guard USD "
+        f"{value['budget']['guard_usd']}; concurrency {value['concurrency']}; "
+        "MemAvailable threshold 6 GiB.",
+        "",
+        "Isolation checks: private trial references and "
+        f"{len(sessions)} evolver session records checked; public result "
+        "objects scanned for private value fields. Isolation/pass-label "
+        "anomalies detected by these checks: none. "
+        "R10 re-check remains pending.",
+        "",
+        value.get("cache_partition_limitation", ""),
+        "",
+        "Full costs and audit: `qualification_audit.json`. Private checkpoint "
+        f"report: `oracle/{experiment}/final_report.json`.",
+        "",
+    ]
+    (directory / "report.md").write_text("\n".join(lines))
+    private = root / "oracle" / experiment
+    checkpoints = json.loads((private / "final_report.json").read_text())
+    (private / "report.md").write_text(
+        "# Oracle-side qualification report\n\nPrivate sealed checkpoints; "
+        "never use for evolution or investigator tuning.\n\n```json\n"
+        + json.dumps(checkpoints, indent=2)
+        + "\n```\n"
+    )
+    return audit
+
+
+class QualificationA3Round(A3Round):
+    """Qualification-only allocation; preserve the frozen pilot A3 recipe."""
+
+    async def coreset(self, seed):
+        from evolution.a3 import bounded_map
+        from evolution.a3_coreset import embed_fingerprints, select_coreset
+        from evolution.a3_inspection import difficulty_digest
+        from evolution.a3_operators import evidence, first_baselines
+        from evolution.candidates import atomic_json, source_hash
+
+        loop = self.loop
+        validate(loop.manifest)
+        k = loop.manifest["qualification_coreset"]["k"]
+        fixed = loop.state.stage("a3-coreset")
+        tasks = sorted(
+            t["name"] for t in loop.evaluator.split["splits"]["search"]
+        )
+        if k != min(10, len(tasks)):
+            raise ValueError("Qualification coreset differs from search size")
+        if fixed is not None:
+            if fixed.get("k") != k:
+                raise ValueError("Frozen qualification coreset size changed")
+            if fixed.get("evidence_version") != "v3":
+                raise ValueError("Frozen A3 coreset must use v3 evidence")
+            if fixed["search_tasks"] != tasks or fixed[
+                "seed_sha256"
+            ] != source_hash(seed):
+                raise ValueError("Frozen coreset input changed")
+            expected = loop.manifest.get("a3", {}).get("embedding")
+            if (
+                self.embedder is None
+                and expected
+                and (fixed["embedding"]["model"] != expected)
+            ):
+                raise ValueError("Frozen coreset embedding model changed")
+            return fixed
+        azure = loop.manifest.get("a3", {}).get("embedding") == (
+            "text-embedding-3-large"
+        )
+        import tiktoken
+
+        tiktoken.get_encoding("cl100k_base")  # Preflight before paid priors.
+        if azure and self.embedder is None:
+            from evolution.a3_embeddings import azure_provider
+
+            azure_provider(loop)  # Fail before paid priors if keys are absent.
+        prior = await loop.batch(seed, "search", "a3-prior", tasks=tasks)
+        prior_by_task = first_baselines(prior, tasks, candidate=seed.name)
+
+        async def describe(task):
+            result = await self.ops.call(
+                "difficulty",
+                task,
+                await asyncio.to_thread(
+                    difficulty_digest, evidence(prior_by_task[task])
+                ),
+            )
+            if result is None:
+                raise ValueError("Coreset difficulty failed after A9 retry")
+            return {"task": task, **result}
+
+        self.boundary("difficulty", len(tasks))
+        descriptions = await bounded_map(describe, tasks)
+        fingerprints = [item["abstract_fingerprint"] for item in descriptions]
+        if azure and self.embedder is None:
+            from evolution.a3_embeddings import embed_azure
+
+            self.boundary("embeddings", 1)
+            vectors, embedding = await embed_azure(loop, fingerprints)
+        else:
+            vectors, embedding = await asyncio.to_thread(
+                self.embedder or embed_fingerprints, fingerprints
+            )
+        selected = select_coreset(
+            descriptions, vectors, k=k, seed=loop.manifest.get("seed", 1)
+        )
+        fixed = {
+            "arm": loop.arm,
+            "evidence_version": "v3",
+            "search_tasks": tasks,
+            "tasks": selected,
+            "k": k,
+            "theta": 0.7,
+            "floor": 0.1,
+            "floor_semantics": "raw_score_before_max_normalization",
+            "seed": loop.manifest.get("seed", 1),
+            "seed_sha256": source_hash(seed),
+            "embedding": embedding,
+            "descriptions": descriptions,
+            "vectors": vectors,
+            "prior": prior,
+        }
+        loop.state.stage("a3-coreset", fixed)
+        public_core = fixed
+        if loop.manifest.get("clean_calibration"):
+            private_core = loop.evaluator.private / "a3-coreset.json"
+            atomic_json(private_core, fixed)
+            public_core = {k: v for k, v in fixed.items() if k != "prior"}
+            public_core["prior_private_ref"] = str(private_core)
+        atomic_json(loop.directory / "a3-coreset.json", public_core)
+        return fixed
+
+    async def run(self):
+        import time
+
+        from evolution.a3 import ARMS
+        from evolution.a3_metrics import (
+            completion,
+            measurement_report,
+            metrics,
+            preference_report,
+        )
+        from evolution.a3_operators import (
+            first_baselines,
+            mean_preference,
+            preference_total,
+        )
+        from evolution.accounting import cost_summary
+        from evolution.candidates import atomic_json, source_hash
+        from evolution.loop import acceptance_decision
+
+        loop = self.loop
+        native = loop.arm == "A3-native"
+        if loop.arm not in ARMS or (native and loop.iteration != 1):
+            raise ValueError("A3-native has exactly one round")
+        if loop.candidate_count != 3:
+            raise ValueError("RHO requires exactly N=3 proposals")
+        key = f"finished-{loop.iteration}"
+        previous = loop.state.stage(key)
+        if previous is not None:
+            loop.write_summary(previous)
+            return previous
+        from evolution.a3_manifest import require_v3
+
+        require_v3(loop.manifest)
+        start_key = f"started-{loop.iteration}"
+        started = loop.state.stage(start_key) or {"time": time.time()}
+        loop.state.stage(start_key, started)
+        seed = loop.seed()
+        checkpoint_key = f"checkpoint-{loop.iteration}"
+        checkpoint = (
+            loop.state.stage(checkpoint_key)
+            or loop.state.stage("incumbent")
+            or {
+                "candidate": str(seed),
+                "source_sha256": source_hash(seed),
+            }
+        )
+        loop.state.stage(checkpoint_key, checkpoint)
+        parent = Path(checkpoint["candidate"])
+        core = await self.coreset(seed)
+        tasks = core["tasks"]
+        seed_references = first_baselines(
+            core["prior"], core["search_tasks"], candidate="seed"
+        )
+        if not native and loop.state.stage("seed-sealed-checkpoint") is None:
+            sealed = await loop.batch(seed, "sealed", "seed-checkpoint", 2)
+            atomic_json(
+                loop.evaluator.private / "checkpoint-t0.json",
+                {
+                    "arm": loop.arm,
+                    "candidate": str(seed),
+                    "rows": sealed,
+                    "metrics": metrics(sealed),
+                    "measurements": measurement_report(sealed, private=True),
+                    "measurement_complete": metrics(sealed)[
+                        "measurement_complete"
+                    ],
+                },
+            )
+            seed_rows = await loop.batch(seed, "search", "a3-seed-measurement")
+            seed_measured = await self.rank_rows(
+                "seed-measurement", seed_rows, seed_references, seed, seed
+            )
+            loop.state.stage(
+                "seed-sealed-checkpoint", completion(seed_measured, sealed)
+            )
+        group = await loop.batch(parent, "search", "a3-group", 3, tasks=tasks)
+        references = first_baselines(group, tasks, candidate=parent.name)
+        # Freeze reference identities before diagnosis/proposals/ranking.
+        reference_key = f"a3-references-{loop.iteration}"
+        identities = {task: row["id"] for task, row in references.items()}
+        fixed = loop.state.stage(reference_key)
+        if fixed is not None and fixed != identities:
+            raise ValueError("First group rollout reference changed")
+        loop.state.stage(reference_key, identities)
+        await self.diagnoses(parent, tasks, group)
+        proposals = [await loop.propose(parent, slot) for slot in range(1, 4)]
+        for proposal in proposals:
+            if proposal["status"] != "valid":
+                proposal["preferences"] = preference_report(
+                    [
+                        {
+                            "id": f"{proposal['id']}:{task}",
+                            "task": task,
+                            "reference_id": identities[task],
+                            "score": None,
+                            "pair_status": "unscored-failure",
+                        }
+                        for task in tasks
+                    ]
+                )
+                proposal["ineligible_reason"] = "source_checks_failed"
+                continue
+            candidate = Path(proposal["candidate"])
+            rows = await loop.batch(
+                candidate, "search", "a3-after", tasks=tasks
+            )
+            scored = await self.rank_rows(
+                f"selection-{candidate.name}",
+                rows,
+                references,
+                candidate,
+                parent,
+            )
+            proposal["search"] = metrics(scored)
+            proposal["preference"] = mean_preference(
+                [r["score"] for r in scored], expected=len(tasks)
+            )
+            proposal["pair_scores"] = [r["score"] for r in scored]
+            proposal["raw_ratings"] = [r["raw_rating"] for r in scored]
+            proposal["signed_total"] = preference_total(
+                proposal["raw_ratings"], expected=len(tasks)
+            )
+            proposal["preferences"] = preference_report(scored)
+            proposal["reference_ids"] = identities
+        eligible = [p for p in proposals if p.get("preference") is not None]
+        best = (
+            min(eligible, key=lambda p: (-p["signed_total"], p["id"]))
+            if eligible
+            else None
+        )
+        winner = Path(best["candidate"]) if best else None
+        preference = best["preference"] if best else None
+        accepted = False
+        anchors = {"baseline_anchor": None, "candidate_anchor": None}
+        if winner is not None and preference > 0:
+            if not native and loop.rule == "anchor":
+                left, right = await asyncio.gather(
+                    loop.batch(parent, "anchor", "acceptance"),
+                    loop.batch(winner, "anchor", "acceptance"),
+                )
+                anchors = {
+                    "baseline_anchor": None
+                    if metrics(left)["oracle_excluded"]
+                    else metrics(left)["O"],
+                    "candidate_anchor": None
+                    if metrics(right)["oracle_excluded"]
+                    else metrics(right)["O"],
+                }
+            accepted = acceptance_decision(
+                loop.arm,
+                0,
+                preference,
+                anchors["baseline_anchor"],
+                anchors["candidate_anchor"],
+                rule="improve" if native else loop.rule,
+                tau=loop.tau,
+                epsilon=loop.epsilon,
+            )
+        atomic_json(
+            loop.evaluator.private / f"acceptance-i{loop.iteration}.json",
+            {
+                "arm": loop.arm,
+                **anchors,
+                "accepted": accepted,
+                "rule": "rho-positive" if native else loop.rule,
+            },
+        )
+        incumbent = winner if accepted else parent
+        update = {
+            "candidate": str(incumbent),
+            "source_sha256": source_hash(incumbent),
+        }
+        loop.state.stage("incumbent", update)
+        atomic_json(loop.directory / "incumbent.json", update)
+        measurement_attempts = loop.manifest.get("clean_calibration", {}).get(
+            "search_measurement_attempts", 1
+        )
+        measured = await loop.batch(
+            incumbent, "search", "measurement", measurement_attempts
+        )
+        measured = await self.rank_rows(
+            "measurement", measured, seed_references, incumbent, seed
+        )
+        # No sealed evidence enters any RHO operator. Native has only this
+        # standard incumbent avg@2 checkpoint, no sealed t=0 or anchor calls.
+        sealed = await loop.batch(incumbent, "sealed", "measurement", 2)
+        measured_metrics = metrics(measured)
+        completion_fields = completion(measured, sealed)
+        costs = cost_summary(
+            loop.accounting / "ledger.jsonl",
+            loop.accounting / "requests.jsonl",
+            arm=loop.arm,
+            iteration=loop.iteration,
+            run_id=loop.experiment,
+        )
+        summary = {
+            "experiment": loop.experiment,
+            "arm": loop.arm,
+            "purpose": loop.manifest.get("purpose"),
+            "evidence_version": "v3",
+            "iteration": loop.iteration,
+            "status": "complete"
+            if completion_fields["measurement_complete"]
+            else "measurement-incomplete",
+            **completion_fields,
+            "parent": parent.name,
+            "incumbent": incumbent.name,
+            "winner": winner.name if winner else None,
+            "accepted": accepted,
+            "decision": "accepted" if accepted else "rejected",
+            "rule": "rho-positive" if native else loop.rule,
+            "tau": loop.tau,
+            "epsilon": loop.epsilon,
+            "coreset": tasks,
+            "coreset_preference": preference,
+            "baseline": {"J": 0, "scale": "signed_preference"},
+            "candidates": proposals,
+            "J_t": measured_metrics["J"],
+            "O_t_search": measured_metrics["O"],
+            "search_measurement": measured_metrics,
+            "scale": "signed_preference",
+            "authorized_hypotheses": ["H2", "H5"],
+            "wall_s": time.time() - started["time"],
+            "costs_iteration": costs,
+            "costs_cumulative": cost_summary(
+                loop.accounting / "ledger.jsonl",
+                loop.accounting / "requests.jsonl",
+                arm=loop.arm,
+                run_id=loop.experiment,
+            ),
+            "cost_upper_usd": costs["uncached_upper_usd"]
+            + costs["reserved_unresolved_usd"],
+            "search_measurement_attempts": measurement_attempts,
+            "diff_class": None,
+        }
+        atomic_json(
+            loop.evaluator.private / f"checkpoint-t{loop.iteration}.json",
+            {
+                "arm": loop.arm,
+                "iteration": loop.iteration,
+                "incumbent": incumbent.name,
+                "O_t_sealed": metrics(sealed)["O"],
+                "sealed_measurement": metrics(sealed),
+                "measurements": measurement_report(sealed, private=True),
+                "measurement_complete": completion_fields[
+                    "sealed_measurements"
+                ]["complete"],
+                "endpoint_eligible": completion_fields["endpoint_eligible"],
+            },
+        )
+        loop.state.stage(key, summary)
+        loop.write_summary(summary)
+        return summary

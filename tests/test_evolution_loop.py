@@ -337,7 +337,10 @@ async def test_control_matches_incremental_partition_budget(tmp_path):
         tmp_path, "mock", "C-TTS-A0", evaluator_class=FakeEvaluator
     )
     first = await loop.control(comparator)
-    assert first["rollouts"] == 9
+    assert "rollouts" not in first
+    assert json.loads(
+        (loop.evaluator.private / "summary-i1.json").read_text()
+    )["rollouts"] == 9
     assert first["cost_upper_usd"] == 0
     assert first["wall_s"] >= 0
     assert first["J_t"] == first["allocations"]["search"]["metrics"]["J"]
@@ -348,7 +351,7 @@ async def test_control_matches_incremental_partition_budget(tmp_path):
     assert private["sealed"]["metrics"]["scheduled"] == 2
     calls = len(loop.evaluator.calls)
     again = await loop.control(comparator)
-    assert again["rollouts"] == 9
+    assert "rollouts" not in again
     assert len(loop.evaluator.calls) == calls
     loop.close()
     for i in range(2):
@@ -372,7 +375,10 @@ async def test_control_matches_incremental_partition_budget(tmp_path):
         evaluator_class=FakeEvaluator,
     )
     second = await loop.control(comparator)
-    assert second["rollouts"] == 11
+    assert "rollouts" not in second
+    assert json.loads(
+        (loop.evaluator.private / "summary-i2.json").read_text()
+    )["rollouts"] == 11
     assert loop.evaluator.calls == [
         ("seed", "sealed", "control-task-4", 1),
         ("seed", "sealed", "control-task-5", 1),

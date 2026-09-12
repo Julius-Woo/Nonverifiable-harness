@@ -351,6 +351,8 @@ Exit criteria: one TB2 task completed end-to-end by the seed harness with an ora
 
 - 2026-09-12 (W13 done): clean A3-native calibration (terra-low-8k, Azure text-embedding-3-large coreset, evidence v3, L1'): uncensored; all three proposals ineligible (13 selection slots unscored by failures), seed retained; self-preference J = +0.036; search avg@2 6/36 = 16.7%; sealed avg@2 0/12; USD 25.03 of the USD 60 cap; 68 A3 tests. This is the 'RHO reproduced' anchor for the paper. W9e2 (qualification re-run after the R10 fixes) in progress: A0 done, A1 confirmation 11/12, USD 13.72.
 
+- 2026-09-12 (W9e2 done): R10 blockers fixed and adversarially verified (trusted live-container verification with pristine system dirs, grader-failure exclusion, search-only public metrics); code re-frozen (v6); 712 tests. Qualification v5 (8 arms, 6/3/3) ran to USD 59.64: no pass-label anomaly; one residual blinding leak found mid-run and fixed; run invalidated as the gate artifact. Historical search results: A0 J 0.33 / O 0.33; A1 J 0.67 / O 0.33; A2 J 0.67 / O 0.33; A3-loop J -0.15 / O 0.33; controls similar. Fresh v6 qualification needs new funding (pre-pilot cap remainder USD 35 < USD 60). Decisions pending: qualification funding and REC-01 pilot budget. Polling stopped until the user responds.
+
 ### 9.7 Proposed Amendments to Sections 1-8 (pending user approval)
 
 Sources: the literature digest `docs/background.md` (Part B deltas; independent review R2 pending) and the GDPevo assessment `docs/gdpevo_assessment.md` with its independent review R1 (`docs/reviews.md`). Sections 1-8 are unchanged until the user approves. Review R2 of the digest is complete; its dispositions are in `docs/reviews.md`.

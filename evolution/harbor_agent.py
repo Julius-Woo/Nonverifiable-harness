@@ -34,6 +34,7 @@ class CandidateAgent(BaseAgent):
         task_settings=None,
         rollout_budget=1,
         resolved_provider=None,
+        harbor_concurrency=4,
         **kwargs,
     ):
         super().__init__(logs_dir=logs_dir, model_name=model_name, **kwargs)

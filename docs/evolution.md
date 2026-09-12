@@ -4,7 +4,7 @@ The Phase 2 pilot has not been launched. The binding contract is
 [decisions-260912.md](decisions-260912.md); the older validation results below
 are historical infrastructure evidence. The two reviewable input manifests
 are [pilot-t1-260912.json](../runs/manifests/pilot-t1-260912.json) and
-[qualification-t1-260912.json](../runs/manifests/qualification-t1-260912.json).
+[qualification-t1-260912b.json](../runs/manifests/qualification-t1-260912b.json).
 Checks make no model calls, invoke no Docker commands, and never create or
 reset a budget guard. A failed check exits 2.
 
@@ -72,9 +72,10 @@ retry counts, infrastructure-exclusion counts/reasons, and policy-rejection
 counts. Each rate counts affected logical rollouts, not individual events;
 recovered errors count. Inability means a no-action terminal answer claiming
 inability/no tools. A command merely emitted by the model does not establish
-an executed action. Public summaries aggregate all partitions without task
-identities, verifier values, or sealed scores. The oracle-side
-`behavior-i<iteration>.json` additionally breaks down partitions. Ordinary seed
+an executed action. Public summaries and stdout aggregate **search only**. All-partition and
+anchor/sealed standing metrics remain in oracle-side
+`behavior-i<iteration>.json`. A3 sealed measurement counts and private audit
+counts also remain oracle-side; public state stores only private references. Ordinary seed
 batches already carry these same metrics in their private/public batch artifacts;
 no extra solver batch is introduced for diagnostics.
 
@@ -312,3 +313,292 @@ disclosed. It does not demonstrate the corrected wire contract or a passed
 seven-row gate. The prior full document is preserved at
 `logs/evolution-pre-r8b-followup.md`; original requests, scores and artifacts were
 not relabelled or overwritten by this follow-up.
+
+## Qualification variant t1-260912b (2026-09-12)
+
+The leader authorized all eight arms, T=1, seed=1, on the first six search,
+three anchor, and three sealed tasks in split file order. The variant manifest
+is `runs/manifests/qualification-t1-260912b.json`, with the parent manifest's
+file hash recorded. Qualification's ceiling is USD 60 inside the unchanged
+pre-pilot USD 120 allocation. The original USD 30 estimate is retained, so the
+existing 1.5-times-estimate guard is conservatively binding at USD 45.
+Harbor concurrency is three and admission pauses below 6 GiB MemAvailable.
+
+Entry bundles under `logs/evolution/qualification-t1-260912b/entry/` retain
+artifact hashes for P1.8, P1.9, and P1.11. The exact frozen PREREG was extracted
+from commit `b59a1e8`. R8b did not have a `final_verification.json` artifact;
+the bundle includes a new offline inventory derived from its existing final
+validation report and completed-run resume verification. Historical unknown
+charges and the provider-cache limitation remain disclosed.
+
+The new launcher option `--allow-pending-review` applies only to qualification,
+records the deviation in the launch manifest and PREREG deviation log, and
+leaves strict `--check` reporting pending R10. It bypasses no other gate.
+Qualification results must be discarded for an isolation- or label-blocking
+R10 finding. The normal launcher emits public and oracle-side Markdown reports
+and checks private trial references and evolver boundary records.
+
+The resumed leader decision authorizes qualification-only k=min(10, search
+tasks)=6, with G=3 and N=3 unchanged. `QualificationA3Round` in
+`evolution/pilot.py` retains the existing difficulty, embedding, DPP and ranking
+procedure, using six-task preference denominators. Pilot A3 remains k=10 on
+18 search tasks. The deviation is recorded as QUAL-CORESET before launch.
+
+
+Resumed preparation verification: 63 focused tests passed, including a mocked
+six-task A3 round with positive-gain acceptance and completed replay without
+new trials; full suite 691 passed and six skipped. Strict variant preflight
+passes every gate except R10. Launch uses the logged QUAL-R10 exception and
+runs under the existing systemd unit; progress is archived under
+`logs/evolution/qualification-t1-260912b/`. No CLI model calls were used.
+
+
+## R10 corrections and qualification revision (2026-09-12)
+
+R10-03/R10-11 replace filesystem snapshot grading with verification in the
+original live task container. There is no Docker pause/commit, replacement
+PID/network namespace, or grader-initiated killing of the live service.
+A controller-only helper starts from the immutable original task image and
+uses detached bind-mount handles to temporarily cover `/bin`, `/usr`, `/lib*`,
+`/sbin`, `/etc/ld.so*`, and original-image declared interpreter directories
+read-only. Original runtime aliases are checked before mounting. A planted
+`/etc/ld.so.preload` is covered with an empty read-only file. The verifier
+runs through `env -i` and `bash --noprofile --norc`; startup/environment hooks
+and solver PATH overrides are excluded. HOME and verifier Python package
+installation directories are freshly allocated under the hidden tmpfs.
+
+Before hidden tests are uploaded, the helper enumerates solver processes.
+Processes owning listening TCP/UDP/Unix sockets, or matching an original-image
+`nvh.verifier.service_pattern` label, remain running and are logged as
+`kept_services`. Others receive SIGSTOP. Only then are hidden tests streamed
+into a new root-owned mode-0700 tmpfs. Receipts use a separate new tmpfs.
+Verifier descendants are killed before teardown; hidden mounts are removed
+before stopped solver processes resume. Each verifier exception permits one
+retry in that same live container, without a solver re-run; receipts are
+cleared between attempts. Lost live state cannot be reconstructed from an
+image and is excluded instead of rerunning the solver.
+
+The supplied verifier bootstrap requires packages absent from some original
+images (qemu needs curl and sshpass). These declared packages are downloaded
+and extracted using the original image's package manager into a separate
+controller-owned bundle, with package-content hashes in
+`oracle/verifier-dependencies/*/receipt.json`. The bundle is mounted read-only
+at `/tests/.deps`; PATH contains this pristine dependency bundle and pristine
+image directories only. The test's apt bootstrap is satisfied by these staged
+packages; its assertions and reward script remain unchanged. Python/uv
+bootstrap uses fresh verifier-only directories. The Debian mirror exposed an
+expired security index and a missing binary; staging records the signed base
+release package versions and disables the index expiry check. This bootstrap
+accommodation is recorded explicitly in the PREREG deviation log.
+
+**Residual limitation:** a root solver shares the container with verification,
+and kept services remain untrusted live code. They can attempt to observe or
+modify verifier activity, retain open file descriptors, or evolve task state
+between retries. This is not a complete isolation guarantee against root.
+The helper disables dumpability; runtime audits record kept/stopped PIDs,
+read-only mounts, sampled service descriptors into tests/results, a hidden
+canary, and a bounded canary-copy scan of regular files under `/app`, `/tmp`,
+and `/root` (5 MiB/file, 128 MiB total). Audit truncation is explicit. A detected
+copy, sensitive descriptor, missing teardown, or cleanup error fails grading
+and qualification. Transient accesses between samples or unscanned files
+remain possible; absence of a canary hit is not proof that no access occurred.
+
+R10-02 separates grader status from trusted solver termination. After a normal
+finish, verifier failure after its retry produces `oracle=null`,
+`excluded=true`, and `reason=exclusion_reason="grader_failure"`. Standing
+metrics count grader exclusions separately. Genuine solver failures retain
+L1' failure labels. Grader exception text never becomes judge/evolver
+termination evidence; excluded attempts never reach their scoring/feedback
+queues. R10-04 publishes search-only standing metrics and keeps sealed/A3
+measurement counts and all-partition audit counts private.
+
+R10-05 makes excluded A3 samples and fixed references ineligible for ranking
+and diagnosis. An excluded replicate-zero reference is retained as an
+ineligible identity; no later sample silently replaces it. R10-07 resolves
+C-TTS selector ties by replicate ID before stable rollout ID. R10-08 adds
+shared memory hysteresis: pause below 6 GiB, resume strictly above 8 GiB,
+with qualification Harbor concurrency capped at three. The 8 GiB threshold
+is the user-authorized departure from the frozen body's 10 GiB.
+
+R10-06 is recorded as an exact schedule deviation, preserving the implemented
+fresh baseline and smoke batches, conditional confirmation, absent anchor
+monitoring under `improve`, and absent separate control t=0 checkpoint.
+Qualification remains all eight arms, T=1, one seed, 6/3/3, A3 k=6 and a $60
+hard guard. The discarded pre-R10 artifacts are retained under
+`oracle/qualification-t1-260912b/discarded-before-r10`; their original charges
+remain in the guard. The first corrected attempt was also drained and archived after concurrent
+W13 reporting-source drift and a missing helper-interpreter setup error.
+Revision `r10-live-v3-isolated` prevents rollout identity reuse. Its immutable
+source tree is `oracle/qualification-t1-260912b/controller-r10-live-v5`; the
+launcher verifies and re-execs that source before checking or dispatching.
+The intermediate v2 source copy placed workspace links in the public run tree;
+it was drained and archived privately. The final public-tree audit rejects
+links into oracle/ or .env. The final collector also preserves grader exclusions
+when they occur on an API-infrastructure replacement attempt.
+The copied code writes through workspace output links to the standard paths.
+All twelve subset images passed unpaid runtime setup checks after adding a
+separately staged helper interpreter for images without Python. C-TTS runs
+independent preassigned replicates concurrently within the same Harbor limit,
+with ordered collection and unchanged allocation/selection.
+R10-09's A3 H5 noise estimate remains unavailable; no numeric claim is made.
+
+Adversarial regression results are in `logs/r10-controls/tests.txt` and the
+three control JSON files. Both deliberately failing small Docker tasks return
+reward 0: planted `/etc/profile.d`, modified bash and PATH-shadow Python do
+not execute; the polling background reader obtains no hidden canary content.
+The full qemu-alpine-ssh supplied verifier returns reward 1 for the reference
+solution's running QEMU guest, with QEMU recorded as a kept listening service.
+All eleven R10 tests, including these three Docker controls and a freshly
+constructed reference QEMU guest, passed together in 78.03 seconds
+(`logs/r10-controls/tests-v2.txt`). Project-wide `uv run pytest -q` passes:
+707 passed, 9 skipped in 66.84 seconds (`logs/r10-pytest-v5-final.txt`). The real
+Docker tests are explicit opt-in checks and are among the default skips.
+
+The qualification planning estimate is $40 so that the existing 150% guard
+rule enforces the explicitly authorized $60 ceiling (the former $30 estimate
+would stop at $45). Start time, deadline, ceiling and all prior charges remain
+unchanged; this alignment is logged in PREREG and
+`logs/r10-guard-alignment.json`. Qualification execution and final gate evidence
+will be recorded below after completion.
+
+Admission continuation: v3 was paused because its global limit counted W13 workers against the qualification limit of three, starving qualification despite available memory. The v4 source changes only admission and worker scoping: three qualification workers, shared 6/8 GiB memory hysteresis, and a seven-task host ceiling for qualification plus up to four calibration workers. The three queued workers had never created Harbor jobs; they return to pending with unchanged identities. Completed initial measurements are retained without inspecting outcome values. The old source, manifests and state/configuration hashes are archived privately in `oracle/qualification-t1-260912b/admission-continuation-v3`; the migration and previous input hashes are recorded in PREREG. A regression holds four calibration slots while admitting exactly three qualification workers and checks shared memory hysteresis.
+
+The first ordinary evolver proposal hit an infrastructure scope collision: twenty discarded-run calls and four current calls shared a 24-call counter. V5 namespaces ordinary evolver scopes by qualification revision. Only the four current request scopes are migrated, with the prior journal and guard archived in `oracle/qualification-t1-260912b/scope-continuation-v4`; every phase charge is preserved. The interrupted session continues through audited response/observation replay within its original 24 calls and $5 limit. Existing recovery uses a 300-second API timeout; that exact difference is in the appended deviation log. No completed action is rerun and no hidden outcome was consulted. The regression confirms independent revision call caps while retaining historical spending.
+
+The provider-capacity interruption was reconciled on continuation at 07:27 UTC.
+Both active manifests' self-hashes and every pinned input match the immutable
+v5 source (`logs/qualification-t1-260912b-frozen-resume-check.json`). The A0
+runner and interrupted worker leases were free. Only the two containers for
+`nvhe-0b9ef8757d758322be218a43`, identified by their qualification artifact
+mounts and exact trial identity, were removed; W13 containers were untouched.
+All 53 completed rollout records were retained. The launcher `--resume`
+path recorded the incomplete solver and its single policy-authorized clean
+infrastructure replacement, `nvhe-e1e24093154660108de2665f`; no completed
+rollout was dispatched again. Reconciliation and the preserved identities are
+in `logs/qualification-t1-260912b-resume-reconciliation.json`, and the recovery
+link is oracle-side under A0's `infrastructure-retries/` directory.
+The unchanged guard accounted for USD 8.5147532 before continuation and retains
+the USD 60 ceiling and original deadline. The resume log is
+`logs/qualification-t1-260912b-run-v5-resume.txt`; periodic memory, spending,
+and completed-arm observations are in the adjacent `resume-monitor.jsonl`.
+Project-wide tests were rerun successfully: 707 passed, 9 skipped in 64.82
+seconds (`logs/r10-pytest-resume-final.txt`).
+
+### Qualification execution and invalidation (2026-09-12)
+
+The resumed launcher reached the end of all eight arms and wrote the public
+report at `runs/qualification-t1-260912b/report.md` and the private report at
+`oracle/qualification-t1-260912b/report.md`. **The qualification did not pass and is invalidated for R10-04.**
+The final expanded audit found public sealed preference counters and
+all-partition rollout totals that the initial audit missed. The logged
+pending-review exception requires discarding this run. Original artifacts
+are archived privately under `oracle/qualification-t1-260912b/discarded-r10-v5`;
+public summaries and finished SQLite checkpoints have been redacted.
+Seven arms are complete; C-TTS-A3-loop is `measurement-incomplete` and
+`endpoint_eligible=false`. All solver rollouts finished, but the unchanged
+USD 60 guard blocked seven search preference scores for cobol-modernization.
+An additional search rollout was excluded after its one infrastructure
+replacement also failed; its missing preference separately prevents the
+strict A3 completeness predicate from passing. No extra solver retry was
+granted and no missing score was supplied or treated as zero. The final
+`qualification.json` correctly records `passed=false` for the frozen manifest.
+
+The table contains historical search results from the invalidated v5 run;
+none is a valid qualification endpoint.
+
+| Arm | Public J | Search O | Disposition |
+| --- | ---: | ---: | --- |
+| A0 | 0.333333 | 0.333333 | complete; rejected |
+| A1 | 0.666667 | 0.333333 | complete; rejected |
+| A2 | 0.666667 | 0.333333 | complete; rejected |
+| A3-loop | -0.150000 | 0.333333 | complete; rejected |
+| C-TTS-A0 | 0.333333 | 0.333333 | complete; control |
+| C-TTS-A1 | 0.666667 | 0.333333 | complete; control |
+| C-TTS-A2 | 0.866667 | 0.333333 | complete; control |
+| C-TTS-A3-loop | 0.300000* | 0.333333* | incomplete; endpoint ineligible |
+
+The starred values describe selection from the currently scored subset, so
+they are provisional and must not be interpreted as a completed C-TTS
+endpoint. Standing metrics in the public report cover search only. All
+held-out measurements and all-partition totals are now confined to
+oracle-side artifacts after redaction. No sealed outcome was consulted to change the execution.
+
+The guard first rejected an additional reservation while accounting for
+USD 59.956408. Final receipt settlement reduced the accounted total to
+**USD 59.64372272**, comprising settled guard charges of USD 50.19892152 and
+retained unresolved reservations of USD 9.44480120. All discarded-run and
+interruption charges remain included. The cap, estimate, original deadline,
+and persisted halt are unchanged. Known receipt-reported usage is
+USD 49.55259942; settled guard charges also retain conservative pricing
+adjustments. The source report's raw known-cost field was inflated to
+USD 97.09171040 by aliased `raw_dir` path spellings. The final reports use
+unique durable request-ID receipts for known costs and token counts;
+`costs/qualification-t1-260912b/report_receipt_reconciliation.json` records
+this correction to the historical reports. V6 also fixes the source
+aggregation: receipt identity deduplicates aliased or archived raw paths,
+and known durable receipt charges take precedence over raw ledger guesses.
+Regression tests cover both path forms without changing guard accounting. Original launcher reports are preserved under
+`oracle/qualification-t1-260912b/launcher-reports-before-final-annotation/`.
+No frozen execution source, trial state, selection, or guard was changed to
+make this reporting correction.
+
+The expanded final audit detected an **R10-04 isolation/blinding anomaly**.
+The initial scanner omitted `sealed_preference_status_counts` and the
+all-partition `rollouts` and `physical_trials` summary fields. V6 removes
+these before public persistence and export, archives full summaries privately,
+and scans public JSON/JSONL plus finished SQLite stages. Search-only counts
+are named explicitly. Regression tests assert all three fields stay out of
+public summaries and checkpoints and remain available privately. The
+post-remediation scan reports no remaining forbidden fields. No pass-label
+anomaly or runtime canary/service-FD/cleanup anomaly was detected. The
+same-container root/kept-service limitation and bounded audit remain as
+described above; these checks do not prove complete isolation. The preserved-rollout audit found zero new solver request intents
+for the 53 pre-resume completed identities. The continuation took about six
+hours, exceeding the approximate four-hour estimate; the frozen per-task
+control schedule and long-running trials were retained. Sampled MemAvailable
+stayed at or above 25.10 GiB, with the three-worker admission limit unchanged.
+Resource observations continue in
+`logs/qualification-t1-260912b-continuation-monitor.jsonl` after the initial
+four-hour monitor window.
+
+Final verification: `uv run pytest -q` passed with **712 passed, 9 skipped**
+in 62.25 seconds (`logs/r10-pytest-v6-final.txt`). The prior real-Docker
+adversarial controls passed all 11 tests (`logs/r10-controls/tests-v2.txt`):
+startup/profile/binary/PATH attacks produced no canary and reward 0; the
+background reader obtained no hidden content and reward 0; the known-good
+QEMU/SSH service remained live and received reward 1. Those runtime files
+are unchanged in v6. The simulated verifier-crash and retry-exhaustion
+regressions retain `oracle=null`, `excluded=true`, reason `grader_failure`
+after a normal solver finish, with separate counts and no solver termination
+or grader-status exposure to judges/evolvers.
+
+Both manifests have been re-frozen against immutable controller v6:
+`oracle/qualification-t1-260912b/controller-r10-live-v6`. Qualification
+revision `r10-live-v4-export-counters` is **unexecuted**. Its embedded hash is
+`65548d26e600d115be36f511210aaeea1234babd77bade73fcca9beb0c39d164`;
+the pilot embedded hash is
+`c4f2e76b207cc262debc17f3d8341427f05aabcc039e5aa577b643f0bfa2569c`.
+Every pinned input and both manifest self-hashes verify. The prior file,
+manifest and changed-input hashes are appended to PREREG's deviation log;
+complete old manifests are in `runs/manifests/r10-v5/`. V6 changes only
+`accounting.py`, `loop.py`, `pilot.py` and the appended deviation log relative
+to v5. All A3 source is copied byte-for-byte from v5, preserving the concurrent
+W13 work in the main workspace. Freeze evidence is `logs/r10-v6-freeze.json`.
+
+Strict qualification `--check` reports `R10 re-check pending` and the
+persisted budget halt (`logs/qualification-t1-260912b-check-final.txt`).
+Pilot `--check` reports R10, the missing successful qualification for v6,
+and REC-01's unfunded schedule (`logs/pilot-t1-260912-check-final.txt`).
+There are no input-hash failures. No v6 qualification or pilot was launched;
+no commit, push, or CLI model call was made.
+
+R10-02/03/11 are implemented and regression-verified. R10-04's remaining
+export defect is corrected and regression-verified in v6, but has not passed
+a fresh live qualification. R10-05/07/08 are implemented; R10-06 is the exact
+schedule deviation already logged; R10-10 manifests are regenerated with
+previous hashes retained. R10-09 remains non-estimable Phase 3 work. R10-01's
+funding constraint is an observed qualification blocker. A fresh valid
+qualification requires a funding/recovery decision: the current budget
+halt is retained, the v5 run is discarded, and the frozen completeness
+criterion is unchanged. Finishing the eight arm controller returns does
+not make this a passing gate.

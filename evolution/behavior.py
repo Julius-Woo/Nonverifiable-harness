@@ -95,6 +95,9 @@ def standing_metrics(rows):
             f"{name}_rate": counts[name] / len(included) if included else None
             for name in names
         },
+        "grader_failures": sum(
+            r.get("exclusion_reason") == "grader_failure" for r in rows
+        ),
         "infrastructure_retries": sum(bool(r.get("retried")) for r in rows),
         "infrastructure_exclusions": sum(
             bool(r.get("excluded")) for r in rows
